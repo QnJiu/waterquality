@@ -223,8 +223,11 @@ int main(int argc,char **argv) {
         printf("mode=%s: waiting for t=60000 ms trigger\n",periodic ? "periodic" : "daily");
     } else if(command(&modbus,1)!=TP_OK) return 1;
     size_t last=(size_t)-1;
-    for(x.now=0;x.now<120000 && (controller.state==TP_RUNNING ||
-        (automatic && controller.state==TP_IDLE));x.now+=50) {
+    unsigned completed=0;
+    /* Periodic mode demonstrates two complete measurements, not just the first trigger. */
+    for(x.now=0;x.now<(periodic ? 180000u : 120000u) &&
+        (controller.state==TP_RUNNING || (automatic &&
+        (controller.state==TP_IDLE || (periodic && controller.state==TP_COMPLETE && completed<2))));x.now+=50) {
         x.temperature+=(x.heater*2.0f-(x.temperature-20)*0.02f)*0.05f;
         if((fault_interlock || recover) && x.pump_active) x.interlock=false;
         if((fault_sensor || recover_sensor) && recipe[controller.index].kind==TP_STEP_READ) x.sensor_error=true;
@@ -232,6 +235,15 @@ int main(int argc,char **argv) {
         if(controller.awaiting_advance && (automatic || command(&modbus,5)!=TP_OK)) return 1;
         tp_run_state before=controller.state;
         tp_service_tick(&service,x.now,daily,946684800LL+(int64_t)(x.now/1000u));
+        if(periodic && before==TP_RUNNING && controller.state==TP_COMPLETE) {
+            if(!controller.result_valid || x.pump_count!=4 ||
+               x.pump_valves[0]!=SAMPLE || x.pump_valves[1]!=REAGENT ||
+               x.pump_valves[2]!=RINSE || x.pump_valves[3]!=DRAIN ||
+               x.valves || x.heater!=0 || x.pump_active) return 1;
+            completed++;
+            printf("periodic measurement %u completed at t=%lu ms\n",completed,(unsigned long)x.now);
+            if(completed<2) { x.pump_count=0; last=(size_t)-1; }
+        }
         if(journal_mode && before==TP_RUNNING && controller.state==TP_COMPLETE) {
             tp_event event;
             if(!tp_event_transition(before,&controller,&event) ||
@@ -239,6 +251,8 @@ int main(int argc,char **argv) {
         }
         if(automatic && ((x.now<60000 && controller.state!=TP_IDLE) ||
                          (x.now==60000 && controller.state!=TP_RUNNING))) return 1;
+        if(periodic && ((x.now>60000 && x.now<120000 && completed>1) ||
+                        (x.now==120000 && controller.state!=TP_RUNNING))) return 1;
         if(controller.index!=last && controller.state==TP_RUNNING) {
             printf("t=%lu ms step=%lu temp=%.2f heater=%.2f\n",(unsigned long)x.now,
                    (unsigned long)controller.index,(double)x.temperature,(double)x.heater);
@@ -286,6 +300,7 @@ int main(int argc,char **argv) {
     if(stop_rinse) return controller.state==TP_FAILED && controller.fault==TP_FAULT_STOP &&
         x.pump_count==3 && x.pump_valves[2]==RINSE ? 0 : 1;
     if(journal_mode && verify_journal(&service,&modbus,&memory,&journal_io,controller.result_mg_l)) return 1;
+    if(periodic && completed!=2) return 1;
     if(x.pump_count!=4 || x.pump_valves[0]!=SAMPLE || x.pump_valves[1]!=REAGENT ||
        x.pump_valves[2]!=RINSE || x.pump_valves[3]!=DRAIN) return 1;
     return controller.state==TP_COMPLETE && controller.result_valid &&

@@ -22,7 +22,7 @@ add_executable(tp_f407_boot.elf main.c tp_f407_boot.c tp_f407_boot_flash.c ${ROO
     ${ROOT}/firmware/tp_f407_system_init.c ${ROOT}/firmware/tp_f407_handoff.c ${ROOT}/firmware/tp_f407_emergency.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${ROOT}/drivers/upgrade_fram.c ${ROOT}/bootloader/boot.c ${ROOT}/bootloader/boot_target.c
-    ${ROOT}/bootloader/signed_boot.c ${ROOT}/bootloader/signed_manifest.c ${ROOT}/bootloader/image_hash.c
+    ${ROOT}/bootloader/signed_boot.c ${ROOT}/bootloader/factory_provision.c ${ROOT}/bootloader/signed_manifest.c ${ROOT}/bootloader/image_hash.c
     ${ROOT}/third_party/tinycrypt/source/ecc.c ${ROOT}/third_party/tinycrypt/source/ecc_dsa.c
     ${ROOT}/third_party/tinycrypt/source/sha256.c ${ROOT}/third_party/tinycrypt/source/utils.c)
 target_include_directories(tp_f407_boot.elf PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${ROOT}/firmware ${ROOT}/include

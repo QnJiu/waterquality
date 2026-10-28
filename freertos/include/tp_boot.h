@@ -20,6 +20,8 @@ typedef struct {
 /* Explicit manufacturing initialization of a blank dedicated metadata store.
  * Both record areas must be erased to 0xff. A valid or damaged record is
  * never overwritten. Must be called only in trusted setup. */
+/* TP_OK only if both boot record areas are completely erased. */
+tp_result tp_boot_metadata_blank(const tp_boot_io *);
 tp_result tp_boot_provision(const tp_boot_io *,uint8_t active_bank,uint32_t version);
 tp_result tp_boot_read(const tp_boot_io *,tp_boot_state *);
 /* Stage only the inactive, fully downloaded and verified bank; version increases. */

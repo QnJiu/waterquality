@@ -48,17 +48,22 @@ static tp_result commit(const tp_boot_io *io,tp_boot_state s,unsigned dest) {
 }
 static void clear_candidate(tp_boot_state *s) { s->phase=TP_BOOT_IDLE; s->candidate_bank=0; s->candidate_version=0; }
 tp_result tp_boot_read(const tp_boot_io *io,tp_boot_state *s) { unsigned slot; return find(io,s,&slot); }
+tp_result tp_boot_metadata_blank(const tp_boot_io *io) {
+    if(!io_valid(io)) return TP_INVALID;
+    uint8_t b[RECORD_SIZE];
+    for(unsigned i=0;i<2;i++) {
+        if(io->metadata.read(io->metadata.ctx,i,0,b,sizeof(b))!=TP_OK) return TP_IO_ERROR;
+        for(unsigned j=0;j<sizeof(b);j++) if(b[j]!=0xffu) return TP_INVALID;
+    }
+    return TP_OK;
+}
 tp_result tp_boot_provision(const tp_boot_io *io,uint8_t bank,uint32_t version) {
     if(!io_valid(io) || bank>1 || !version) return TP_INVALID;
     tp_boot_state s; unsigned slot; tp_result r=find(io,&s,&slot);
     if(r==TP_OK) return TP_BUSY;
     if(r!=TP_INVALID) return r;
     /* Invalid or damaged metadata is not automatically factory blank. */
-    uint8_t b[RECORD_SIZE];
-    for(unsigned i=0;i<2;i++) {
-        if(io->metadata.read(io->metadata.ctx,i,0,b,sizeof(b))!=TP_OK) return TP_IO_ERROR;
-        for(unsigned j=0;j<sizeof(b);j++) if(b[j]!=0xffu) return TP_INVALID;
-    }
+    r=tp_boot_metadata_blank(io); if(r!=TP_OK) return r;
     r=io->verify_image(io->image_ctx,bank,version); if(r!=TP_OK) return r;
     memset(&s,0,sizeof(s)); s.sequence=1; s.active_bank=bank; s.active_version=version;
     return commit(io,s,0);

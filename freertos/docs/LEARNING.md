@@ -12,10 +12,12 @@ cmake --build build
 .\build\tp_simulator.exe
 .\build\tp_simulator.exe interlock
 .\build\tp_simulator.exe recover
+.\build\tp_simulator.exe periodic
+.\build\tp_simulator.exe daily
 ctest --test-dir build --output-on-failure
 ```
 
-正常示例最后显示 `result_valid=1`、`safe=1`；`interlock` 模拟互锁故障，最后显示 `result_valid=0`、`safe=1`。`recover` 模拟互锁故障后，先尝试清故障、恢复输入，再清故障并重新完成检测；`sensor` 模拟传感器故障，`stop-rinse` 模拟清洗时停机。`safe=1` 表示模拟器检查到输出进入安全状态；模拟值不代表实际仪器的测量精度。
+正常示例最后显示 `result_valid=1`、`safe=1`；`interlock` 模拟互锁故障，最后显示 `result_valid=0`、`safe=1`。`periodic` 和 `daily` 分别通过 Modbus 配置周期与每日定时，在模拟时间到 60 秒时自动启动完整流程；每日模式使用模拟 RTC。`recover` 模拟互锁故障后，先尝试清故障、恢复输入，再清故障并重新完成检测；`sensor` 模拟传感器故障，`stop-rinse` 模拟清洗时停机。`safe=1` 表示模拟器检查到输出进入安全状态；模拟值不代表实际仪器的测量精度。
 
 ## 2. 按顺序阅读
 

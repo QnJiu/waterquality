@@ -54,6 +54,16 @@ static tp_result command(tp_modbus *m,uint16_t value) {
     size_t n=0; tp_result r=tp_modbus_frame(m,q,sizeof(q),response,sizeof(response),&n);
     return r==TP_OK && n==8 && !memcmp(q,response,8) ? TP_OK : TP_IO_ERROR;
 }
+/* Configure the five schedule registers together using Modbus FC16. */
+static tp_result set_automatic_mode(tp_modbus *m,uint16_t mode) {
+    uint8_t q[19]={1,16,0,1,0,5,10,0,(uint8_t)mode,0,0,0,60,0,1,0,0};
+    uint8_t response[8];
+    uint16_t sum=crc(q,17); q[17]=(uint8_t)sum; q[18]=(uint8_t)(sum>>8);
+    size_t n=0; tp_result r=tp_modbus_frame(m,q,sizeof(q),response,sizeof(response),&n);
+    return r==TP_OK && n==8 && response[0]==1 && response[1]==16 &&
+        response[2]==0 && response[3]==1 && response[4]==0 && response[5]==5 &&
+        crc(response,6)==(uint16_t)(response[6]|((uint16_t)response[7]<<8)) ? TP_OK : TP_IO_ERROR;
+}
 /* Illustrative valve bits: sample, reagent, rinse and drain. This is a
  * software exercise, not an analytical method or hardware configuration. */
 enum { SAMPLE=1, REAGENT=2, RINSE=4, DRAIN=8 };
@@ -81,8 +91,10 @@ int main(int argc,char **argv) {
     bool fault_sensor=argc==2 && !strcmp(argv[1],"sensor");
     bool stop_rinse=argc==2 && !strcmp(argv[1],"stop-rinse");
     bool recover=argc==2 && !strcmp(argv[1],"recover");
-    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover)) {
-        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover]\n"); return 2;
+    bool periodic=argc==2 && !strcmp(argv[1],"periodic");
+    bool daily=argc==2 && !strcmp(argv[1],"daily");
+    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover && !periodic && !daily)) {
+        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|periodic|daily]\n"); return 2;
     }
     plant x={.temperature=20,.interlock=true};
     tp_hal hal={&x,valves,pump,pump_poll,temperature,heater,adc,interlock,safe};
@@ -93,16 +105,23 @@ int main(int argc,char **argv) {
     if(tp_service_init(&service,&controller,recipe,sizeof(recipe)/sizeof(recipe[0]),0)!=TP_OK ||
        tp_service_attach_preflight(&service,&x,preflight)!=TP_OK) return 1;
     tp_modbus modbus={&service,1,tp_service_read_holding,tp_service_write_holding};
-    if(command(&modbus,1)!=TP_OK) return 1;
+    bool automatic=periodic || daily;
+    if(automatic) {
+        if(set_automatic_mode(&modbus,periodic ? TP_MODE_PERIODIC : TP_MODE_DAILY)!=TP_OK) return 1;
+        printf("mode=%s: waiting for t=60000 ms trigger\n",periodic ? "periodic" : "daily");
+    } else if(command(&modbus,1)!=TP_OK) return 1;
     size_t last=(size_t)-1;
-    for(x.now=0;x.now<60000 && controller.state==TP_RUNNING;x.now+=50) {
+    for(x.now=0;x.now<120000 && (controller.state==TP_RUNNING ||
+        (automatic && controller.state==TP_IDLE));x.now+=50) {
         x.temperature+=(x.heater*2.0f-(x.temperature-20)*0.02f)*0.05f;
         if((fault_interlock || recover) && x.pump_active) x.interlock=false;
         if(fault_sensor && recipe[controller.index].kind==TP_STEP_READ) x.sensor_error=true;
         if(stop_rinse && x.pump_active && x.valves==RINSE && command(&modbus,2)!=TP_OK) return 1;
-        if(controller.awaiting_advance && command(&modbus,5)!=TP_OK) return 1;
-        tp_service_tick(&service,x.now,false,0);
-        if(controller.index!=last) {
+        if(controller.awaiting_advance && (automatic || command(&modbus,5)!=TP_OK)) return 1;
+        tp_service_tick(&service,x.now,daily,(int64_t)(x.now/1000u));
+        if(automatic && ((x.now<60000 && controller.state!=TP_IDLE) ||
+                         (x.now==60000 && controller.state!=TP_RUNNING))) return 1;
+        if(controller.index!=last && controller.state==TP_RUNNING) {
             printf("t=%lu ms step=%lu temp=%.2f heater=%.2f\n",(unsigned long)x.now,
                    (unsigned long)controller.index,(double)x.temperature,(double)x.heater);
             last=controller.index;

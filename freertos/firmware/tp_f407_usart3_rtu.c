@@ -1,4 +1,5 @@
 #include "tp_f407_usart3_rtu.h"
+#include "tp_f407_timebase.h"
 #include "stm32f4xx.h"
 #include "stm32f4xx_ll_gpio.h"
 #include <string.h>
@@ -7,7 +8,7 @@
 static tp_f407_usart3_rtu *instance;
 static void hardware_start(void) {
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIODEN;
-    RCC->APB1ENR |= RCC_APB1ENR_USART3EN | RCC_APB1ENR_TIM5EN;
+    RCC->APB1ENR |= RCC_APB1ENR_USART3EN;
     (void)RCC->AHB1ENR; (void)RCC->APB1ENR;
     LL_GPIO_ResetOutputPin(GPIOD,DE_PIN);
     LL_GPIO_SetPinOutputType(GPIOD,DE_PIN,LL_GPIO_OUTPUT_PUSHPULL);
@@ -18,8 +19,6 @@ static void hardware_start(void) {
     LL_GPIO_SetPinSpeed(GPIOD,LL_GPIO_PIN_8,LL_GPIO_SPEED_FREQ_HIGH);
     LL_GPIO_SetPinMode(GPIOD,LL_GPIO_PIN_8,LL_GPIO_MODE_ALTERNATE);
     LL_GPIO_SetPinMode(GPIOD,LL_GPIO_PIN_9,LL_GPIO_MODE_ALTERNATE);
-    TIM5->CR1=0; TIM5->PSC=15; TIM5->ARR=0xffffffffu;
-    TIM5->EGR=TIM_EGR_UG; TIM5->CNT=0; TIM5->CR1=TIM_CR1_CEN;
     USART3->CR1=0; USART3->CR2=0; USART3->CR3=USART_CR3_EIE;
     /* OVER8=0, BRR=round(16 MHz / 115200): actual baud about 115108. */
     USART3->BRR=139;
@@ -106,6 +105,8 @@ tp_result tp_f407_usart3_rtu_init(tp_f407_usart3_rtu *u,tp_freertos_runtime *rt,
         xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
     memset(u,0,sizeof(*u)); u->runtime=rt; u->port_number=port;
     tp_result r=tp_runtime_rtu_port_init(rt,&u->port,port,115200,10);
+    if (r!=TP_OK) return r;
+    r=tp_f407_timebase_init();
     if (r!=TP_OK) return r;
     u->events=xQueueCreate(RX_EVENTS,sizeof(tp_uart_event));
     if (!u->events) return TP_IO_ERROR;

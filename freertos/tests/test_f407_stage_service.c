@@ -15,7 +15,7 @@ static tp_result write_image(void *p,uint8_t b,uint32_t off,const void *d,size_t
 static tp_result read_meta(void *p,unsigned slot,uint32_t off,void *d,size_t n) { (void)p;(void)slot;(void)off;(void)d;(void)n;return TP_OK; }
 static tp_result write_meta(void *p,unsigned slot,uint32_t off,const void *d,size_t n) { (void)p;(void)slot;(void)off;(void)d;(void)n;return TP_OK; }
 static tp_result erase_meta(void *p,unsigned slot) { (void)p;(void)slot;return TP_OK; }
-static tp_result recv(void *p,uint8_t *b) { (void)p;(void)b;return TP_BUSY; }
+static tp_result recv(void *p,uint8_t *b,uint32_t *ms) { (void)p;(void)b;(void)ms;return TP_BUSY; }
 static tp_result send(void *p,const uint8_t *b,size_t n) { (void)p;(void)b;(void)n;return TP_OK; }
 static void done(void *p,tp_result r) { (void)p;(void)r; }
 tp_result tp_freertos_stage_transport_start(tp_freertos_stage_transport *t,tp_stage_session *s,

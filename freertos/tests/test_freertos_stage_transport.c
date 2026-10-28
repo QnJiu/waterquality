@@ -49,11 +49,11 @@ static tp_result stage_write(void *v,uint8_t bank,uint32_t off,const void *p,siz
     memcpy(f->source+off,p,n); return TP_OK;
 }
 #include "tp_freertos_stage_transport.h"
-typedef struct { uint8_t in[2048]; size_t len,pos; bool disconnect,fail_send; unsigned sent,finished; tp_result result; } link;
+typedef struct { uint8_t in[2048]; size_t len,pos; bool disconnect,fail_send; uint32_t received_ms; unsigned sent,finished; tp_result result; } link;
 static tp_result waiting_for_maintenance(void *v) { return ((gate *)v)->safe ? TP_OK : TP_LOCK_BUSY; }
-static tp_result receive_byte(void *v,uint8_t *b) {
+static tp_result receive_byte(void *v,uint8_t *b,uint32_t *received_ms) {
     link *l=v; if(l->disconnect) return TP_IO_ERROR;
-    if(l->pos==l->len) return TP_BUSY; *b=l->in[l->pos++]; return TP_OK;
+    if(l->pos==l->len) return TP_BUSY; *b=l->in[l->pos++]; *received_ms=l->received_ms; return TP_OK;
 }
 static tp_result send_bytes(void *v,const uint8_t *b,size_t n) {
     link *l=v; (void)b; assert(n>0); l->sent++; return l->fail_send ? TP_IO_ERROR : TP_OK;
@@ -70,6 +70,7 @@ static void request(link *l,uint8_t cmd,const uint8_t *p,size_t n) {
     assert(tp_upgrade_wire_request(cmd,1,p,n,l->in,sizeof(l->in),&l->len)==TP_OK);
 }
 static void drain(tp_freertos_stage_transport *t,link *l,uint32_t now) {
+    l->received_ms=now;
     while(l->pos<l->len) tp_freertos_stage_transport_step(t,now);
 }
 int main(void) {
@@ -93,8 +94,18 @@ int main(void) {
     assert(tp_stage_session_init(&s,&u,&storage,capacities,&g,take_lock,release_lock,waiting_for_maintenance)==TP_OK);
     link l={0}; tp_stage_transport_io io={&l,receive_byte,send_bytes,done}; tp_freertos_stage_transport t;
     assert(tp_freertos_stage_transport_start(&t,&s,&io,20,100,1,1024,1)==TP_OK);
-    request(&l,TP_UP_CMD_BEGIN,b1,116); drain(&t,&l,0xfffffff0u); assert(g.locked && l.sent==1);
-    tp_freertos_stage_transport_step(&t,84); assert(!g.locked); /* wraparound timeout */
+    /* A real gap in a frame must still discard it, even with buffered input. */
+    request(&l,TP_UP_CMD_BEGIN,b1,116); l.received_ms=0xfffffe00u;
+    tp_freertos_stage_transport_step(&t,0xfffffe00u);
+    l.received_ms=0xfffffe20u; tp_freertos_stage_transport_step(&t,0xfffffe20u);
+    assert(!g.locked && l.sent==0);
+    /* The complete frame arrived together, but the task is delayed between
+     * byte-budget slices by more than the frame timeout. */
+    request(&l,TP_UP_CMD_BEGIN,b1,116); l.received_ms=0xfffffff0u;
+    tp_freertos_stage_transport_step(&t,0xfffffff0u);
+    tp_freertos_stage_transport_step(&t,30);
+    assert(l.pos==l.len && g.locked && l.sent==1);
+    tp_freertos_stage_transport_step(&t,84); assert(!g.locked);
     request(&l,TP_UP_CMD_BEGIN,b1,116); drain(&t,&l,100); assert(g.locked && f.erases==1);
     l.disconnect=true; tp_freertos_stage_transport_step(&t,101); assert(!g.locked); l.disconnect=false;
     request(&l,TP_UP_CMD_BEGIN,b1,116); drain(&t,&l,110); assert(g.locked && f.erases==1);

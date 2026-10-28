@@ -4,14 +4,16 @@
 #include "tp_upgrade_stream.h"
 #include "FreeRTOS.h"
 #include "task.h"
-/* One connection at a time. receive is nonblocking: TP_OK yields one byte,
- * TP_BUSY means no data, TP_IO_ERROR means disconnected/error. send must send
+/* One connection at a time. receive is nonblocking: TP_OK yields one byte and its receive time in 1 kHz ticks,
+ * TP_BUSY means no buffered data, TP_IO_ERROR means disconnected/error. send must send
  * the whole frame before returning; bounded waits only. finished reports an
  * installation result and may arrange a safe reset. Callbacks run in task
- * context. The transport provides authentication/access control as needed. */
+ * context. Receive timestamps must be in arrival order, use the same modulo-2^32
+ * clock as the task, and be less than 2^31 ms from each task step. The transport provides
+ * authentication/access control as needed. */
 typedef struct {
     void *ctx;
-    tp_result (*receive)(void *,uint8_t *);
+    tp_result (*receive)(void *,uint8_t *,uint32_t *received_ms);
     tp_result (*send)(void *,const uint8_t *,size_t);
     void (*finished)(void *,tp_result);
 } tp_stage_transport_io;

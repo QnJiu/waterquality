@@ -16,6 +16,9 @@ static tp_result execute(void *ctx,const tp_upgrade_commands *commands,tp_upgrad
     if(cmd==TP_UP_CMD_FINISH && r==TP_OK) t->pending=true;
     return r;
 }
+static bool elapsed(uint32_t now,uint32_t since,uint32_t interval) {
+    return (int32_t)(now-since)>=0 && (uint32_t)(now-since)>=interval;
+}
 static void reset(tp_freertos_stage_transport *t) {
     tp_stage_session_abort(t->session); tp_upgrade_stream_reset(&t->stream);
     t->pending=false; t->installing=false;
@@ -23,7 +26,7 @@ static void reset(tp_freertos_stage_transport *t) {
 void tp_freertos_stage_transport_step(tp_freertos_stage_transport *t,uint32_t now) {
     if(!t || !t->session || !t->io.receive) return;
     if(t->pending) {
-        if(!t->installing && (uint32_t)(now-t->last_byte_ms)>=t->idle_ms) {
+        if(!t->installing && elapsed(now,t->last_byte_ms,t->idle_ms)) {
             reset(t); t->io.finished(t->io.ctx,TP_TIMEOUT); return;
         }
         tp_result r=t->installing ? tp_stage_session_install_step(t->session) :
@@ -32,18 +35,21 @@ void tp_freertos_stage_transport_step(tp_freertos_stage_transport *t,uint32_t no
         if(r!=TP_BUSY && r!=TP_LOCK_BUSY) { reset(t); t->io.finished(t->io.ctx,r); }
         return;
     }
+    bool drained=false;
     for(unsigned i=0;i<BYTE_BUDGET;i++) {
-        uint8_t b; tp_result r=t->io.receive(t->io.ctx,&b);
-        if(r==TP_BUSY) break;
+        uint8_t b; uint32_t received_ms;
+        tp_result r=t->io.receive(t->io.ctx,&b,&received_ms);
+        if(r==TP_BUSY) { drained=true; break; }
         if(r!=TP_OK) { reset(t); return; }
-        t->last_byte_ms=now;
-        r=tp_upgrade_stream_byte(&t->stream,b,now);
+        t->last_byte_ms=received_ms;
+        r=tp_upgrade_stream_byte(&t->stream,b,received_ms);
         /* Invalid input is ignored; any send failure closes the session. */
         if(r!=TP_OK && r!=TP_INVALID) { reset(t); return; }
         if(t->pending) return; /* response has been sent before installation */
     }
-    tp_upgrade_stream_poll(&t->stream,now);
-    if(t->session->locked && (uint32_t)(now-t->last_byte_ms)>=t->idle_ms) reset(t);
+    if(!drained) return; /* queued bytes must be delivered before idle polling */
+    if((int32_t)(now-t->last_byte_ms)>=0) tp_upgrade_stream_poll(&t->stream,now);
+    if(t->session->locked && elapsed(now,t->last_byte_ms,t->idle_ms)) reset(t);
 }
 static void task(void *arg) {
     tp_freertos_stage_transport *t=arg;

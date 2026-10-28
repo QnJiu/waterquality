@@ -1,6 +1,7 @@
 /* Exercise the real control task with simulated outputs and Modbus requests. */
 #include "tp_freertos_runtime.h"
 #include <math.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,22 @@ static tp_controller controller;
 static tp_service service;
 static QueueHandle_t responses;
 static uint32_t valve_mask;
+static uint8_t slots[2][128];
+static atomic_bool fail_erase;
+static tp_result store_read(void *ctx,unsigned slot,uint32_t offset,void *data,size_t len) {
+    (void)ctx; if (slot>=2 || offset>128 || len>128-offset) return TP_INVALID;
+    memcpy(data,slots[slot]+offset,len); return TP_OK;
+}
+static tp_result store_write(void *ctx,unsigned slot,uint32_t offset,const void *data,size_t len) {
+    (void)ctx; if (slot>=2 || offset>128 || len>128-offset) return TP_INVALID;
+    memcpy(slots[slot]+offset,data,len); return TP_OK;
+}
+static tp_result store_erase(void *ctx,unsigned slot) {
+    (void)ctx; if(slot>=2) return TP_INVALID;
+    if(atomic_load(&fail_erase)) return TP_IO_ERROR;
+    memset(slots[slot],0xff,sizeof(slots[slot])); return TP_OK;
+}
+static const tp_store_io store={NULL,store_read,store_erase,store_write};
 static const tp_step recipe[] = {
     {.kind=TP_STEP_VALVES,.arg.valves={1}},
     {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_BLANK,0,1}},
@@ -46,22 +63,22 @@ static uint16_t crc(const uint8_t *data,size_t len) {
     while(len--) { c^=*data++; for(unsigned i=0;i<8;i++) c=(uint16_t)((c>>1)^((c&1u)?0xa001u:0)); }
     return c;
 }
-static int exchange(uint8_t request[8],response *reply) {
-    uint16_t c=crc(request,6); request[6]=(uint8_t)c; request[7]=(uint8_t)(c>>8);
-    return tp_runtime_submit(&runtime,0,request,8)==TP_OK &&
+static int exchange(uint8_t *request,size_t length,response *reply) {
+    uint16_t c=crc(request,length-2); request[length-2]=(uint8_t)c; request[length-1]=(uint8_t)(c>>8);
+    return tp_runtime_submit(&runtime,0,request,length)==TP_OK &&
         xQueueReceive(responses,reply,pdMS_TO_TICKS(1000))==pdPASS &&
         reply->length>=5 && crc(reply->bytes,reply->length-2)==
             (uint16_t)(reply->bytes[reply->length-2] | (uint16_t)reply->bytes[reply->length-1]<<8);
 }
 static int command(uint8_t value) {
     uint8_t request[8]={1,6,0,0,0,value,0,0}; response reply;
-    return exchange(request,&reply) && reply.length==8 && !memcmp(request,reply.bytes,8);
+    return exchange(request,sizeof(request),&reply) && reply.length==8 && !memcmp(request,reply.bytes,8);
 }
 /* Read one owner-task snapshot: state, fault, step, start result, result, valid,
  * save status, and whether controlled mode is waiting for the next command. */
 static int status(uint16_t registers[9]) {
     uint8_t request[8]={1,3,0,10,0,9,0,0}; response reply;
-    if (!exchange(request,&reply) || reply.length!=23 || reply.bytes[0]!=1 ||
+    if (!exchange(request,sizeof(request),&reply) || reply.length!=23 || reply.bytes[0]!=1 ||
         reply.bytes[1]!=3 || reply.bytes[2]!=18) return 0;
     for(unsigned i=0;i<9;i++) registers[i]=(uint16_t)((uint16_t)reply.bytes[3+2*i]<<8 | reply.bytes[4+2*i]);
     return 1;
@@ -71,6 +88,24 @@ static int wait_for(uint16_t state,uint16_t index,bool awaiting,uint16_t values[
         if (!status(values)) return 0;
         if (values[0]==state && values[2]==index && !!values[8]==awaiting) return 1;
         if (values[0]==TP_FAILED) return 0;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return 0;
+}
+static int set_period(uint16_t seconds) {
+    /* Set controlled mode and the five schedule registers in one FC16 request. */
+    uint8_t request[19]={1,16,0,1,0,5,10,0,0,0,0,0,0,0,0,0,0,0,0};
+    request[11]=(uint8_t)(seconds>>8); request[12]=(uint8_t)seconds;
+    response reply;
+    return exchange(request,sizeof(request),&reply) && reply.length==8 &&
+        reply.bytes[0]==1 && reply.bytes[1]==16 && reply.bytes[3]==1 && reply.bytes[5]==5;
+}
+static int wait_save(uint16_t expected) {
+    uint16_t values[9];
+    for(unsigned i=0;i<100;i++) {
+        if(!status(values)) return 0;
+        if(values[7]==expected) return 1;
+        if(values[7]==4 && expected!=4) return 0;
         vTaskDelay(pdMS_TO_TICKS(10));
     }
     return 0;
@@ -90,6 +125,16 @@ static void check(void *arg) {
     if (!command(1) || !wait_for(TP_RUNNING,1,true,values) || get_valves()!=1 ||
         !command(2) || !status(values) || values[0]!=TP_FAILED ||
         values[1]!=TP_FAULT_STOP || values[6]!=0 || get_valves()!=0) goto failed;
+    /* Save uses a separate FreeRTOS storage task; a failed second save must
+     * leave the first committed record readable. */
+    if (!command(3) || !set_period(123) || !command(4) || !wait_save(3)) goto failed;
+    tp_config saved; uint32_t sequence;
+    if (tp_store_load(&store,&saved,&sequence)!=TP_OK || saved.period_seconds!=123) goto failed;
+    if (!set_period(456)) goto failed;
+    atomic_store(&fail_erase,true);
+    if (!command(4) || !wait_save(4)) goto failed;
+    atomic_store(&fail_erase,false);
+    if (tp_store_load(&store,&saved,&sequence)!=TP_OK || saved.period_seconds!=123) goto failed;
     puts("TP_FREERTOS_CONTROL_SELFTEST PASS"); fflush(stdout); exit(0);
 failed:
     fputs("TP_FREERTOS_CONTROL_SELFTEST FAIL\n",stderr); exit(1);
@@ -101,11 +146,15 @@ int main(void) {
     tp_calibration calibration={1,0,0,0.01f,10};
     tp_pid pid={.output_max=1,.integral_max=20};
     const uint8_t address=1;
+    const tp_config config={.calibration={1,0,0,0.01f,10},.output_max=1,
+        .integral_max=20,.max_temperature_c=80,.period_seconds=3600,.slave_address=1};
+    memset(slots,0xff,sizeof(slots));
     tp_runtime_io io={.send=send_response};
     tp_init(&controller,&hal,&calibration,&pid,80);
     responses=xQueueCreate(4,sizeof(response));
     if (!responses || tp_service_init(&service,&controller,recipe,sizeof(recipe)/sizeof(recipe[0]),0)!=TP_OK ||
         tp_runtime_init(&runtime,&service,&io,&address,1,10)!=TP_OK ||
+        tp_runtime_attach_storage(&runtime,&store,&config)!=TP_OK ||
         tp_runtime_start(&runtime,4096,2)!=TP_OK ||
         xTaskCreate(check,"check",4096,NULL,1,NULL)!=pdPASS) return 1;
     vTaskStartScheduler(); return 1;

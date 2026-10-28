@@ -16,6 +16,12 @@ static void safe(void *p) {
 }
 static tp_result send(void *p,unsigned port,const uint8_t *bytes,size_t len) { return tp_f407_usart3_rtu_send(&((tp_f407_app *)p)->uart,port,bytes,len); }
 static bool now(void *p,int64_t *utc) { return tp_freertos_clock_now(&((tp_f407_app *)p)->clock,utc); }
+static tp_result request_log(void *p,bool latest,uint32_t sequence) {
+    return tp_freertos_event_log_query(&((tp_f407_app *)p)->events,latest,sequence);
+}
+static bool poll_log(void *p,tp_result *result,tp_event *event) {
+    return tp_freertos_event_log_poll(&((tp_f407_app *)p)->events,result,event);
+}
 static void record_event(void *p,const tp_event *event) {
     (void)tp_freertos_event_log_submit(&((tp_f407_app *)p)->events,event);
 }
@@ -51,7 +57,8 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     tp_hal hal={a,valves,pump_start,pump_poll,temperature,heater,adc_read,interlocks,safe};
     tp_pid pid={0}; tp_init(&a->controller,&hal,&a->config.calibration,&pid,a->config.max_temperature_c);
     INIT(tp_service_init(&a->service,&a->controller,o->recipe,o->recipe_len,0));
-    tp_runtime_io io={a,send,now,comm_error,record_event};
+    INIT(tp_service_attach_log(&a->service,a,request_log));
+    tp_runtime_io io={a,send,now,comm_error,record_event,poll_log};
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));
     INIT(tp_runtime_attach_storage(&a->runtime,&a->store,&a->config));
     INIT(tp_f407_temperature_start(&a->temperature,500,256,tskIDLE_PRIORITY+1));

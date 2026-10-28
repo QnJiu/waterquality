@@ -92,6 +92,11 @@ static void task(void *arg) {
         tp_result save_result;
         if (rt->save_results && xQueueReceive(rt->save_results,&save_result,0)==pdPASS)
             tp_service_save_complete(rt->service,save_result);
+        if(rt->io.poll_log) {
+            tp_result log_result; tp_event event;
+            if(rt->io.poll_log(rt->io.ctx,&log_result,&event))
+                tp_service_log_complete(rt->service,log_result,&event);
+        }
         int64_t utc = 0;
         bool valid = rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx, &utc);
         tp_run_state before=rt->service->controller->state;

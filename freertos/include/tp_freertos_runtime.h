@@ -27,6 +27,8 @@ typedef struct {
     void (*communication_error)(void *ctx, unsigned port);
     /* Optional; must copy immediately without blocking. */
     void (*event)(void *ctx, const tp_event *event);
+    /* Optional nonblocking query-completion poll; called by service owner. */
+    bool (*poll_log)(void *ctx, tp_result *result, tp_event *event);
 } tp_runtime_io;
 typedef struct {
     tp_service *service;

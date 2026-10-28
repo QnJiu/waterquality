@@ -4,6 +4,9 @@
 #include "tp_f407_uart4_subordinate.h"
 static tp_f407_uart4_subordinate subordinate;
 #endif
+#ifdef TP_F407_TEACHING_OTA
+tp_result tp_f407_teaching_ota_configure(tp_f407_app_options *options);
+#endif
 
 /* Teaching example only: none of these values describe a verified instrument. */
 enum { SAMPLE = 1u, REAGENT = 2u, RINSE = 4u, DRAIN = 8u,
@@ -123,7 +126,11 @@ tp_result tp_f407_board_options(tp_f407_app_options *options) {
     if (r!=TP_OK) return r;
 #endif
     options->subordinate=&subordinate.subordinate;
+#ifdef TP_F407_TEACHING_OTA
+    return tp_f407_teaching_ota_configure(options);
+#else
     return TP_OK;
+#endif
 #else
     /* Replace this example with a board-specific implementation after verifying
      * wiring, method and safety. Returning an error keeps the firmware halted. */

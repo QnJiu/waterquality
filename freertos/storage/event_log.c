@@ -40,12 +40,14 @@ tp_result tp_event_log_append(tp_event_log *log,tp_event *e) {
     if(!log || !log->open || !e || !e->type) return TP_INVALID;
     uint32_t slot=log->has_records ? (log->latest_slot+1)%log->slots : 0;
     uint32_t seq=log->has_records ? log->latest_sequence+1 : 1; uint32_t off=slot*32;
-    uint8_t b[32], verify[31], invalid=0; encode(b,e,seq);
+    uint8_t b[32], verify[31], marker, invalid=0; encode(b,e,seq);
     /* Invalidate old slot, write and verify data, publish with one commit byte. */
     if(log->io.write(log->io.ctx,off+31,&invalid,1)!=TP_OK ||
+       log->io.read(log->io.ctx,off+31,&marker,1)!=TP_OK || marker!=invalid ||
        log->io.write(log->io.ctx,off,b,31)!=TP_OK ||
        log->io.read(log->io.ctx,off,verify,31)!=TP_OK || memcmp(verify,b,31)!=0 ||
-       log->io.write(log->io.ctx,off+31,b+31,1)!=TP_OK) {
+       log->io.write(log->io.ctx,off+31,b+31,1)!=TP_OK ||
+       log->io.read(log->io.ctx,off+31,&marker,1)!=TP_OK || marker!=COMMIT) {
         log->open=false; return TP_IO_ERROR;
     }
     log->has_records=true; log->latest_slot=slot; log->latest_sequence=seq; e->sequence=seq; return TP_OK;

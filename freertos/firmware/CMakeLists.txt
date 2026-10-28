@@ -5,11 +5,11 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
 set(KERNEL ${ROOT}/third_party/FreeRTOS-Kernel)
 set(DEVICE ${ROOT}/third_party/STM32F4-CMSIS)
-add_executable(tp_f407.elf main.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_usart3_rtu.c tp_f407_valves.c
+add_executable(tp_f407.elf main.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_usart3_rtu.c tp_f407_valves.c tp_f407_pump.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${KERNEL}/tasks.c ${KERNEL}/queue.c ${KERNEL}/list.c ${KERNEL}/timers.c
     ${KERNEL}/portable/GCC/ARM_CM4F/port.c ${KERNEL}/portable/MemMang/heap_4.c
-    ${ROOT}/os/freertos_runtime.c ${ROOT}/os/freertos_clock.c ${ROOT}/app/clock_cache.c ${ROOT}/app/valve_policy.c ${ROOT}/app/controller.c ${ROOT}/app/measurement.c
+    ${ROOT}/os/freertos_runtime.c ${ROOT}/os/freertos_clock.c ${ROOT}/app/clock_cache.c ${ROOT}/app/valve_policy.c ${ROOT}/app/pulse_counter.c ${ROOT}/app/controller.c ${ROOT}/app/measurement.c
     ${ROOT}/app/schedule.c ${ROOT}/app/service.c ${ROOT}/storage/config_store.c ${ROOT}/drivers/mb85rc16.c ${ROOT}/drivers/ds3231.c ${ROOT}/drivers/ads1220.c ${ROOT}/drivers/adc_reader.c
     ${ROOT}/protocol/modbus_rtu.c ${ROOT}/protocol/rtu_receiver.c ${ROOT}/protocol/rtu_port.c)
 target_include_directories(tp_f407.elf PRIVATE ${ROOT}/include ${ROOT}/config

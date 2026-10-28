@@ -4,6 +4,7 @@
 #include "tp_schedule.h"
 #include "tp_store.h"
 #include "tp_event_log.h"
+#include "tp_preflight.h"
 /* All service functions must run in the controller task. Communications tasks
  * must marshal requests to that task and read coherent snapshots; they must not
  * invoke callbacks concurrently with tick. Give stop requests priority. */
@@ -22,6 +23,9 @@ typedef struct {
     tp_result (*request_log)(void *, bool latest, uint32_t sequence);
     uint8_t log_status; /* 0 unavailable, 1 idle, 2 pending, 3 found, 4 absent, 5 I/O error */
     tp_event log_event;
+    void *preflight_ctx;
+    tp_result (*preflight)(void *,uint16_t *);
+    uint16_t preflight_faults;
 } tp_service;
 tp_result tp_service_init(tp_service *s, tp_controller *controller,
                           const tp_step *recipe, size_t recipe_len, uint32_t now_ms);
@@ -30,6 +34,8 @@ tp_result tp_service_init(tp_service *s, tp_controller *controller,
 tp_result tp_service_attach_config(tp_service *s, const tp_config *cfg,
     void *ctx, tp_result (*request_save)(void *, const tp_config *));
 void tp_service_save_complete(tp_service *s, tp_result result);
+/* Optional nonblocking startup check; invoked for every actual start request. */
+tp_result tp_service_attach_preflight(tp_service *,void *,tp_result (*)(void *,uint16_t *));
 /* One asynchronous query at a time; callback copies the request without waiting.
  * Complete only from the service owner task. TP_INVALID means not found. */
 tp_result tp_service_attach_log(tp_service *,void *ctx,tp_result (*request)(void *,bool,uint32_t));

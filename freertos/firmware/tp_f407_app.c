@@ -11,6 +11,14 @@ static tp_result temperature(void *p,float *c) { return tp_f407_temperature_read
 static tp_result heater(void *p,float fraction) { return tp_f407_heater_set(&((tp_f407_app *)p)->heater,fraction); }
 static tp_result adc_read(void *p,uint8_t ch,float *v) { return tp_adc_reader_read(&((tp_f407_app *)p)->reader,ch,(uint32_t)xTaskGetTickCount(),v); }
 static bool interlocks(void *p) { tp_f407_app *a=p; return a->interlocks_ok(a->interlocks_ctx); }
+static uint16_t resource_faults(void *p) {
+    tp_f407_app *a=p; return a->resource_faults(a->resource_ctx);
+}
+static tp_result preflight(void *p,uint16_t *faults) {
+    tp_f407_app *a=p;
+    tp_preflight_io io={a,interlocks,temperature,resource_faults,a->controller.max_temperature_c};
+    return tp_preflight_check(&io,faults);
+}
 static void safe(void *p) {
     tp_f407_app *a=p;
     tp_f407_heater_off(&a->heater); tp_f407_pump_stop(&a->pump); tp_f407_valves_safe(&a->valves);
@@ -43,10 +51,11 @@ static void comm_error(void *p,unsigned port) {
 }
 tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     if (!a || !o || instance || xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED ||
-        !o->recipe || !o->recipe_len || !o->valves || !o->interlocks_ok ||
+        !o->recipe || !o->recipe_len || !o->valves || !o->interlocks_ok || !o->resource_faults ||
         !o->channels || !o->channel_count || tp_config_validate(&o->defaults)!=TP_OK ||
         tp_valve_policy_validate(o->valves)!=TP_OK) return TP_INVALID;
     instance=a; memset(a,0,sizeof(*a)); a->interlocks_ok=o->interlocks_ok; a->interlocks_ctx=o->interlocks_ctx;
+    a->resource_faults=o->resource_faults; a->resource_ctx=o->resource_ctx;
     tp_result r;
 #define INIT(expr) do { r=(expr); if (r!=TP_OK) goto fail; } while (0)
     INIT(tp_f407_valves_init(&a->valves,o->valves));
@@ -69,6 +78,7 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     tp_hal hal={a,valves,pump_start,pump_poll,temperature,heater,adc_read,interlocks,safe};
     tp_pid pid={0}; tp_init(&a->controller,&hal,&a->config.calibration,&pid,a->config.max_temperature_c);
     INIT(tp_service_init(&a->service,&a->controller,o->recipe,o->recipe_len,0));
+    INIT(tp_service_attach_preflight(&a->service,a,preflight));
     INIT(tp_service_attach_log(&a->service,a,request_log));
     tp_runtime_io io={a,send,now,comm_error,record_event,poll_log,control_progress};
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));

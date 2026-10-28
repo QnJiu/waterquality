@@ -16,6 +16,7 @@ typedef struct {
     const tp_step *recipe; size_t recipe_len;
     const tp_valve_policy *valves;
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
+    uint16_t (*resource_faults)(void *); void *resource_ctx;
     const tp_adc_channel *channels; size_t channel_count;
     uint8_t adc_registers[4]; uint32_t adc_timeout_ms;
     tp_config defaults;
@@ -32,6 +33,7 @@ typedef struct {
     tp_controller controller; tp_service service; tp_freertos_runtime runtime;
     tp_f407_usart3_rtu uart; tp_freertos_health health;
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
+    uint16_t (*resource_faults)(void *); void *resource_ctx;
     tp_config config; tp_config_source config_source; uint32_t config_sequence;
     volatile uint32_t communication_errors;
 } tp_f407_app;

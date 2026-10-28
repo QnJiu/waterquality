@@ -1,10 +1,12 @@
 import pathlib
+import queue
+import tkinter as tk
 import struct
 import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
-from tp_gui import read_status, read_calibration_status, read_clock_status, read_event, parse_config, CONFIG_LABELS
+from tp_gui import App, read_status, read_calibration_status, read_clock_status, read_event, parse_config, CONFIG_LABELS
 
 
 def words(value):
@@ -139,6 +141,35 @@ class ConfigInputTest(unittest.TestCase):
         values['kp'] = 'abc'
         with self.assertRaises(ValueError):
             parse_config(values)
+
+
+class ConnectionChangeTest(unittest.TestCase):
+    def setUp(self):
+        class Root:
+            def after(self, *_): pass
+        self.tk = tk.Tcl()
+        self.app = App.__new__(App)
+        self.app.root = Root()
+        self.app.events = queue.Queue()
+        self.app.busy = True
+        self.app.connection_generation = 0
+        for name in ('status', 'cal_status', 'clock_status', 'event_status', 'message'):
+            setattr(self.app, name, tk.StringVar(master=self.tk, value='old'))
+
+    def test_old_device_reply_does_not_replace_current_status(self):
+        self.app.connection_changed()
+        self.app.events.put((0, 'COM3', 1, 'status', 'old device data', None))
+        self.app.poll()
+        self.assertIn('重新读取', self.app.status.get())
+        self.assertIn('丢弃', self.app.message.get())
+        self.assertFalse(self.app.busy)
+
+    def test_old_device_command_outcome_identifies_target(self):
+        self.app.connection_changed()
+        self.app.events.put((0, 'COM3', 1, 'command', None, 'timeout'))
+        self.app.poll()
+        self.assertIn('COM3 地址 1', self.app.message.get())
+        self.assertIn('timeout', self.app.message.get())
 
 
 if __name__ == '__main__':

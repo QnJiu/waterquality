@@ -98,6 +98,9 @@ class App:
         self.clock_status = tk.StringVar(value='时钟状态尚未读取')
         self.event_status = tk.StringVar(value='事件尚未读取')
         self.event_sequence = tk.StringVar(value='')
+        self.connection_generation = 0
+        for variable in (self.port, self.baud, self.address):
+            variable.trace_add('write', self.connection_changed)
         frame = ttk.Frame(root, padding=12)
         frame.grid(sticky='nsew')
         row = ttk.Frame(frame); row.grid(sticky='w')
@@ -140,6 +143,14 @@ class App:
         ttk.Label(event, textvariable=self.event_status).pack(side='left', padx=4)
         ttk.Label(frame, textvariable=self.message, foreground='blue').grid(sticky='w')
         root.after(100, self.poll)
+
+    def connection_changed(self, *_):
+        self.connection_generation += 1
+        self.status.set('连接已改变，请重新读取状态')
+        self.cal_status.set('连接已改变，请重新读取标定及核查状态')
+        self.clock_status.set('连接已改变，请重新读取时钟')
+        self.event_status.set('连接已改变，请重新读取事件')
+        self.message.set('连接已改变，模式输入框不代表当前设备；请重新读取')
 
     def read_event(self):
         text = self.event_sequence.get().strip()
@@ -195,6 +206,7 @@ class App:
         except ValueError as error:
             self.message.set(str(error)); return
         self.busy = True
+        generation = self.connection_generation
         if operation not in ('status', 'cal_status', 'clock_status', 'event', 'config_read', 'schedule_read'):
             self.status.set('命令发送后状态可能变化，请重新读取')
             self.cal_status.set('命令发送后标定及核查状态可能变化，请重新读取')
@@ -230,19 +242,26 @@ class App:
                     else:
                         client.command(value)
                         result = '命令已接收，请读取状态确认结果'
-                self.events.put((operation, result, None))
+                self.events.put((generation, port, address, operation, result, None))
             except Exception as error:
-                self.events.put((operation, None, str(error)))
+                self.events.put((generation, port, address, operation, None, str(error)))
         threading.Thread(target=work, daemon=True).start()
 
     def poll(self):
         try:
-            operation, result, error = self.events.get_nowait()
+            generation, port, address, operation, result, error = self.events.get_nowait()
         except queue.Empty:
             pass
         else:
             self.busy = False
-            if error:
+            if generation != self.connection_generation:
+                reads = ('status', 'cal_status', 'clock_status', 'event', 'config_read', 'schedule_read')
+                if operation in reads:
+                    self.message.set('连接已改变，已丢弃旧设备的读取结果；请重新读取')
+                else:
+                    detail = '通信失败，执行结果可能未知：' + error if error else result
+                    self.message.set('上次操作目标为 %s 地址 %s：%s；当前连接已改变' % (port, address, detail))
+            elif error:
                 if operation == 'status':
                     self.status.set('读取失败，状态未知')
                 elif operation == 'cal_status':

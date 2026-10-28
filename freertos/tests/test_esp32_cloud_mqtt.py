@@ -124,6 +124,11 @@ class CloudTest(unittest.TestCase):
             self.assertIsNone(notice.load_pending(path))
             notice.save_pending(path, '12')
             self.assertEqual(notice.load_pending(path), '12')
+            notice.save_pending(path, '12')
+            with self.assertRaisesRegex(ValueError, 'awaiting confirmation'):
+                notice.save_pending(path, '13')
+            self.assertEqual(notice.load_pending(path), '12')
+            notice.clear_pending(path)
             notice.save_pending(path, '13')
             self.assertEqual(notice.load_pending(path), '13')
             notice.clear_pending(path)
@@ -195,6 +200,9 @@ class CloudTest(unittest.TestCase):
     def test_ota_progress_after_lost_finish_response(self):
         self.check_ota_progress(True)
 
+    def test_failed_retry_keeps_earlier_pending_confirmation(self):
+        self.check_ota_progress('retry')
+
     def check_ota_progress(self, uncertain):
         class Pin:
             OUT = 1
@@ -227,11 +235,13 @@ class CloudTest(unittest.TestCase):
                                     OTA_INFORM_TOPIC='/ota/device/inform/p/d', OTA_PROGRESS_TOPIC='/ota/device/progress/p/d',
                                     MQTT_TOPIC='status', MODBUS_ADDRESS=1)
         notice = load('ota_notice', 'ota_notice.py')
-        notice.load_pending = lambda path: None
+        notice.load_pending = lambda path: '12' if uncertain == 'retry' else None
         notice.save_pending = lambda path, version: None
-        notice.clear_pending = lambda path: None
+        cleared = []
+        notice.clear_pending = lambda path: cleared.append(path)
         class FinishUnknown(TimeoutError): pass
         def stage(*args):
+            if uncertain == 'retry': raise OSError('download failed')
             if uncertain: raise FinishUnknown('response lost')
             return {'bank': 1, 'version': 12}
         notice.stage_bundle = stage
@@ -252,6 +262,7 @@ class CloudTest(unittest.TestCase):
             with self.assertRaises(KeyboardInterrupt): main.main()
         reports = [m['params']['step'] for t, m in client.sent if t == b'/ota/device/progress/p/d']
         self.assertEqual(reports, ['1', '100'])
+        self.assertEqual(len(cleared), 1)
 
     def test_tls_setup_and_failed_connection_close(self):
         calls = []

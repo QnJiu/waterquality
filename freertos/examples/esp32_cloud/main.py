@@ -104,6 +104,7 @@ def main():
             url, version = notice.pending
             notice.pending = None
             saved = False
+            was_awaiting = awaiting_version == version
             try:
                 save_pending(state_file, version)
                 saved = True
@@ -119,13 +120,17 @@ def main():
                 progress = (1, "Finish response lost; awaiting firmware confirmation")
                 print("OTA result unknown:", exc)
             except (OSError, ValueError, ProtocolError) as exc:
-                if saved:
-                    try:
-                        clear_pending(state_file)
-                        awaiting_version = None
-                    except OSError as cleanup_error:
-                        print("Cannot clear saved OTA version:", cleanup_error)
-                progress = (-1, "Download or staging failed")
+                if saved and was_awaiting:
+                    # An earlier attempt might already have reached FINISH.
+                    progress = (1, "Retry failed; awaiting firmware confirmation")
+                else:
+                    if saved:
+                        try:
+                            clear_pending(state_file)
+                            awaiting_version = None
+                        except OSError as cleanup_error:
+                            print("Cannot clear saved OTA version:", cleanup_error)
+                    progress = (-1, "Download or staging failed")
                 print("OTA staging failed:", exc)
         time.sleep_ms(5000)
 

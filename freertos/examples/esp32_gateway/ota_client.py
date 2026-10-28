@@ -209,6 +209,10 @@ def upload(client, manifest, image, retries=3):
             if attempt == retries:
                 raise FinishUnknown("finish response lost; check the confirmed device version")
             continue
+        except OSError:
+            # A short write or read error may occur after the device received
+            # FINISH, so the final result cannot be inferred from the UART.
+            raise FinishUnknown("finish communication failed; check the confirmed device version")
         if result != OK:
             raise ProtocolError("finish failed: %d" % result)
         state = checked(state)

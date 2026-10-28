@@ -24,6 +24,11 @@ def load_pending(path):
 def save_pending(path, version):
     if not valid_version(version):
         raise ValueError("invalid OTA version")
+    previous = load_pending(path)
+    if previous == version:
+        return
+    if previous is not None:
+        raise ValueError("another OTA version is awaiting confirmation")
     # Write before touching the old record, then replace it.  On filesystems
     # without overwrite-rename, removal leaves a small interruption window.
     temp = path + ".tmp"

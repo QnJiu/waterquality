@@ -66,6 +66,20 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ota.FinishUnknown):
             ota.upload(LostFinish(image, ident), manifest, io.BytesIO(image), retries=1)
 
+    def test_finish_io_error_reports_unknown_outcome(self):
+        class BrokenFinish(FakeClient):
+            def command(self, cmd, payload=b''):
+                if cmd == ota.FINISH:
+                    self.state['phase'] = 3  # device may have received it
+                    raise OSError('UART read failed')
+                return super().command(cmd, payload)
+        image = b'firmware'
+        manifest, ident = manifest_for(image)
+        client = BrokenFinish(image, ident)
+        with self.assertRaises(ota.FinishUnknown):
+            ota.upload(client, manifest, io.BytesIO(image))
+        self.assertEqual(client.state['phase'], 3)
+
     def test_reject_bad_image_before_any_command(self):
         image = b'firmware'
         manifest, ident = manifest_for(image)

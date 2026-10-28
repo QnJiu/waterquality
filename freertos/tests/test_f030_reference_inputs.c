@@ -6,7 +6,11 @@ RCC_TypeDef fake_rcc;
 GPIO_TypeDef fake_gpio, fake_gpio_b;
 SYSCFG_TypeDef fake_syscfg;
 EXTI_TypeDef fake_exti;
-static unsigned notifications, droplets;
+static unsigned notifications, droplets, recoveries;
+tp_result tp_f030_subordinate_recover_door(tp_f030_subordinate *s) {
+    assert(s && s->door_recovery); recoveries++; return TP_OK;
+}
+static tp_result recover(void *ctx) { (void)ctx; return TP_OK; }
 static BaseType_t scheduler=taskSCHEDULER_RUNNING;
 BaseType_t xTaskGetSchedulerState(void) { return scheduler; }
 void vTaskNotifyGiveFromISR(TaskHandle_t task,BaseType_t *wake) {
@@ -78,5 +82,22 @@ int main(void) {
     fake_gpio.IDR=0; tp_f030_reference_inputs_button_tick(50);
     tp_f030_reference_inputs_button_tick(2050);
     assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && !inputs.leak_fault);
+    /* Maintenance press requests door recovery only for a fault and dry input. */
+    tp_door_service door={0}; subordinate.app.door=&door; subordinate.door_recovery=recover;
+    door.door.state=TP_DOOR_FAULT;
+    fake_gpio.IDR=16; tp_f030_reference_inputs_button_tick(2200);
+    tp_f030_reference_inputs_button_tick(2300);
+    fake_gpio.IDR=8; tp_f030_reference_inputs_button_tick(2400);
+    tp_f030_reference_inputs_button_tick(4400); assert(recoveries==0);
+    fake_gpio.IDR=16; tp_f030_reference_inputs_button_tick(4500);
+    tp_f030_reference_inputs_button_tick(4600);
+    fake_gpio.IDR=0; tp_f030_reference_inputs_button_tick(4700);
+    tp_f030_reference_inputs_button_tick(6700); assert(recoveries==1);
+    tp_f030_reference_inputs_button_tick(9000); assert(recoveries==1);
+    door.door.state=TP_DOOR_LOCKED;
+    fake_gpio.IDR=16; tp_f030_reference_inputs_button_tick(9100);
+    tp_f030_reference_inputs_button_tick(9200);
+    fake_gpio.IDR=0; tp_f030_reference_inputs_button_tick(9300);
+    tp_f030_reference_inputs_button_tick(11300); assert(recoveries==1);
     return 0;
 }

@@ -61,7 +61,9 @@ void tp_f030_reference_inputs_button_tick(uint32_t now_ms) {
             if (!press_timing) { press_timing=true; button_since=now_ms; }
             else if ((uint32_t)(now_ms-button_since)>=ACK_HOLD_MS) {
                 armed=false; press_timing=false;
-                (void)tp_f030_reference_inputs_acknowledge_leak();
+                if(tp_f030_reference_inputs_acknowledge_leak()==TP_OK && owner->app.door &&
+                   owner->app.door->door.state==TP_DOOR_FAULT && owner->door_recovery)
+                    (void)tp_f030_subordinate_recover_door(owner);
             }
         }
     }

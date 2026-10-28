@@ -98,6 +98,7 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     const uint32_t control_timeout=1000;
     INIT(tp_freertos_health_start(&a->health,&control_timeout,1,100,256,
                                   tskIDLE_PRIORITY+4,a,watchdog_feed,watchdog_fault));
+    if(o->start_services) INIT(o->start_services(o->services_ctx,a));
     /* Start last: scheduler must be started promptly after this returns. */
     INIT(tp_f407_iwdg_start());
 #undef INIT

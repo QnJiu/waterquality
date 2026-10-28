@@ -13,6 +13,7 @@
 #include "tp_freertos_health.h"
 #include "tp_freertos_subordinate.h"
 
+typedef struct tp_f407_app tp_f407_app;
 typedef struct {
     const tp_step *recipe; size_t recipe_len;
     const tp_valve_policy *valves;
@@ -23,11 +24,15 @@ typedef struct {
     tp_config defaults;
     /* Optional initialized master; UART task owns its link. */
     tp_freertos_subordinate *subordinate;
+    /* Optional pre-scheduler board services, after app initialization and
+     * before the watchdog starts. Failure requires a safe halt/reset. */
+    tp_result (*start_services)(void *ctx,tp_f407_app *app);
+    void *services_ctx;
 } tp_f407_app_options;
 /* Keep this object and all option pointers alive for the lifetime of the system.
  * Single instance, pre-scheduler only. On any error reset before retrying and do
  * not start the scheduler: initialization can have created tasks and queues. */
-typedef struct {
+struct tp_f407_app {
     tp_f407_valves valves; tp_f407_pump pump; tp_f407_heater heater;
     tp_f407_i2c i2c; tp_mb85rc16 fram; tp_store_io store; tp_ds3231 rtc;
     tp_mb85rc16_log_region log_region; tp_freertos_event_log events;
@@ -40,6 +45,6 @@ typedef struct {
     tp_freertos_subordinate *subordinate;
     tp_config config; tp_config_source config_source; uint32_t config_sequence;
     volatile uint32_t communication_errors;
-} tp_f407_app;
+};
 tp_result tp_f407_app_init(tp_f407_app *app, const tp_f407_app_options *options);
 #endif

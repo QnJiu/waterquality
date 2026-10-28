@@ -8,6 +8,7 @@ typedef struct {
     tp_sub_node_io io;
     tp_door_service *door;
     bool door_fault_is_device_fault;
+    bool door_unavailable; /* owner may hold fault while recovering */
     tp_result door_result;
 } tp_sub_app;
 

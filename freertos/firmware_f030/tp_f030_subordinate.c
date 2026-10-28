@@ -72,12 +72,23 @@ tp_result tp_f030_subordinate_authorize(tp_f030_subordinate *s,uint32_t id,bool 
     if(!s || s!=instance || !s->app.door ||
        xTaskGetSchedulerState()!=taskSCHEDULER_RUNNING) return TP_INVALID;
     taskENTER_CRITICAL();
-    if(s->authorization_pending) { taskEXIT_CRITICAL(); return TP_BUSY; }
+    if(s->authorization_pending || s->recovery_inflight) { taskEXIT_CRITICAL(); return TP_BUSY; }
     s->authorization_id=id; s->authorization_approved=approved;
     s->authorization_pending=true;
     taskEXIT_CRITICAL();
     xTaskNotifyGive(s->task);
     return TP_OK;
+}
+tp_result tp_f030_subordinate_recover_door(tp_f030_subordinate *s) {
+    if(!s || s!=instance || !s->door_recovery || xTaskGetSchedulerState()!=taskSCHEDULER_RUNNING)
+        return TP_INVALID;
+    taskENTER_CRITICAL();
+    if(s->recovery_inflight) {
+        taskEXIT_CRITICAL(); return TP_BUSY;
+    }
+    s->recovery_requested=true; s->recovery_inflight=true;
+    taskEXIT_CRITICAL();
+    xTaskNotifyGive(s->task); return TP_OK;
 }
 static void hardware_start(void) {
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
@@ -105,16 +116,48 @@ static void service_once(tp_f030_subordinate *s) {
     uint32_t authorization_id=s->authorization_id;
     bool approved=s->authorization_approved;
     s->authorization_pending=false;
+    bool recovery_requested=s->recovery_requested;
+    s->recovery_requested=false;
+    if(recovery_requested) {
+        if(s->app.door && s->app.door->door.state==TP_DOOR_FAULT) s->recovering=true;
+        else s->recovery_inflight=false;
+    }
     s->droplets_pending=0; s->droplets_overflow=false;
     taskEXIT_CRITICAL();
     tp_sub_node_droplets(&s->app.node,droplets);
     if(droplets_lost) tp_sub_node_count_error(&s->app.node);
     if(s->app.door) {
         uint32_t door_now=(uint32_t)xTaskGetTickCount();
-        s->app.door_result=tp_door_service_tick(s->app.door,door_now);
-        if(authorized && (s->app.door_result==TP_OK || s->app.door_result==TP_BUSY)) {
+        bool discard_authorization=s->recovering || s->verifying_reader;
+        bool recovery_finished=false;
+        if(s->recovering) {
+            s->app.door_unavailable=true;
+            tp_result r=s->door_recovery(s->door_recovery_ctx);
+            if(r==TP_OK && s->app.door->door.state==TP_DOOR_LOCKED &&
+               s->app.door->scan.state==TP_SCAN_START) {
+                s->recovering=false; s->verifying_reader=true; s->door_fault_reported=false;
+            } else if(r!=TP_BUSY) {
+                (void)tp_door_reader_fault(&s->app.door->door);
+                s->recovering=false; s->door_fault_reported=false; recovery_finished=true;
+            }
+            s->app.door_result=s->recovering || s->verifying_reader ? TP_BUSY : TP_IO_ERROR;
+        } else {
+            s->app.door_result=tp_door_service_tick(s->app.door,door_now);
+            if(s->verifying_reader) {
+                if(s->app.door_result==TP_OK) {
+                    s->verifying_reader=false; s->app.door_unavailable=false; recovery_finished=true;
+                } else if(s->app.door_result!=TP_BUSY) {
+                    s->verifying_reader=false; recovery_finished=true;
+                }
+            }
+        }
+        if(authorized && !discard_authorization && !s->recovering && !s->verifying_reader && !s->app.door_unavailable &&
+           (s->app.door_result==TP_OK || s->app.door_result==TP_BUSY)) {
             (void)tp_door_service_authorize(s->app.door,door_now,authorization_id,approved);
             if(s->app.door->door.state==TP_DOOR_FAULT) s->app.door_result=TP_IO_ERROR;
+        }
+        if(recovery_finished) {
+            taskENTER_CRITICAL(); s->recovery_inflight=false; taskEXIT_CRITICAL();
         }
         if(s->app.door_result!=TP_OK && s->app.door_result!=TP_BUSY && !s->door_fault_reported) {
             s->door_fault_reported=true;
@@ -177,4 +220,10 @@ tp_result tp_f030_subordinate_on_door_fault(tp_f030_subordinate *s,void (*handle
        xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
     s->door_fault_handler=handler; s->door_fault_ctx=ctx;
     return TP_OK;
+}
+
+tp_result tp_f030_subordinate_set_door_recovery(tp_f030_subordinate *s,void *ctx,tp_result (*recover)(void *)) {
+    if(!s || s!=instance || !s->app.door || !recover || s->door_recovery ||
+       xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
+    s->door_recovery=recover; s->door_recovery_ctx=ctx; return TP_OK;
 }

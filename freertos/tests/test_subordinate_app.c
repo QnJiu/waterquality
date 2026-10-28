@@ -47,6 +47,9 @@ int main(void) {
     assert(!tp_sub_app_sleep_budget(&app,7,100,true,&budget));
     step(&app,47); assert(!f.unlocked);
     assert(tp_sub_app_sleep_budget(&app,47,100,true,&budget) && budget==9);
+    app.door_unavailable=true;
+    assert(!tp_sub_app_sleep_budget(&app,47,100,true,&budget));
+    app.door_unavailable=false;
     assert(!tp_sub_app_sleep_budget(&app,47,100,false,&budget));
     assert(tp_sub_node_byte(&app.node,0x12,48000,48)==TP_OK);
     assert(!tp_sub_app_sleep_budget(&app,48,100,true,&budget));

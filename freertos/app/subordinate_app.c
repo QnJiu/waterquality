@@ -7,7 +7,7 @@ static tp_result send(void *ctx,const uint8_t *data,size_t len) {
 static tp_result inputs(void *ctx,tp_sub_inputs *out) {
     tp_sub_app *a=ctx; tp_result r=a->io.read_inputs(a->io.ctx,out);
     if(r==TP_OK && a->door_fault_is_device_fault && a->door &&
-       a->door->door.state==TP_DOOR_FAULT) out->device_fault=true;
+       (a->door->door.state==TP_DOOR_FAULT || a->door_unavailable)) out->device_fault=true;
     return r;
 }
 tp_result tp_sub_app_init(tp_sub_app *a,const tp_sub_node_io *io,uint32_t baud,uint8_t bits,
@@ -31,7 +31,7 @@ bool tp_sub_app_sleep_budget(const tp_sub_app *a,uint32_t now,uint32_t maximum,
     uint32_t remaining=maximum;
     if(a->door) {
         const tp_door *d=&a->door->door; const tp_pn532_scan *s=&a->door->scan;
-        if(d->state!=TP_DOOR_LOCKED || d->auth_pending || s->state!=TP_SCAN_WAIT) return false;
+        if(a->door_unavailable || d->state!=TP_DOOR_LOCKED || d->auth_pending || s->state!=TP_SCAN_WAIT) return false;
         uint32_t elapsed=now-s->last_scan_ms;
         if(elapsed>=s->interval_ms) return false;
         uint32_t next=s->interval_ms-elapsed;

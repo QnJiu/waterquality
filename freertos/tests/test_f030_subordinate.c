@@ -14,6 +14,23 @@ static BaseType_t scheduler=taskSCHEDULER_NOT_STARTED;
 static bool unlocked, fail_open;
 static unsigned open_commands;
 static unsigned door_faults;
+static uint8_t reader_rx[TP_PN532_FRAME_MAX];
+static size_t reader_rx_len;
+static tp_result recovery_result=TP_BUSY;
+static tp_result recover_door(void *ctx) {
+    if(recovery_result==TP_OK) return tp_door_service_recover(ctx);
+    return recovery_result;
+}
+static void reader_ack(void) {
+    const uint8_t b[]={0,0,0xff,0,0xff,0};
+    memcpy(reader_rx,b,sizeof(b)); reader_rx_len=sizeof(b);
+}
+static void reader_response(uint8_t command,const uint8_t *data,size_t n) {
+    uint8_t *b=reader_rx; b[0]=0; b[1]=0; b[2]=0xff; b[3]=(uint8_t)(n+2); b[4]=(uint8_t)(0-b[3]);
+    b[5]=0xd5; b[6]=(uint8_t)(command+1); uint8_t sum=(uint8_t)(b[5]+b[6]);
+    for(size_t i=0;i<n;i++) { b[7+i]=data[i]; sum=(uint8_t)(sum+data[i]); }
+    b[7+n]=(uint8_t)(0-sum); b[8+n]=0; reader_rx_len=n+9;
+}
 static void door_fault(void *ctx) { assert(ctx==&door_faults); door_faults++; }
 QueueHandle_t xQueueCreate(unsigned length,size_t size) {
     assert(length==32 && size==sizeof(queue[0])); head=count=0; return queue;
@@ -43,7 +60,8 @@ static tp_result inputs(void *ctx,tp_sub_inputs *out) { (void)ctx; *out=(tp_sub_
 static tp_result lock_output(void *ctx,bool open) { (void)ctx; if(open) { open_commands++; if(fail_open) return TP_IO_ERROR; } unlocked=open; return TP_OK; }
 static tp_result reader_send(void *ctx,const uint8_t *data,size_t n) { (void)ctx; (void)data; (void)n; return TP_OK; }
 static tp_result reader_receive(void *ctx,uint8_t *data,size_t cap,size_t *n) {
-    (void)ctx; (void)data; (void)cap; (void)n; return TP_BUSY;
+    (void)ctx; if(!reader_rx_len) return TP_BUSY;
+    assert(cap>=reader_rx_len); memcpy(data,reader_rx,reader_rx_len); *n=reader_rx_len; reader_rx_len=0; return TP_OK;
 }
 static tp_result request(void *ctx,uint32_t id,const uint8_t *card,size_t n) {
     (void)ctx; (void)id; (void)card; (void)n; return TP_OK;
@@ -124,6 +142,7 @@ int main(void) {
     assert(tp_door_service_init(&door,&reader,&output,NULL,request,1000,50,1,20,100,5)==TP_OK);
     s.app.door=&door;
     assert(tp_f030_subordinate_on_door_fault(&s,door_fault,&door_faults)==TP_OK);
+    assert(tp_f030_subordinate_set_door_recovery(&s,&door,recover_door)==TP_OK);
     assert(tp_f030_subordinate_authorize(&s,5,true)==TP_INVALID);
     scheduler=taskSCHEDULER_RUNNING;
     uint8_t card[]={1,2,3,4}; bool new_request=false; uint32_t id=0;
@@ -163,6 +182,49 @@ int main(void) {
     fail_open=true; service_once(&s); fail_open=false;
     assert(door_faults==2 && door.door.state==TP_DOOR_FAULT && !unlocked);
     assert(s.app.door_result==TP_IO_ERROR);
+
+    /* Recovery is serialized, keeps the fault visible, and discards queued authorization. */
+    s.app.door_fault_is_device_fault=true;
+    assert(tp_f030_subordinate_authorize(&s,id,true)==TP_OK);
+    assert(tp_f030_subordinate_recover_door(&s)==TP_OK);
+    assert(tp_f030_subordinate_recover_door(&s)==TP_BUSY);
+    service_once(&s);
+    assert(s.recovering && s.app.door_unavailable && !unlocked && door_faults==2);
+    tp_sub_inputs observed;
+    assert(s.app.node.io.read_inputs(s.app.node.io.ctx,&observed)==TP_OK && observed.device_fault);
+    recovery_result=TP_OK; clock_ms++; service_once(&s);
+    assert(s.verifying_reader && !s.recovering && door_faults==2 && s.app.door_unavailable);
+    assert(tp_f030_subordinate_recover_door(&s)==TP_BUSY);
+    clock_ms++; service_once(&s);
+    reader_ack(); clock_ms++; service_once(&s);
+    reader_response(0x14,NULL,0); clock_ms++; service_once(&s);
+    reader_ack(); clock_ms++; service_once(&s);
+    reader_response(0x32,NULL,0); clock_ms++; service_once(&s);
+    reader_ack(); clock_ms++; service_once(&s);
+    assert(s.app.door_unavailable && door_faults==2);
+    const uint8_t no_card[]={0}; reader_response(0x4a,no_card,sizeof(no_card));
+    assert(tp_f030_subordinate_authorize(&s,id,true)==TP_BUSY);
+    clock_ms++; service_once(&s);
+    assert(!s.app.door_unavailable && !s.verifying_reader && !unlocked && door_faults==2);
+    assert(s.app.node.io.read_inputs(s.app.node.io.ctx,&observed)==TP_OK && !observed.device_fault);
+    uint32_t old_id=id;
+    assert(tp_door_observe(&door.door,clock_ms,card,sizeof(card),&new_request,&id)==TP_OK && new_request);
+    assert(id!=old_id);
+    assert(tp_f030_subordinate_authorize(&s,old_id,true)==TP_OK); service_once(&s);
+    assert(!unlocked && door.door.auth_pending);
+    assert(tp_f030_subordinate_authorize(&s,id,true)==TP_OK); service_once(&s);
+    assert(unlocked);
+    (void)tp_door_reader_fault(&door.door); service_once(&s);
+    assert(door_faults==3 && !unlocked);
+    recovery_result=TP_IO_ERROR;
+    assert(tp_f030_subordinate_recover_door(&s)==TP_OK); service_once(&s);
+    assert(door_faults==4 && door.door.state==TP_DOOR_FAULT && s.app.door_unavailable);
+    recovery_result=TP_OK;
+    assert(tp_f030_subordinate_recover_door(&s)==TP_OK); service_once(&s);
+    assert(s.verifying_reader && door_faults==4);
+    clock_ms++; service_once(&s); clock_ms+=1000; service_once(&s);
+    assert(door_faults==5 && door.door.state==TP_DOOR_FAULT && !s.recovery_inflight);
+    assert(tp_f030_subordinate_recover_door(&s)==TP_OK);
 
     timer_high=65536u; fake_tim.CNT=7; fake_tim.SR=TIM_SR_UIF;
     assert(time_us()==131079u); TIM3_IRQHandler(); fake_tim.SR=0;

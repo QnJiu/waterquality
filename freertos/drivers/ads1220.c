@@ -22,7 +22,7 @@ tp_result tp_ads1220_init(tp_ads1220 *a, const tp_ads1220_io *io,
 tp_result tp_ads1220_recover(tp_ads1220 *a) {
     if (!a || !a->io.transfer || !a->io.data_ready || !a->timeout_ms || !a->baseline_valid) return TP_INVALID;
     if (a->pending) return TP_BUSY;
-    /* Keep the last verified settings even if an attempted recovery fails. */
+    /* Keep the saved settings even if an attempted recovery fails. */
     tp_ads1220_io io = a->io;
     uint8_t regs[4]; memcpy(regs, a->registers, sizeof(regs));
     uint32_t timeout = a->timeout_ms;

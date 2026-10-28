@@ -4,7 +4,7 @@
 
 typedef struct {
     uint8_t rx[TP_PN532_FRAME_MAX]; size_t rx_len;
-    bool unlocked, reject; unsigned requests; uint32_t id;
+    bool unlocked, reject, lock_fail; unsigned requests; uint32_t id;
 } fake;
 static tp_result send_frame(void *ctx,const uint8_t *data,size_t len) {
     (void)ctx; (void)data; (void)len; return TP_OK;
@@ -13,7 +13,9 @@ static tp_result receive_frame(void *ctx,uint8_t *data,size_t cap,size_t *len) {
     fake *f=ctx; if(!f->rx_len) return TP_BUSY;
     assert(f->rx_len<=cap); memcpy(data,f->rx,f->rx_len); *len=f->rx_len; f->rx_len=0; return TP_OK;
 }
-static tp_result output(void *ctx,bool unlocked) { ((fake *)ctx)->unlocked=unlocked; return TP_OK; }
+static tp_result output(void *ctx,bool unlocked) {
+    fake *f=ctx; if(f->lock_fail) return TP_IO_ERROR; f->unlocked=unlocked; return TP_OK;
+}
 static tp_result request(void *ctx,uint32_t id,const uint8_t *uid,size_t len) {
     fake *f=ctx; assert(len==4 && uid[0]==0xab); f->requests++; f->id=id;
     return f->reject ? TP_BUSY : TP_OK;
@@ -48,6 +50,21 @@ int main(void) {
     card(&f); assert(tp_door_service_tick(&s,58)==TP_OK && f.requests==1);
     assert(tp_door_service_tick(&s,108)==TP_BUSY);
     assert(tp_door_service_tick(&s,208)==TP_TIMEOUT && s.door.state==TP_DOOR_FAULT && !f.unlocked);
+    f.lock_fail=true;
+    assert(tp_door_service_recover(&s)==TP_IO_ERROR && s.door.state==TP_DOOR_FAULT);
+    f.lock_fail=false;
+    assert(tp_door_service_recover(&s)==TP_OK && s.door.state==TP_DOOR_LOCKED);
+    assert(tp_door_service_recover(&s)==TP_INVALID);
+    assert(tp_door_service_authorize(&s,209,7,true)==TP_INVALID && !f.unlocked);
+    assert(tp_door_service_tick(&s,210)==TP_BUSY);
+    ack(&f); assert(tp_door_service_tick(&s,211)==TP_BUSY);
+    response(&f,0x14,NULL,0); assert(tp_door_service_tick(&s,212)==TP_BUSY);
+    ack(&f); assert(tp_door_service_tick(&s,213)==TP_BUSY);
+    response(&f,0x32,NULL,0); assert(tp_door_service_tick(&s,214)==TP_BUSY);
+    ack(&f); assert(tp_door_service_tick(&s,215)==TP_BUSY);
+    card(&f); assert(tp_door_service_tick(&s,216)==TP_OK && f.id==8);
+    assert(tp_door_service_authorize(&s,217,7,true)==TP_INVALID && !f.unlocked);
+    assert(tp_door_service_authorize(&s,217,8,true)==TP_OK && f.unlocked);
     fake g={0}; tp_door_service t; setup(&t,&g); g.reject=true; card(&g);
     assert(tp_door_service_tick(&t,6)==TP_IO_ERROR && t.door.state==TP_DOOR_FAULT && !g.unlocked);
     assert(tp_door_service_authorize(&t,7,g.id,true)==TP_IO_ERROR);

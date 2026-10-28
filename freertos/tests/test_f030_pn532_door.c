@@ -34,6 +34,10 @@ int main(void) {
     tp_f030_pn532_door_abort(&d);
     assert(f.aborts==1 && d.transport.state==TP_PN532_I2C_FAULT);
     tp_f030_pn532_door_abort(&d); assert(f.aborts==1);
+    assert(tp_f030_pn532_door_recover(&d)==TP_OK && d.service.door.state==TP_DOOR_LOCKED);
+    assert(d.transport.state==TP_PN532_I2C_IDLE);
+    assert(tp_f030_pn532_door_recover(&d)==TP_INVALID);
+    assert(tp_door_service_tick(&d.service,101)==TP_BUSY && f.writes==2);
     cfg.command_timeout_ms=0;
     assert(tp_f030_pn532_door_init(&d,&bus,&cfg)==TP_INVALID && f.aborts==2);
     return 0;

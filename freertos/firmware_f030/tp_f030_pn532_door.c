@@ -13,6 +13,16 @@ tp_result tp_f030_pn532_door_init(tp_f030_pn532_door *d,const tp_pn532_i2c_bus *
     if(r!=TP_OK) tp_pn532_i2c_abort(&d->transport);
     return r;
 }
+tp_result tp_f030_pn532_door_recover(tp_f030_pn532_door *d) {
+    if(!d || d->service.door.state!=TP_DOOR_FAULT ||
+       d->transport.state!=TP_PN532_I2C_FAULT) return TP_INVALID;
+    tp_pn532_i2c_bus bus=d->transport.bus;
+    tp_result r=tp_pn532_i2c_init(&d->transport,&bus);
+    if(r!=TP_OK) return r;
+    r=tp_door_service_recover(&d->service);
+    if(r!=TP_OK) tp_pn532_i2c_abort(&d->transport);
+    return r;
+}
 void tp_f030_pn532_door_abort(void *ctx) {
     tp_f030_pn532_door *d=ctx;
     if(d && d->transport.state!=TP_PN532_I2C_FAULT) tp_pn532_i2c_abort(&d->transport);

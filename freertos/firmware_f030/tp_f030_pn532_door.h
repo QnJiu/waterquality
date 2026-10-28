@@ -21,6 +21,9 @@ typedef struct {
 /* bus and PN532 must already be recovered and synchronized. */
 tp_result tp_f030_pn532_door_init(tp_f030_pn532_door *,const tp_pn532_i2c_bus *,
                                   const tp_f030_door_config *);
+/* Owner task only, after bus recovery and physical PN532 reset/synchronization.
+ * The subordinate's latched fault handler must be rearmed by its owner too. */
+tp_result tp_f030_pn532_door_recover(tp_f030_pn532_door *);
 /* Suitable for tp_f030_subordinate_on_door_fault. */
 void tp_f030_pn532_door_abort(void *);
 

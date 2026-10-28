@@ -18,6 +18,10 @@ typedef struct {
 tp_result tp_door_service_init(tp_door_service *,const tp_pn532_io *,const tp_door_io *,
                                void *,tp_door_request,uint32_t,uint32_t,uint8_t,
                                uint32_t,uint32_t,uint32_t);
+/* Owner only, after the physical reader and transport are reset and synchronized.
+ * Requires a latched fault; preserves the next authorization ID and starts locked.
+ * Old pending authorizations remain invalid. */
+tp_result tp_door_service_recover(tp_door_service *);
 tp_result tp_door_service_tick(tp_door_service *,uint32_t now);
 tp_result tp_door_service_authorize(tp_door_service *,uint32_t now,uint32_t id,bool approved);
 #endif

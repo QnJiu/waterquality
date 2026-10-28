@@ -24,6 +24,20 @@ tp_result tp_door_service_init(tp_door_service *s,const tp_pn532_io *reader,cons
     if(r!=TP_OK) (void)tp_door_reader_fault(&s->door);
     return r;
 }
+tp_result tp_door_service_recover(tp_door_service *s) {
+    if(!s || !s->request || s->door.state!=TP_DOOR_FAULT) return TP_INVALID;
+    /* Initialize candidates without discarding the fault or recovery settings on failure. */
+    tp_door door;
+    tp_result r=tp_door_init(&door,&s->door.io,s->door.pulse_ms,
+                             s->door.freshness_ms,s->door.next_id);
+    if(r!=TP_OK) return r;
+    tp_pn532_scan scan;
+    r=tp_pn532_scan_init(&scan,&s->scan.device.io,s,report,s->scan.timeout_ms,
+                         s->scan.interval_ms,s->scan.retries);
+    if(r!=TP_OK) return r;
+    s->door=door; s->scan=scan; s->callback_result=TP_OK;
+    return TP_OK;
+}
 tp_result tp_door_service_tick(tp_door_service *s,uint32_t now) {
     if(!s || !s->request) return TP_INVALID;
     tp_result r=tp_door_tick(&s->door,now);

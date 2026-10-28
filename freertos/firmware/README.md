@@ -12,3 +12,9 @@ cmake --build build
 输出 `tp_f407.elf`、`tp_f407.hex` 和 `tp_f407.map`。链接使用 nosys，未提供标准 I/O 系统调用，工具链可能对此发出警告。编译包含控制核心和 RTOS 适配代码以检查目标架构兼容性，但由于当前主程序没有引用它们，链接器会移除未引用段；不代表业务链路已集成。必须核对实物型号、Flash 大小、引脚、电气安全态和保护电路后才能实现板级对接；此链接布局尚未划分 Bootloader 或 OTA 区域。实机尚未验证。
 
 依赖来源：FreeRTOS Kernel V10.5.1（随源码 MIT 许可）；CMSIS 5.9.0 Core（Apache-2.0）；ST CMSIS Device F4 v2.6.10 与 STM32F4 HAL/LL 头文件 v1.8.5（许可证各随目录保存）。项目目前只引入 LL 头文件，尚无具体 LL 外设驱动实现。
+
+## 参考存储总线
+
+`tp_f407_i2c.c` 提供 I2C2 到 `tp_i2c_io` 的适配，假设单主机、PB10=SCL、PB11=SDA（AF4）、外部上拉、APB1 16 MHz、100 kHz，目标器件为 MB85RC16。此引脚没有出现在旧设备树的阀门或 USART3 分配中，仍须按实际原理图核对。初始化前调用 `SystemCoreClockUpdate()`；驱动只接受 HSI 16 MHz 且 AHB/APB1 不分频的配置。I2C 操作限时，错误后重置外设；物理总线卡死需要硬件恢复，驱动不会自动输出九个恢复脉冲。事务在调度器启动前单线程执行，调度后使用互斥锁；只在低优先级存储任务调用。
+
+连接顺序：`tp_f407_i2c_init` → `tp_f407_i2c_io` → `tp_mb85rc16_init`（存储区起始 256 字节对齐）→ `tp_mb85rc16_store` → `tp_runtime_bootstrap_storage`。各对象及其上下文须长期有效。当前心跳主程序不调用这条链路；I2C 时序、上拉、电气参数、总线错误恢复和掉电保存都尚未在目标板验证。

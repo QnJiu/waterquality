@@ -1,4 +1,7 @@
 TinyCrypt v0.2.8, commit b1fed54ce0f79e0e2ffbec7684bb4988a5f20607
 Source: https://github.com/intel/tinycrypt
-Only the SHA-256 implementation and required utility files are included.
+Only SHA-256, P-256 ECDSA, and their required utility files are included.
 The upstream BSD-3-Clause license is in LICENSE and the individual files.
+
+Local change: default_RNG_defined is set to 0; no embedded default RNG is supplied.
+The project uses ECDSA verification only; device signing is not supported.

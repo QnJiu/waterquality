@@ -2,16 +2,24 @@
 #define TEST_STM32F0_H
 #include <stdint.h>
 typedef struct { uint32_t AHBENR,APB1ENR,APB2ENR,CFGR,CFGR3; } RCC_TypeDef;
-typedef struct { uint32_t AFR[2],PUPDR,MODER; } GPIO_TypeDef;
+typedef struct { uint32_t AFR[2],PUPDR,MODER,IDR; } GPIO_TypeDef;
+typedef struct { uint32_t EXTICR[4]; } SYSCFG_TypeDef;
+typedef struct { uint32_t IMR,RTSR,FTSR,PR; } EXTI_TypeDef;
 typedef struct { uint32_t CR1,PSC,ARR,EGR,SR,DIER,CNT; } TIM_TypeDef;
 typedef struct { uint32_t ISR,ICR,RDR,TDR,CR1,CR2,CR3,BRR; } USART_TypeDef;
 extern RCC_TypeDef fake_rcc;
 extern GPIO_TypeDef fake_gpio;
+extern GPIO_TypeDef fake_gpio_b;
+extern SYSCFG_TypeDef fake_syscfg;
+extern EXTI_TypeDef fake_exti;
 extern TIM_TypeDef fake_tim;
 extern USART_TypeDef fake_usart;
 extern uint32_t SystemCoreClock;
 #define RCC (&fake_rcc)
 #define GPIOA (&fake_gpio)
+#define GPIOB (&fake_gpio_b)
+#define SYSCFG (&fake_syscfg)
+#define EXTI (&fake_exti)
 #define TIM3 (&fake_tim)
 #define USART1 (&fake_usart)
 #define USART_ISR_PE (1u<<0)
@@ -39,6 +47,9 @@ extern uint32_t SystemCoreClock;
 #define TIM_DIER_UIE 1u
 #define TIM_CR1_CEN 1u
 #define RCC_AHBENR_GPIOAEN (1u<<17)
+#define RCC_AHBENR_GPIOBEN (1u<<18)
+#define RCC_APB2ENR_SYSCFGEN 1u
+#define SYSCFG_EXTICR1_EXTI2_PB (1u<<8)
 #define RCC_APB1ENR_TIM3EN (1u<<1)
 #define RCC_APB2ENR_USART1EN (1u<<14)
 #define RCC_CFGR_SWS (3u<<2)
@@ -47,6 +58,8 @@ extern uint32_t SystemCoreClock;
 #define RCC_CFGR3_USART1SW 3u
 #define TIM3_IRQn 16
 #define USART1_IRQn 27
+#define EXTI0_1_IRQn 5
+#define EXTI2_3_IRQn 6
 static inline void NVIC_SetPriority(int irq,unsigned p) { (void)irq; (void)p; }
 static inline void NVIC_ClearPendingIRQ(int irq) { (void)irq; }
 static inline void NVIC_EnableIRQ(int irq) { (void)irq; }

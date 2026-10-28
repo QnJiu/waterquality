@@ -1,6 +1,9 @@
 #include "tp_f030_subordinate.h"
 #include "stm32f0xx.h"
 #include <string.h>
+#ifdef TP_F030_REFERENCE_INPUTS
+#include "tp_f030_reference_inputs.h"
+#endif
 
 #define RX_EVENTS 32u
 #define RX_ERRORS (USART_ISR_PE | USART_ISR_FE | USART_ISR_NE | USART_ISR_ORE)
@@ -134,6 +137,9 @@ static void service_once(tp_f030_subordinate *s) {
 static void run(void *ctx) {
     tp_f030_subordinate *s=ctx;
     hardware_start();
+#ifdef TP_F030_REFERENCE_INPUTS
+    tp_f030_reference_inputs_start(s);
+#endif
     for(;;) {
         service_once(s);
         (void)ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(1));

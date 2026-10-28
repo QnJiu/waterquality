@@ -50,6 +50,13 @@ def read_clock_status(client):
     return '时钟：%s  %s' % (names.get(snapshot['state'], '未知'), clock)
 
 
+def read_latest_event(client):
+    event = client.log()
+    timestamp = str(event['utc']) + ' UTC秒' if event['utc'] is not None else '无时间'
+    return ('序号：%d  类型：%d  详情：%d  时间：%s  原始值：0x%08X' %
+            (event['sequence'], event['type'], event['detail'], timestamp, event['value_bits']))
+
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -67,6 +74,7 @@ class App:
         self.status = tk.StringVar(value='尚未读取')
         self.cal_status = tk.StringVar(value='标定及核查状态尚未读取')
         self.clock_status = tk.StringVar(value='时钟状态尚未读取')
+        self.event_status = tk.StringVar(value='事件尚未读取')
         frame = ttk.Frame(root, padding=12)
         frame.grid(sticky='nsew')
         row = ttk.Frame(frame); row.grid(sticky='w')
@@ -100,6 +108,9 @@ class App:
         ttk.Button(clock, text='读取时钟', command=lambda: self.start('clock_status')).pack(side='left')
         ttk.Button(clock, text='用电脑时间校时', command=lambda: self.start('set_clock')).pack(side='left', padx=4)
         ttk.Label(clock, textvariable=self.clock_status).pack(side='left', padx=4)
+        event = ttk.Frame(frame); event.grid(sticky='w', pady=(8, 0))
+        ttk.Button(event, text='读取最新事件', command=lambda: self.start('event')).pack(side='left')
+        ttk.Label(event, textvariable=self.event_status).pack(side='left', padx=4)
         ttk.Label(frame, textvariable=self.message, foreground='blue').grid(sticky='w')
         root.after(100, self.poll)
 
@@ -121,7 +132,7 @@ class App:
         except ValueError as error:
             self.message.set(str(error)); return
         self.busy = True
-        if operation not in ('status', 'cal_status', 'clock_status'):
+        if operation not in ('status', 'cal_status', 'clock_status', 'event'):
             self.status.set('命令发送后状态可能变化，请重新读取')
             self.cal_status.set('命令发送后标定及核查状态可能变化，请重新读取')
             self.clock_status.set('时间或状态可能变化，请重新读取时钟')
@@ -138,6 +149,8 @@ class App:
                         result = read_calibration_status(client)
                     elif operation == 'clock_status':
                         result = read_clock_status(client)
+                    elif operation == 'event':
+                        result = read_latest_event(client)
                     elif operation == 'set_clock':
                         client.set_clock(int(time.time()))
                         result = '校时请求已接收，请读取时钟确认回读成功'
@@ -166,6 +179,8 @@ class App:
                     self.cal_status.set('读取失败，标定及核查状态未知')
                 elif operation == 'clock_status':
                     self.clock_status.set('读取失败，时钟状态未知')
+                elif operation == 'event':
+                    self.event_status.set('读取失败，事件未知')
                 self.message.set('通信失败：' + error)
             elif operation == 'status':
                 self.status.set(result)
@@ -176,6 +191,9 @@ class App:
             elif operation == 'clock_status':
                 self.clock_status.set(result)
                 self.message.set('时钟快照已读取')
+            elif operation == 'event':
+                self.event_status.set(result)
+                self.message.set('最新事件已读取')
             else:
                 self.message.set(result)
         self.root.after(100, self.poll)

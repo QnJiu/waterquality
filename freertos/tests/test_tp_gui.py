@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
-from tp_gui import read_status, read_calibration_status, read_clock_status
+from tp_gui import read_status, read_calibration_status, read_clock_status, read_latest_event
 
 
 def words(value):
@@ -81,6 +81,24 @@ class ClockStatusTest(unittest.TestCase):
         text = read_clock_status(Client())
         self.assertIn('校时中', text)
         self.assertIn('无有效时间', text)
+
+
+class EventTest(unittest.TestCase):
+    def test_latest_event_including_missing_timestamp(self):
+        class Client:
+            def log(self):
+                return {'sequence': 42, 'type': 2, 'detail': 3, 'utc': None,
+                        'value_bits': 0x3f800000}
+        text = read_latest_event(Client())
+        for item in ('序号：42', '类型：2', '详情：3', '无时间', '0x3F800000'):
+            self.assertIn(item, text)
+
+    def test_query_failure_is_propagated(self):
+        class Client:
+            def log(self):
+                raise ValueError('日志为空')
+        with self.assertRaisesRegex(ValueError, '日志为空'):
+            read_latest_event(Client())
 
 
 if __name__ == '__main__':

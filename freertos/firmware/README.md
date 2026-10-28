@@ -11,7 +11,7 @@ cmake --build build
 
 输出 `tp_f407.elf`、`tp_f407.hex` 和 `tp_f407.map`。链接使用 nosys，未提供标准 I/O 系统调用，工具链可能对此发出警告。链接时保留板级装配入口及其依赖，检查完整链路能否链接；当前心跳主程序并不调用该入口。必须核对实物型号、Flash 大小、引脚、电气安全态和保护电路后才能实现板级对接；此链接布局尚未划分 Bootloader 或 OTA 区域。实机尚未验证。
 
-依赖来源：FreeRTOS Kernel V10.5.1（随源码 MIT 许可）；CMSIS 5.9.0 Core（Apache-2.0）；ST CMSIS Device F4 v2.6.10 与 STM32F4 HAL/LL 头文件 v1.8.5（许可证各随目录保存）。项目目前只引入 LL 头文件，尚无具体 LL 外设驱动实现。
+依赖来源：FreeRTOS Kernel V10.5.1（随源码 MIT 许可）；CMSIS 5.9.0 Core（Apache-2.0）；ST CMSIS Device F4 v2.6.10 与 STM32F4 HAL/LL 头文件 v1.8.5（许可证各随目录保存）。项目包含基于 STM32 寄存器和 LL 头文件的参考外设适配；具体接线和时序须按目标板验证。
 
 ## 参考存储总线
 

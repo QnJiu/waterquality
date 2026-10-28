@@ -1,0 +1,25 @@
+#include <zephyr/dt-bindings/gpio/gpio.h>
+/ {
+    aliases {
+        tp-adc = &tp_adc;
+        tp-modbus = &tp_modbus;
+    };
+    tp_uart: uart-emul {
+        compatible = "zephyr,uart-emul";
+        status = "okay";
+        current-speed = <19200>;
+        tp_modbus: modbus {
+            compatible = "zephyr,modbus-serial";
+            status = "okay";
+        };
+    };
+};
+&spi0 {
+    cs-gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
+    tp_adc: ads1220@0 {
+        compatible = "vnd,ads1220-slice";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+        drdy-gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+    };
+};

@@ -4,3 +4,6 @@ project(tp_zephyr_slice C)
 target_include_directories(app PRIVATE src ../include)
 target_sources(app PRIVATE src/main.c src/ads1220_zephyr.c
     ../drivers/ads1220.c ../drivers/adc_reader.c ../app/adc_status.c)
+if(BOARD STREQUAL "native_sim")
+    target_sources(app PRIVATE src/ads1220_emul.c)
+endif()

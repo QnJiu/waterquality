@@ -225,12 +225,12 @@ tp_result tp_service_enter_maintenance(tp_service *s) {
 void tp_service_tick(tp_service *s, uint32_t now, bool rtc_valid, int64_t utc) {
     if (!s || !s->controller) return;
     s->now_ms = now;
-    s->clock_valid=rtc_valid && utc>=946684800LL && utc<4102444800LL &&
-                   (!s->clock_status || s->clock_status(s->clock_ctx)!=2);
+    bool clock_pending=s->clock_status && s->clock_status(s->clock_ctx)==2;
+    s->clock_valid=rtc_valid && utc>=946684800LL && utc<4102444800LL && !clock_pending;
     s->clock_utc=s->clock_valid ? (uint32_t)utc : 0;
     bool busy = s->maintenance || s->controller->state == TP_RUNNING || s->controller->state == TP_FAILED ||
-                (s->clock_status && s->clock_status(s->clock_ctx)==2);
-    if (tp_schedule_poll(&s->schedule, now, rtc_valid, utc, busy)) (void)start(s);
+                clock_pending;
+    if (tp_schedule_poll(&s->schedule, now, rtc_valid && !clock_pending, utc, busy)) (void)start(s);
     if (calibration_running(s)) tp_auto_cal_tick(&s->auto_cal,now);
     else if (standard_running(s)) tp_auto_standard_tick(&s->auto_standard,now);
     else tp_tick(s->controller,now);

@@ -182,6 +182,19 @@ int main(void) {
     clock_state=3;
     assert(tp_service_write_holding(&s,0,1,&begin)==TP_OK);
     assert(tp_service_write_holding(&s,123,2,time_words)==TP_BUSY);
+    /* An old RTC value during a queued clock change must not consume a daily trigger. */
+    tp_init(&c,&hal,NULL,NULL,100);
+    assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    clock_state=1;
+    assert(tp_service_attach_clock(&s,NULL,set_clock,clock_status)==TP_OK);
+    uint16_t daily_clock[]={TP_MODE_DAILY,0,1,(1700000000u%86400u)/60u,0};
+    assert(tp_service_write_holding(&s,1,5,daily_clock)==TP_OK);
+    assert(tp_service_write_holding(&s,123,2,time_words)==TP_OK);
+    tp_service_tick(&s,1,true,1700000000LL);
+    assert(c.state==TP_IDLE && !s.schedule.daily_fired);
+    clock_state=3;
+    tp_service_tick(&s,2,true,1700000000LL);
+    assert(c.state==TP_RUNNING && s.schedule.daily_fired);
     puts("service checks passed"); return 0;
 }
 

@@ -1,6 +1,7 @@
 #ifndef TP_F407_APP_H
 #define TP_F407_APP_H
 #include "tp_f407_i2c.h"
+#include "tp_m24c02.h"
 #include "tp_f407_ads1220_spi.h"
 #include "tp_f407_valves.h"
 #include "tp_f407_pump.h"
@@ -14,6 +15,12 @@
 #include "tp_freertos_subordinate.h"
 
 typedef struct tp_f407_app tp_f407_app;
+typedef struct tp_f407_eeprom_options {
+    tp_i2c_io bus;
+    uint8_t address;
+    void *wait_ctx;
+    tp_result (*wait_ready)(void *, uint8_t);
+} tp_f407_eeprom_options;
 typedef struct {
     const tp_step *recipe; size_t recipe_len;
     const tp_valve_policy *valves;
@@ -22,6 +29,10 @@ typedef struct {
     const tp_adc_channel *channels; size_t channel_count;
     uint8_t adc_registers[4]; uint32_t adc_timeout_ms;
     tp_config defaults;
+    /* NULL selects the built-in FRAM configuration slots. When present,
+     * EEPROM uses an independent or isolated I2C bus: MB85RC16 occupies
+     * all addresses 0x50..0x57. The bus and wait context must remain valid. */
+    const struct tp_f407_eeprom_options *config_eeprom;
     /* Optional initialized master; UART task owns its link. */
     tp_freertos_subordinate *subordinate;
     /* Optional pre-scheduler board services, after app initialization and
@@ -34,7 +45,7 @@ typedef struct {
  * not start the scheduler: initialization can have created tasks and queues. */
 struct tp_f407_app {
     tp_f407_valves valves; tp_f407_pump pump; tp_f407_heater heater;
-    tp_f407_i2c i2c; tp_mb85rc16 fram; tp_store_io store; tp_ds3231 rtc;
+    tp_f407_i2c i2c; tp_mb85rc16 fram; tp_m24c02 eeprom; tp_store_io store; tp_ds3231 rtc;
     tp_mb85rc16_log_region log_region; tp_freertos_event_log events;
     tp_f407_ads1220_spi spi; tp_ads1220 adc; tp_adc_reader reader;
     tp_f407_temperature temperature; tp_freertos_clock clock;

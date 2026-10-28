@@ -71,7 +71,14 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     INIT(tp_f407_heater_init(&a->heater));
     INIT(tp_f407_i2c_init(&a->i2c));
     tp_i2c_io bus=tp_f407_i2c_io(&a->i2c);
-    INIT(tp_mb85rc16_init(&a->fram,&bus,0)); a->store=tp_mb85rc16_store(&a->fram);
+    INIT(tp_mb85rc16_init(&a->fram,&bus,0));
+    if (o->config_eeprom) {
+        const tp_f407_eeprom_options *e=o->config_eeprom;
+        INIT(tp_m24c02_init(&a->eeprom,&e->bus,e->address,e->wait_ctx,e->wait_ready));
+        a->store=tp_m24c02_store(&a->eeprom);
+    } else {
+        a->store=tp_mb85rc16_store(&a->fram);
+    }
     INIT(tp_store_bootstrap(&a->store,&o->defaults,&a->config,&a->config_sequence,&a->config_source));
     INIT(tp_mb85rc16_log_init(&a->log_region,&a->fram,256,1792));
     tp_event_log_io event_io=tp_mb85rc16_log_io(&a->log_region);

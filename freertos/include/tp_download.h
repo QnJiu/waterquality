@@ -3,7 +3,7 @@
 #include "tp_store.h"
 #define TP_DOWNLOAD_ID_SIZE 32u
 #define TP_DOWNLOAD_CHUNK_MAX 256u
-typedef enum { TP_DOWNLOAD_ERASING=1, TP_DOWNLOAD_WRITING=2, TP_DOWNLOAD_VERIFIED=3 } tp_download_phase;
+typedef enum { TP_DOWNLOAD_ERASING=1, TP_DOWNLOAD_WRITING=2, TP_DOWNLOAD_VERIFIED=3, TP_DOWNLOAD_CANCELLED=4 } tp_download_phase;
 typedef struct {
     uint8_t id[TP_DOWNLOAD_ID_SIZE]; /* digest of authenticated manifest */
     uint32_t version, size; uint8_t bank;
@@ -28,13 +28,17 @@ typedef struct {
  * All metadata and image operations may block and must run outside control task. */
 tp_result tp_download_read(const tp_download_io *,tp_download_state *);
 /* Starts on blank metadata or after a different VERIFIED session. Repeating
- * the same verified manifest returns TP_BUSY without erasing the image. */
+ * the same verified manifest returns TP_BUSY without erasing the image. A
+ * cancelled session permits a new begin, including the same manifest. */
 tp_result tp_download_begin(const tp_download_io *,const tp_download_manifest *);
 /* Repeats interrupted erase before accepting any payload. */
 tp_result tp_download_resume(const tp_download_io *);
 /* Sequential chunks only, each <= TP_DOWNLOAD_CHUNK_MAX; writes and verifies
  * bytes before checkpointing. On error reload state; retry with identical bytes. */
 tp_result tp_download_write(const tp_download_io *,uint32_t offset,const void *,size_t);
+/* Persist cancellation of an incomplete session without erasing the image.
+ * A failed write has an uncertain outcome; read state before retrying. */
+tp_result tp_download_cancel(const tp_download_io *);
 /* Verifies the complete image before persisting VERIFIED. Does not stage boot. */
 tp_result tp_download_finish(const tp_download_io *);
 #endif

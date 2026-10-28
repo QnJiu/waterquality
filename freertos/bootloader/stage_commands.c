@@ -36,6 +36,9 @@ tp_result tp_stage_commands_execute(void *ctx,const tp_upgrade_commands *unused,
         /* BEGIN reauthenticates and resumes after reset. */
         if(!n && s->opened && s->receiver.ready) r=TP_OK;
         break;
+    case TP_UP_CMD_CANCEL:
+        if(!n && s->opened) r=tp_stage_receiver_cancel(&s->receiver);
+        break;
     case TP_UP_CMD_WRITE:
         if(s->opened && n>4 && n<=4+TP_DOWNLOAD_CHUNK_MAX) {
             uint32_t off=(uint32_t)data[0]|((uint32_t)data[1]<<8)|

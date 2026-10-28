@@ -38,6 +38,7 @@ tp_result tp_stage_session_execute(void *ctx,const tp_upgrade_commands *unused,t
         if(r==TP_OK) memcpy(s->manifest,data,sizeof(s->manifest));
         else tp_stage_session_abort(s);
     }
+    if(cmd==TP_UP_CMD_CANCEL && r==TP_OK) tp_stage_session_abort(s);
     return r;
 }
 tp_result tp_stage_session_install_begin(tp_stage_session *s) {

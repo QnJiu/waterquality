@@ -22,6 +22,9 @@ tp_result tp_upgrade_command_execute(const tp_upgrade_commands *c,tp_upgrade_com
     case TP_UP_CMD_RESUME:
         if(!n) r=tp_upgrade_resume(c->upgrade);
         break;
+    case TP_UP_CMD_CANCEL:
+        if(!n) r=tp_upgrade_cancel(c->upgrade);
+        break;
     case TP_UP_CMD_WRITE:
         if(n>4 && n<=4+TP_DOWNLOAD_CHUNK_MAX) {
             uint32_t offset=(uint32_t)data[0] | ((uint32_t)data[1]<<8) |

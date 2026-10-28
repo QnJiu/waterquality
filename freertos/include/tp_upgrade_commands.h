@@ -3,7 +3,7 @@
 #include "tp_upgrade.h"
 
 typedef enum { TP_UP_CMD_STATUS=1, TP_UP_CMD_BEGIN=2, TP_UP_CMD_RESUME=3,
-               TP_UP_CMD_WRITE=4, TP_UP_CMD_FINISH=5 } tp_upgrade_command;
+               TP_UP_CMD_WRITE=4, TP_UP_CMD_FINISH=5, TP_UP_CMD_CANCEL=6 } tp_upgrade_command;
 typedef struct {
     const tp_upgrade *upgrade;
     void *auth_ctx;
@@ -18,7 +18,7 @@ typedef struct {
 } tp_upgrade_reply;
 
 /* Complete request, already framed and integrity-checked by transport.
- * STATUS/RESUME/FINISH: empty; BEGIN: authenticated manifest bytes;
+ * STATUS/RESUME/FINISH/CANCEL: empty; BEGIN: authenticated manifest bytes;
  * WRITE: 4-byte little-endian offset followed by 1..256 payload bytes.
  * The reply buffer is mandatory and populated even when the operation fails.
  * All upgrade and boot operations must have one serialized owner. */

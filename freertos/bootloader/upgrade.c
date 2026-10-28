@@ -29,6 +29,12 @@ tp_result tp_upgrade_resume(const tp_upgrade *u) {
     return r==TP_OK ? tp_download_resume(u->download) : r;
 }
 
+tp_result tp_upgrade_cancel(const tp_upgrade *u) {
+    tp_download_state s;
+    tp_result r=current(u,&s);
+    return r==TP_OK ? tp_download_cancel(u->download) : r;
+}
+
 tp_result tp_upgrade_write(const tp_upgrade *u, uint32_t offset, const void *data, size_t size) {
     tp_download_state s;
     tp_result r=current(u,&s);

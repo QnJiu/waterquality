@@ -111,6 +111,9 @@ static void commands_test(void) {
     assert(tp_upgrade_command_execute(&c,TP_UP_CMD_BEGIN,(const uint8_t *)"no",2,&reply)==TP_INVALID && !image.erases);
     assert(tp_upgrade_command_execute(&c,TP_UP_CMD_BEGIN,(const uint8_t *)"ok",2,&reply)==TP_OK);
     assert(reply.state_available && reply.state.phase==TP_DOWNLOAD_WRITING && reply.state.written==0);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_CANCEL,NULL,0,&reply)==TP_OK &&
+           reply.state_available && reply.state.phase==TP_DOWNLOAD_CANCELLED);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_BEGIN,(const uint8_t *)"ok",2,&reply)==TP_OK);
     const uint8_t first[]={0,0,0,0,'d','a'}, second[]={2,0,0,0,'t','a'};
     assert(tp_upgrade_command_execute(&c,TP_UP_CMD_WRITE,second,sizeof(second),&reply)==TP_INVALID && !image.writes);
     assert(tp_upgrade_command_execute(&c,TP_UP_CMD_WRITE,first,sizeof(first),&reply)==TP_OK && reply.state.written==2);

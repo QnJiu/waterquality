@@ -27,7 +27,7 @@ static tp_result encode(uint8_t command,uint16_t seq,const uint8_t *data,size_t 
 }
 tp_result tp_upgrade_wire_request(uint8_t cmd,uint16_t seq,const uint8_t *data,size_t n,
                                   uint8_t *out,size_t cap,size_t *length) {
-    if(cmd<1 || cmd>5) return TP_INVALID;
+    if(cmd<1 || cmd>6) return TP_INVALID;
     return encode(cmd,seq,data,n,out,cap,length);
 }
 tp_result tp_upgrade_wire_init(tp_upgrade_wire *w,const tp_upgrade_commands *c,void *ctx,
@@ -45,7 +45,7 @@ void tp_upgrade_wire_reset(tp_upgrade_wire *w) {
 }
 static tp_result execute(tp_upgrade_wire *w) {
     const uint8_t *p=w->raw; size_t n=w->length;
-    if(n<8 || p[0]!=1 || p[1]<1 || p[1]>5) return TP_INVALID;
+    if(n<8 || p[0]!=1 || p[1]<1 || p[1]>6) return TP_INVALID;
     size_t payload=(size_t)p[4] | ((size_t)p[5]<<8);
     if(payload>TP_UP_WIRE_PAYLOAD_MAX || n!=payload+8 ||
        crc(p,n-2)!=((uint16_t)p[n-2] | ((uint16_t)p[n-1]<<8))) return TP_INVALID;

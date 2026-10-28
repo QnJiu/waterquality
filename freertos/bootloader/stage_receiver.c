@@ -43,13 +43,19 @@ tp_result tp_stage_receiver_open(tp_stage_receiver *s,const tp_boot_io *boot,
     tp_result r=tp_signed_manifest_authenticate(&s->signature,bytes,n,&s->manifest);
     if(r!=TP_OK || (r=eligible(s))!=TP_OK) return r;
     tp_download_state state; r=tp_download_read(&s->download,&state);
-    if(r==TP_OK && same(&state.manifest,&s->manifest)) {
+    if(r==TP_OK && state.phase!=TP_DOWNLOAD_CANCELLED && same(&state.manifest,&s->manifest)) {
         if(state.phase==TP_DOWNLOAD_VERIFIED) r=verify(s,&s->manifest);
         else r=tp_download_resume(&s->download);
     } else if(r==TP_OK || r==TP_INVALID) {
         r=tp_download_begin(&s->download,&s->manifest);
     }
     if(r==TP_OK) s->ready=true;
+    return r;
+}
+tp_result tp_stage_receiver_cancel(tp_stage_receiver *s) {
+    tp_result r=check(s);
+    if(r==TP_OK) r=tp_download_cancel(&s->download);
+    if(r==TP_OK) s->ready=false;
     return r;
 }
 tp_result tp_stage_receiver_write(tp_stage_receiver *s,uint32_t offset,const void *data,size_t n) {

@@ -11,7 +11,7 @@ static uint32_t crc32(const uint8_t *p,size_t n) {
 }
 static bool valid(const tp_download_state *s) {
     return s->manifest.bank<2 && s->manifest.version && s->manifest.size &&
-        s->phase>=TP_DOWNLOAD_ERASING && s->phase<=TP_DOWNLOAD_VERIFIED &&
+        s->phase>=TP_DOWNLOAD_ERASING && s->phase<=TP_DOWNLOAD_CANCELLED &&
         s->written<=s->manifest.size && (s->phase!=TP_DOWNLOAD_ERASING || !s->written) &&
         (s->phase!=TP_DOWNLOAD_VERIFIED || s->written==s->manifest.size);
 }
@@ -49,7 +49,7 @@ tp_result tp_download_read(const tp_download_io *io,tp_download_state *s) { unsi
 tp_result tp_download_begin(const tp_download_io *io,const tp_download_manifest *manifest) {
     if(!io_valid(io) || !manifest || manifest->bank>1 || !manifest->version || !manifest->size) return TP_INVALID;
     tp_download_state s; unsigned slot=1; tp_result r=find(io,&s,&slot);
-    if(r==TP_OK && (s.phase!=TP_DOWNLOAD_VERIFIED ||
+    if(r==TP_OK && s.phase!=TP_DOWNLOAD_CANCELLED && (s.phase!=TP_DOWNLOAD_VERIFIED ||
        (s.manifest.bank==manifest->bank && s.manifest.version==manifest->version &&
         s.manifest.size==manifest->size && !memcmp(s.manifest.id,manifest->id,TP_DOWNLOAD_ID_SIZE))))
         return TP_BUSY;
@@ -68,6 +68,7 @@ tp_result tp_download_begin(const tp_download_io *io,const tp_download_manifest 
 }
 tp_result tp_download_resume(const tp_download_io *io) {
     tp_download_state s; unsigned slot; tp_result r=find(io,&s,&slot); if(r!=TP_OK) return r;
+    if(s.phase==TP_DOWNLOAD_CANCELLED) return TP_INVALID;
     if(s.phase!=TP_DOWNLOAD_ERASING) return TP_OK;
     if(io->erase_bank(io->image_ctx,s.manifest.bank)!=TP_OK) return TP_IO_ERROR;
     s.phase=TP_DOWNLOAD_WRITING; s.sequence++; return commit(io,s,slot^1u);
@@ -79,6 +80,12 @@ tp_result tp_download_write(const tp_download_io *io,uint32_t offset,const void 
     if(io->write_bank(io->image_ctx,s.manifest.bank,offset,data,n)!=TP_OK ||
        io->read_bank(io->image_ctx,s.manifest.bank,offset,check,n)!=TP_OK || memcmp(data,check,n)) return TP_IO_ERROR;
     s.written+=(uint32_t)n; s.sequence++; return commit(io,s,slot^1u);
+}
+tp_result tp_download_cancel(const tp_download_io *io) {
+    tp_download_state s; unsigned slot; tp_result r=find(io,&s,&slot); if(r!=TP_OK) return r;
+    if(s.phase==TP_DOWNLOAD_CANCELLED) return TP_OK;
+    if(s.phase!=TP_DOWNLOAD_ERASING && s.phase!=TP_DOWNLOAD_WRITING) return TP_INVALID;
+    s.phase=TP_DOWNLOAD_CANCELLED; s.sequence++; return commit(io,s,slot^1u);
 }
 tp_result tp_download_finish(const tp_download_io *io) {
     tp_download_state s; unsigned slot; tp_result r=find(io,&s,&slot); if(r!=TP_OK) return r;

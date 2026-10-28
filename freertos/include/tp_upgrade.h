@@ -15,6 +15,8 @@ typedef struct {
  * must already be authenticated and its bank capacity checked by the caller. */
 tp_result tp_upgrade_begin(const tp_upgrade *, const tp_download_manifest *);
 tp_result tp_upgrade_resume(const tp_upgrade *);
+/* Cancel only an eligible, incomplete download; does not erase an image. */
+tp_result tp_upgrade_cancel(const tp_upgrade *);
 tp_result tp_upgrade_write(const tp_upgrade *, uint32_t offset, const void *, size_t);
 /* Re-verifies the image through both download and boot verification callbacks.
  * Safe to retry after an ambiguous stage error. */

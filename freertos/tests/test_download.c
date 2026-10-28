@@ -105,5 +105,24 @@ int main(void) {
     f.verify_error=true; assert(tp_download_finish(&io)==TP_IO_ERROR);
     f.verify_error=false; f.banks[1][0]^=1; assert(tp_download_finish(&io)==TP_INVALID);
     assert(tp_download_read(&io,&s)==TP_OK && s.phase==TP_DOWNLOAD_WRITING);
+    /* Cancellation is durable, never touches either image, and allows a new begin. */
+    io=setup(&f); assert(tp_download_begin(&io,&m)==TP_OK);
+    assert(tp_download_write(&io,0,f.expected,256)==TP_OK);
+    uint8_t saved[512]; memcpy(saved,f.banks[1],sizeof(saved));
+    assert(tp_download_cancel(&io)==TP_OK && tp_download_cancel(&io)==TP_OK);
+    assert(tp_download_read(&io,&s)==TP_OK && s.phase==TP_DOWNLOAD_CANCELLED && s.written==256);
+    assert(!memcmp(saved,f.banks[1],sizeof(saved)) && tp_download_resume(&io)==TP_INVALID);
+    assert(tp_download_write(&io,256,f.expected+256,256)==TP_INVALID);
+    assert(tp_download_begin(&io,&m)==TP_OK); complete(&f,&io);
+    assert(tp_download_cancel(&io)==TP_INVALID);
+    /* A failed cancellation can leave either the old or new committed state. */
+    for(int at=1;at<=7;at++) {
+        io=setup(&f); assert(tp_download_begin(&io,&m)==TP_OK);
+        f.op=0; f.fail=at; assert(tp_download_cancel(&io)==TP_IO_ERROR);
+        f.fail=0; assert(tp_download_read(&io,&s)==TP_OK);
+        assert(s.phase==TP_DOWNLOAD_WRITING || s.phase==TP_DOWNLOAD_CANCELLED);
+        assert(tp_download_cancel(&io)==TP_OK);
+        assert(tp_download_begin(&io,&m)==TP_OK);
+    }
     return 0;
 }

@@ -141,3 +141,17 @@ tp_result tp_runtime_submit(tp_freertos_runtime *rt, unsigned port, const uint8_
 }
 
 
+
+static tp_result rtu_submit(void *ctx, unsigned port, const uint8_t *frame, size_t len) {
+    return tp_runtime_submit((tp_freertos_runtime *)ctx,port,frame,len);
+}
+static void rtu_error(void *ctx, unsigned port, tp_result result) {
+    tp_freertos_runtime *rt=ctx;
+    /* Queue-full is already reported by tp_runtime_submit. */
+    if (result != TP_BUSY && rt->io.communication_error) rt->io.communication_error(rt->io.ctx,port);
+}
+tp_result tp_runtime_rtu_port_init(tp_freertos_runtime *rt, tp_rtu_port *port,
+    unsigned number, uint32_t baud, uint8_t bits) {
+    if (!rt || !port || !rt->requests || number >= rt->port_count) return TP_INVALID;
+    return tp_rtu_port_init(port,number,baud,bits,rt,rtu_submit,rtu_error);
+}

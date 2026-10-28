@@ -2,6 +2,7 @@
 #define TP_FREERTOS_RUNTIME_H
 #include "tp_modbus.h"
 #include "tp_service.h"
+#include "tp_rtu_port.h"
 #include "FreeRTOS.h"
 #include "queue.h"
 #include "task.h"
@@ -47,6 +48,10 @@ tp_result tp_runtime_attach_storage(tp_freertos_runtime *rt, const tp_store_io *
 tp_result tp_runtime_bootstrap_storage(tp_freertos_runtime *rt, const tp_store_io *store,
     const tp_config *defaults, uint32_t *sequence, tp_config_source *source);
 tp_result tp_runtime_start(tp_freertos_runtime *rt, uint16_t stack_words, UBaseType_t priority);
+/* Bind one RTU framer to an existing runtime port. The caller owns the port
+ * for its lifetime; invoke byte/error/poll from that UART's task only. */
+tp_result tp_runtime_rtu_port_init(tp_freertos_runtime *rt, tp_rtu_port *port,
+    unsigned port_number, uint32_t baud, uint8_t bits_per_char);
 /* Call from a UART task, not an ISR. Input is copied; queue-full returns TP_BUSY. */
 tp_result tp_runtime_submit(tp_freertos_runtime *rt, unsigned port, const uint8_t *frame, size_t length);
 #endif

@@ -3,7 +3,7 @@ project(tp_core C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 add_library(tp_core STATIC app/controller.c app/measurement.c app/schedule.c app/service.c
-    drivers/ads1220.c drivers/adc_reader.c drivers/mb85rc16.c protocol/modbus_rtu.c protocol/rtu_receiver.c
+    drivers/ads1220.c drivers/adc_reader.c drivers/mb85rc16.c protocol/modbus_rtu.c protocol/rtu_receiver.c protocol/rtu_port.c
     storage/config_store.c)
 target_include_directories(tp_core PUBLIC include)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
@@ -15,7 +15,7 @@ endif()
 option(TP_BUILD_HOST_TESTS "Build host-side checks; this does not build STM32 firmware" ON)
 if(TP_BUILD_HOST_TESTS)
     enable_testing()
-    foreach(name ads_schedule service rtu_receiver fram settings controlled)
+    foreach(name ads_schedule service rtu_receiver fram settings controlled rtu_port)
         add_executable(test_${name} tests/test_${name}.c)
         target_link_libraries(test_${name} PRIVATE tp_core)
         add_test(NAME ${name} COMMAND test_${name})

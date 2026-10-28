@@ -11,7 +11,7 @@ add_executable(tp_f407.elf main.c
     ${KERNEL}/portable/GCC/ARM_CM4F/port.c ${KERNEL}/portable/MemMang/heap_4.c
     ${ROOT}/os/freertos_runtime.c ${ROOT}/app/controller.c ${ROOT}/app/measurement.c
     ${ROOT}/app/schedule.c ${ROOT}/app/service.c ${ROOT}/storage/config_store.c
-    ${ROOT}/protocol/modbus_rtu.c)
+    ${ROOT}/protocol/modbus_rtu.c ${ROOT}/protocol/rtu_receiver.c ${ROOT}/protocol/rtu_port.c)
 target_include_directories(tp_f407.elf PRIVATE ${ROOT}/include ${ROOT}/config
     ${KERNEL}/include ${KERNEL}/portable/GCC/ARM_CM4F ${DEVICE}/Include
     ${ROOT}/third_party/CMSIS-Core/Include ${ROOT}/third_party/STM32F4-LL/Inc)

@@ -7,3 +7,4 @@ target_sources(app PRIVATE src/main.c src/ads1220_zephyr.c
 if(BOARD STREQUAL "native_sim")
     target_sources(app PRIVATE src/ads1220_emul.c)
 endif()
+target_sources_ifdef(CONFIG_TP_NATIVE_SELFTEST app PRIVATE tests/native_selftest.c)

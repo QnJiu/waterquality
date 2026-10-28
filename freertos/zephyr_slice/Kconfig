@@ -1,0 +1,7 @@
+mainmenu "Water quality Zephyr slice"
+source "Kconfig.zephyr"
+
+config TP_NATIVE_SELFTEST
+    bool "Run simulated ADS1220 and Modbus end-to-end check"
+    depends on BOARD_NATIVE_SIM && UART_EMUL && SPI_EMUL && GPIO_EMUL
+    default n

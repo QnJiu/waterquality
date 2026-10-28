@@ -14,14 +14,15 @@ static tp_result adc(void *p,uint8_t ch,float *v) { (void)p; (void)ch; *v=1; ret
 static bool interlock(void *p) { (void)p; return true; }
 static void safe(void *p) { (void)p; }
 /* Exercise the exact teaching recipes through the service, using fake inputs. */
-typedef struct { uint32_t source; unsigned pumps, safe_calls; } teaching_fake;
+typedef struct { uint32_t source; unsigned pumps, safe_calls; bool pump_fails; } teaching_fake;
 static tp_result teaching_valves(void *p,uint32_t mask) {
     teaching_fake *f=p;
     if (mask==1 || mask==16 || mask==32) f->source=mask;
     return TP_OK;
 }
 static tp_result teaching_pump(void *p,int32_t steps,uint32_t hz) {
-    teaching_fake *f=p; assert(steps==100 && hz==100); f->pumps++; return TP_OK;
+    teaching_fake *f=p; assert(steps==100 && hz==100); f->pumps++;
+    return f->pump_fails ? TP_IO_ERROR : TP_OK;
 }
 static tp_result teaching_temp(void *p,float *v) { (void)p; *v=30; return TP_OK; }
 static tp_result teaching_adc(void *p,uint8_t ch,float *v) {
@@ -71,6 +72,22 @@ static void teaching_flow(const tp_f407_app_options *o) {
     assert(s.auto_standard.state==TP_STANDARD_COMPLETE && s.auto_standard.passed);
     assert(fabsf(s.auto_standard.actual-5.0f)<0.0001f && f.pumps==16 && f.safe_calls==4);
 }
+/* Exercise the real teaching recipe when its pump cannot start. */
+static void teaching_pump_failure(const tp_f407_app_options *o) {
+    teaching_fake f={.pump_fails=true};
+    tp_hal hal={&f,teaching_valves,teaching_pump,poll,teaching_temp,heater,teaching_adc,interlock,teaching_safe};
+    tp_controller c; tp_init(&c,&hal,&o->defaults.calibration,NULL,o->defaults.max_temperature_c);
+    tp_service s; assert(tp_service_init(&s,&c,o->recipe,o->recipe_len,0)==TP_OK);
+    uint16_t command=1; assert(tp_service_write_holding(&s,0,1,&command)==TP_OK);
+    for (uint32_t now=50; now<=5000 && c.state==TP_RUNNING; now+=50) {
+        tp_service_tick(&s,now,false,0);
+        if (c.awaiting_advance) { command=5; assert(tp_service_write_holding(&s,0,1,&command)==TP_OK); }
+    }
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_PUMP && !c.result_valid);
+    assert(f.pumps==1 && f.safe_calls==1);
+    tp_service_tick(&s,5100,false,0);
+    assert(f.pumps==1 && f.safe_calls==1);
+}
 int main(void) {
     tp_f407_app_options o;
     /* Teaching options remain fail-closed, but their examples are inspectable. */
@@ -103,5 +120,6 @@ int main(void) {
         std->tolerance,NULL,NULL)==TP_OK);
     assert(cal->low_recipe[0].arg.valves.mask != cal->high_recipe[0].arg.valves.mask);
     teaching_flow(&o);
+    teaching_pump_failure(&o);
     return 0;
 }

@@ -16,6 +16,23 @@ endif()
 option(TP_BUILD_HOST_TESTS "Build host-side checks; this does not build STM32 firmware" ON)
 if(TP_BUILD_HOST_TESTS)
     enable_testing()
+    add_executable(test_freemodbus_frame tests/test_freemodbus_frame.c protocol/freemodbus/frame.c
+        third_party/FreeModbus/mb.c third_party/FreeModbus/rtu/mbrtu.c
+        third_party/FreeModbus/rtu/mbcrc.c third_party/FreeModbus/functions/mbfuncholding.c
+        third_party/FreeModbus/functions/mbutils.c)
+    target_include_directories(test_freemodbus_frame PRIVATE protocol/freemodbus
+        third_party/FreeModbus/include third_party/FreeModbus/rtu)
+    target_link_libraries(test_freemodbus_frame PRIVATE tp_core)
+    add_test(NAME freemodbus_frame COMMAND test_freemodbus_frame)
+    add_executable(test_freertos_runtime_freemodbus tests/test_freertos_runtime_freemodbus.c
+        protocol/freemodbus/frame.c third_party/FreeModbus/mb.c third_party/FreeModbus/rtu/mbrtu.c
+        third_party/FreeModbus/rtu/mbcrc.c third_party/FreeModbus/functions/mbfuncholding.c
+        third_party/FreeModbus/functions/mbutils.c)
+    target_include_directories(test_freertos_runtime_freemodbus PRIVATE tests/runtime_stub
+        protocol/freemodbus third_party/FreeModbus/include third_party/FreeModbus/rtu)
+    target_compile_definitions(test_freertos_runtime_freemodbus PRIVATE TP_USE_FREEMODBUS)
+    target_link_libraries(test_freertos_runtime_freemodbus PRIVATE tp_core)
+    add_test(NAME freertos_runtime_freemodbus COMMAND test_freertos_runtime_freemodbus)
     # Exercise the upstream FreeModbus stack with a deterministic host-only port.
     add_executable(test_freemodbus tests/test_freemodbus.c
         third_party/FreeModbus/mb.c third_party/FreeModbus/rtu/mbrtu.c

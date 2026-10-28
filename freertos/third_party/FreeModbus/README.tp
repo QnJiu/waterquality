@@ -1,4 +1,6 @@
 Upstream: https://github.com/cwalter-at/freemodbus
 Revision: a9ec789a23ff774287e711aeb18492860c8770cf
 BSD-licensed protocol core only; no upstream demo ports. See bsd.txt and individual headers.
-Used by the host RTU stack test; not yet integrated into the FreeRTOS firmware.
+Used by host tests and optionally by the FreeRTOS control task (TP_USE_FREEMODBUS=ON).
+The existing RTU receiver handles timing; calls to the global stack must be serialized.
+Firmware has been cross-compiled but has not been tested on hardware.

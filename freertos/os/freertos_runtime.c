@@ -1,4 +1,7 @@
 #include "tp_freertos_runtime.h"
+#ifdef TP_USE_FREEMODBUS
+#include "tp_freemodbus_frame.h"
+#endif
 #include <string.h>
 #if configTICK_RATE_HZ != 1000
 #error "tp_freertos_runtime requires a 1 kHz FreeRTOS tick"
@@ -30,8 +33,13 @@ static void emit_transition(tp_freertos_runtime *rt,tp_run_state before) {
 static void process(tp_freertos_runtime *rt, const tp_runtime_frame *f) {
     tp_run_state before=rt->service->controller->state;
     uint8_t response[TP_RUNTIME_FRAME_MAX]; size_t length = 0;
+#ifdef TP_USE_FREEMODBUS
+    tp_result r = tp_freemodbus_frame(&rt->ports[f->port], f->bytes, f->length,
+                                      response, sizeof(response), &length);
+#else
     tp_result r = tp_modbus_frame(&rt->ports[f->port], f->bytes, f->length,
                                   response, sizeof(response), &length);
+#endif
     emit_transition(rt,before);
     if (r == TP_OK && length && rt->io.send(rt->io.ctx, f->port, response, length) != TP_OK &&
         rt->io.communication_error) rt->io.communication_error(rt->io.ctx, f->port);

@@ -21,6 +21,7 @@ else()
 endif()
 # Rename only the vendor SystemInit; the wrapper sets VTOR to this image.
 set_source_files_properties(${DEVICE}/Source/system_stm32f4xx.c PROPERTIES COMPILE_DEFINITIONS SystemInit=tp_vendor_system_init)
+option(TP_USE_FREEMODBUS "Use serialized FreeModbus RTU in the control task" OFF)
 option(TP_F407_BUSINESS "Build the configured business entry point" OFF)
 set(TP_F407_BOARD_CONFIG "" CACHE FILEPATH "Board configuration implementation")
 if(TP_F407_BUSINESS)
@@ -44,6 +45,15 @@ add_executable(tp_f407.elf ${ENTRY} tp_f407_system_init.c tp_f407_handoff.c tp_f
 target_include_directories(tp_f407.elf PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${ROOT}/include ${ROOT}/config
     ${KERNEL}/include ${KERNEL}/portable/GCC/ARM_CM4F ${DEVICE}/Include
     ${ROOT}/third_party/tinycrypt/include ${ROOT}/third_party/CMSIS-Core/Include ${ROOT}/third_party/STM32F4-LL/Inc)
+if(TP_USE_FREEMODBUS)
+    target_sources(tp_f407.elf PRIVATE ${ROOT}/protocol/freemodbus/frame.c
+        ${ROOT}/third_party/FreeModbus/mb.c ${ROOT}/third_party/FreeModbus/rtu/mbrtu.c
+        ${ROOT}/third_party/FreeModbus/rtu/mbcrc.c ${ROOT}/third_party/FreeModbus/functions/mbfuncholding.c
+        ${ROOT}/third_party/FreeModbus/functions/mbutils.c)
+    target_include_directories(tp_f407.elf PRIVATE ${ROOT}/protocol/freemodbus
+        ${ROOT}/third_party/FreeModbus/include ${ROOT}/third_party/FreeModbus/rtu)
+    target_compile_definitions(tp_f407.elf PRIVATE TP_USE_FREEMODBUS)
+endif()
 target_compile_definitions(tp_f407.elf PRIVATE STM32F407xx)
 target_compile_options(tp_f407.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16
     -mfloat-abi=hard -ffunction-sections -fdata-sections)

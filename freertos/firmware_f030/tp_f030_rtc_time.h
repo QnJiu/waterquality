@@ -17,4 +17,12 @@ bool tp_f030_rtc_elapsed(tp_f030_rtc_stamp start,tp_f030_rtc_stamp end,
  * phase is initially zero and remains in [0,1023]. This accounts only for the
  * measured RTC interval; the SysTick phase must be handled by its caller. */
 bool tp_f030_rtc_to_ticks(uint32_t counts,uint16_t *phase,uint32_t *ticks);
+/* Convert the elapsed RTC counts to 8 MHz SysTick cycles, preserving the
+ * remaining part of the current 1 ms tick. The caller must account for the
+ * interval between sampling the RTC and stopping/starting SysTick. A result
+ * at or beyond expected_ticks is rejected: FreeRTOS cannot step past the next
+ * scheduled unblock. phase retains the fractional CPU cycle across calls. */
+bool tp_f030_rtc_systick(uint32_t counts, uint32_t remaining_cycles,
+                          uint32_t expected_ticks, uint16_t *phase,
+                          uint32_t *complete_ticks, uint32_t *next_cycles);
 #endif

@@ -31,5 +31,22 @@ int main(void) {
     assert(tp_f030_rtc_to_ticks(1023,&phase,&ticks) && ticks==999 && phase==24);
     phase=1024; ticks=77;
     assert(!tp_f030_rtc_to_ticks(1,&phase,&ticks) && ticks==77 && phase==1024);
+    /* The tickless path keeps a partial SysTick and half-cycle remainder. */
+    uint32_t remaining=5000, complete=0; phase=0; sum=0;
+    for(unsigned i=0;i<1024;i++) {
+        assert(tp_f030_rtc_systick(1,remaining,4,&phase,&complete,&remaining));
+        sum+=complete;
+    }
+    assert(sum==1000 && remaining==5000 && phase==0);
+    remaining=8000; phase=0;
+    assert(tp_f030_rtc_systick(1,remaining,2,&phase,&complete,&remaining));
+    assert(complete==0 && remaining==188 && phase==512);
+    assert(tp_f030_rtc_systick(1,remaining,2,&phase,&complete,&remaining));
+    assert(complete==1 && remaining==375 && phase==0);
+    remaining=8000; complete=123; phase=0;
+    assert(!tp_f030_rtc_systick(3,remaining,2,&phase,&complete,&remaining));
+    assert(remaining==8000 && complete==123 && phase==0);
+    assert(!tp_f030_rtc_systick(1,0,2,&phase,&complete,&remaining));
+    assert(!tp_f030_rtc_systick(1,8001,2,&phase,&complete,&remaining));
     return 0;
 }

@@ -244,6 +244,10 @@ static uint16_t read_one(const tp_service *s, uint16_t a) {
     default: return 0;
     }
 }
+tp_result tp_service_attach_log_stats(tp_service *s,void *ctx,void (*snapshot)(void *,uint32_t[4])) {
+    if (!s || !s->controller || !snapshot || s->log_stats) return TP_INVALID;
+    s->log_stats_ctx=ctx; s->log_stats=snapshot; return TP_OK;
+}
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values) {
     tp_service *s = ctx;
     if (s && s->controller && values && count && address>=105 && (uint32_t)address+count<=110) {
@@ -272,6 +276,18 @@ tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, u
         (uint32_t)address+count<=47 && count) {
         uint16_t words[27]; config_words(&s->config,words);
         for (uint16_t i=0;i<count;i++) values[i]=words[address-20+i];
+        return TP_OK;
+    }
+    if (s && s->controller && values && count && address>=110 && (uint32_t)address+count<=119) {
+        uint32_t counters[4]={0}; uint16_t words[9]={0};
+        if (s->log_stats) {
+            s->log_stats(s->log_stats_ctx,counters); words[0]=1;
+            for (unsigned i=0;i<4;i++) {
+                words[1+2*i]=(uint16_t)(counters[i]>>16);
+                words[2+2*i]=(uint16_t)counters[i];
+            }
+        }
+        for (uint16_t i=0;i<count;i++) values[i]=words[address-110+i];
         return TP_OK;
     }
     if (s && s->controller && values && count && address>=53 && (uint32_t)address+count<=65) {

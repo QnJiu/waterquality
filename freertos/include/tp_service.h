@@ -35,6 +35,8 @@ typedef struct {
     tp_result (*request_log)(void *, bool latest, uint32_t sequence);
     uint8_t log_status; /* 0 unavailable, 1 idle, 2 pending, 3 found, 4 absent, 5 I/O error */
     tp_event log_event;
+    void *log_stats_ctx;
+    void (*log_stats)(void *,uint32_t counters[4]);
     void *preflight_ctx;
     tp_result (*preflight)(void *,uint16_t *);
     uint16_t preflight_faults;
@@ -67,6 +69,8 @@ tp_result tp_service_attach_adc_recovery(tp_service *,void *,tp_result (*)(void 
  * Complete only from the service owner task. TP_INVALID means not found. */
 tp_result tp_service_attach_log(tp_service *,void *ctx,tp_result (*request)(void *,bool,uint32_t));
 void tp_service_log_complete(tp_service *,tp_result,const tp_event *);
+/* Nonblocking atomic snapshot: queued, written, dropped and I/O errors. */
+tp_result tp_service_attach_log_stats(tp_service *,void *,void (*)(void *,uint32_t counters[4]));
 /* Owner task only. Safe outputs are applied before success; latched until reset. */
 tp_result tp_service_enter_maintenance(tp_service *s);
 void tp_service_tick(tp_service *s, uint32_t now_ms, bool rtc_valid, int64_t utc_seconds);

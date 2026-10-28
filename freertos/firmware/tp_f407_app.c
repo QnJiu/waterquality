@@ -47,6 +47,12 @@ static tp_result request_log(void *p,bool latest,uint32_t sequence) {
 static bool poll_log(void *p,tp_result *result,tp_event *event) {
     return tp_freertos_event_log_poll(&((tp_f407_app *)p)->events,result,event);
 }
+static void log_stats(void *p,uint32_t counters[4]) {
+    tp_event_log_stats stats;
+    tp_freertos_event_log_stats(&((tp_f407_app *)p)->events,&stats);
+    counters[0]=stats.queued; counters[1]=stats.written;
+    counters[2]=stats.dropped; counters[3]=stats.io_errors;
+}
 static void record_event(void *p,const tp_event *event) {
     tp_f407_app *a=p;
     if(event->type==TP_EVENT_FAILED) {
@@ -131,6 +137,7 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     INIT(tp_service_attach_preflight(&a->service,a,preflight));
     INIT(tp_service_attach_adc_recovery(&a->service,a,recover_adc));
     INIT(tp_service_attach_log(&a->service,a,request_log));
+    INIT(tp_service_attach_log_stats(&a->service,a,log_stats));
     tp_runtime_io io={a,send,now,comm_error,record_event,poll_log,control_progress};
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));
     INIT(tp_runtime_attach_storage(&a->runtime,&a->store,&a->config));

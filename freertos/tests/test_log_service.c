@@ -6,6 +6,10 @@ typedef struct { unsigned calls; bool latest; uint32_t sequence; tp_result resul
 static tp_result request(void *p,bool latest,uint32_t seq) {
     stub *s=p; s->calls++; s->latest=latest; s->sequence=seq; return s->result;
 }
+static void stats_snapshot(void *p,uint32_t counters[4]) {
+    unsigned *calls=p; (*calls)++;
+    counters[0]=0x12345678u; counters[1]=3; counters[2]=0x10002u; counters[3]=7;
+}
 static uint16_t crc(const uint8_t *p,size_t n) {
     uint16_t c=0xffff; while(n--) { c^=*p++; for(unsigned i=0;i<8;i++) c=(uint16_t)((c>>1)^((c&1)?0xa001:0)); } return c;
 }
@@ -34,5 +38,18 @@ int main(void) {
     q.result=TP_BUSY; assert(tp_service_write_holding(&s,50,3,latest)==TP_BUSY && s.log_status==4);
     q.result=TP_OK; assert(tp_service_write_holding(&s,50,3,latest)==TP_OK);
     tp_service_log_complete(&s,TP_IO_ERROR,NULL); assert(s.log_status==5);
+    uint16_t stats[9];
+    assert(tp_service_read_holding(&s,110,9,stats)==TP_OK && stats[0]==0 && stats[5]==0);
+    unsigned snapshots=0;
+    assert(tp_service_attach_log_stats(&s,&snapshots,stats_snapshot)==TP_OK);
+    assert(tp_service_attach_log_stats(&s,&snapshots,stats_snapshot)==TP_INVALID);
+    uint8_t read_stats[]={1,3,0,110,0,9,0,0};
+    check=crc(read_stats,6); read_stats[6]=(uint8_t)check; read_stats[7]=(uint8_t)(check>>8);
+    assert(tp_modbus_frame(&port,read_stats,sizeof(read_stats),response,sizeof(response),&n)==TP_OK);
+    assert(n==23 && response[1]==3 && response[2]==18 && snapshots==1);
+    assert(response[3]==0 && response[4]==1 && response[5]==0x12 && response[6]==0x34 &&
+           response[7]==0x56 && response[8]==0x78 && response[13]==0 && response[14]==1 &&
+           response[15]==0 && response[16]==2 && response[20]==7);
+    assert(tp_service_read_holding(&s,115,2,stats)==TP_OK && stats[0]==1 && stats[1]==2 && snapshots==2);
     puts("asynchronous log protocol checks passed"); return 0;
 }

@@ -8,7 +8,7 @@
 #define TP_ADVANCE_TIMEOUT_MS 30000u
 static bool expired(uint32_t now, uint32_t start, uint32_t duration) { return (uint32_t)(now - start) >= duration; }
 static void fail(tp_controller *c, tp_fault f) {
-    c->heating = false; c->result_valid = false; c->fault = f; c->state = TP_FAILED;
+    c->heating = false; c->result_valid = false; c->valid_readings = 0; c->fault = f; c->state = TP_FAILED;
     c->hal.safe_outputs(c->hal.ctx);
 }
 static void next(tp_controller *c, uint32_t now) {

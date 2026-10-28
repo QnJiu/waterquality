@@ -53,7 +53,9 @@ static void measurement_snapshot(void) {
     exchange(&m,6,0,1,response);
     exchange(&m,3,132,7,response); assert(response[4]==0);
     tp_service_tick(&s,500,false,0);
+    assert(c.valid_readings==1); /* The first new sample completed. */
     exchange(&m,6,0,2,response);
+    assert(c.valid_readings==0);
     exchange(&m,3,132,7,response); assert(response[4]==0);
     /* After a successful measurement and stop, a bad ADC sample must trip
      * the controller and cannot publish either the old result or readings. */
@@ -63,6 +65,13 @@ static void measurement_snapshot(void) {
     exchange(&m,3,10,7,response);
     assert(response[4]==TP_FAILED && response[6]==TP_FAULT_SENSOR && response[16]==0);
     assert(f.safe_calls==safe_before+1);
+    exchange(&m,3,132,7,response); assert(response[4]==0);
+    /* A later interlock fault also invalidates already collected samples. */
+    exchange(&m,6,0,3,response);
+    f.adc_bad=false; exchange(&m,6,0,1,response); tp_service_tick(&s,700,false,0);
+    assert(c.valid_readings==1);
+    f.interlock=false; tp_service_tick(&s,701,false,0);
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_INTERLOCK && c.valid_readings==0);
     exchange(&m,3,132,7,response); assert(response[4]==0);
 }
 

@@ -1,6 +1,7 @@
 #ifndef TP_F407_UPGRADE_SERVICE_H
 #define TP_F407_UPGRADE_SERVICE_H
 #include "tp_f407_upgrade.h"
+#include "tp_staged_guard.h"
 #include "tp_f407_upgrade_uart.h"
 #include "tp_freertos_trial.h"
 #include "tp_f407_app.h"
@@ -39,4 +40,7 @@ typedef struct {
  * If any step fails, do not start the scheduler or retry: earlier tasks may
  * already have been created; put outputs safe and reset. Do not copy objects. */
 tp_result tp_f407_upgrade_service_start(tp_f407_upgrade_service *,const tp_f407_upgrade_service_options *);
+/* Bind an optional staged-image session to this service's maintenance gate
+ * and shared upgrade lock. The caller supplies and owns the guard and source. */
+tp_result tp_f407_upgrade_staged_init(tp_f407_upgrade_service *,tp_staged_guard *);
 #endif

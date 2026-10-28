@@ -38,3 +38,18 @@ tp_result tp_f407_upgrade_service_start(tp_f407_upgrade_service *s,const tp_f407
         options.frame_timeout_ms,options.uart_stack_words,options.uart_priority,
         options.ctx,options.try_lock,options.unlock,options.runtime,request_maintenance);
 }
+
+static tp_result staged_maintenance(void *ctx) {
+    tp_f407_upgrade_service *s=ctx;
+    return tp_runtime_request_maintenance(&s->app->runtime);
+}
+static bool staged_lock(void *ctx) {
+    tp_f407_upgrade_service *s=ctx; return s->try_lock(s->ctx);
+}
+static void staged_unlock(void *ctx) {
+    tp_f407_upgrade_service *s=ctx; s->unlock(s->ctx);
+}
+tp_result tp_f407_upgrade_staged_init(tp_f407_upgrade_service *s,tp_staged_guard *g) {
+    if(!s || !s->app || !s->try_lock || !s->unlock) return TP_INVALID;
+    return tp_staged_guard_init(g,&s->upgrade.secure,s,staged_maintenance,staged_lock,staged_unlock);
+}

@@ -24,6 +24,11 @@ static tp_result dest_verify(void *v,const tp_download_manifest *m) {
     fixture *f=v; return tp_signed_boot_download_verify(&f->boot,m);
 }
 #include "tp_staged_upgrade.h"
+#include "tp_staged_guard.h"
+typedef struct { bool available,locked; tp_result gate; unsigned releases; } guard_fake;
+static tp_result maintenance(void *v) { return ((guard_fake *)v)->gate; }
+static bool take(void *v) { guard_fake *g=v; if(!g->available || g->locked) return false; g->locked=true; return true; }
+static void release(void *v) { guard_fake *g=v; assert(g->locked); g->locked=false; g->releases++; }
 
 int main(void) {
     fixture f; init(&f.target,&f.boot); memcpy(f.source,"abc",3); f.erases=0;
@@ -49,9 +54,17 @@ int main(void) {
     f.source[0]^=1;
     assert(tp_staged_upgrade_init(&s,&u,&image,signed1,116)==TP_INVALID && f.erases==0);
     f.source[0]^=1;
-    assert(tp_staged_upgrade_init(&s,&u,&image,signed1,116)==TP_OK && f.erases==1);
-    assert(tp_staged_upgrade_finish(&s)==TP_INVALID);
-    assert(tp_staged_upgrade_step(&s)==TP_BUSY);
+    guard_fake gf={.gate=TP_LOCK_BUSY,.available=true}; tp_staged_guard g;
+    assert(tp_staged_guard_init(&g,&u,&gf,maintenance,take,release)==TP_OK);
+    assert(tp_staged_guard_begin(&g,&image,signed1,116)==TP_LOCK_BUSY && !gf.locked && f.erases==0);
+    gf.gate=TP_OK; gf.available=false;
+    assert(tp_staged_guard_begin(&g,&image,signed1,116)==TP_LOCK_BUSY && !gf.locked);
+    gf.available=true;
+    assert(tp_staged_guard_begin(&g,&image,signed0,116)==TP_INVALID && !gf.locked && gf.releases==1);
+    assert(tp_staged_guard_begin(&g,&image,signed1,116)==TP_OK && gf.locked && f.erases==1);
+    assert(tp_staged_guard_begin(&g,&image,signed1,116)==TP_BUSY);
+    assert(tp_staged_guard_step(&g)==TP_BUSY && gf.locked);
+    tp_staged_guard_abort(&g); assert(!gf.locked && gf.releases==2);
     /* Recreate both objects after a reset; persistent records resume the copy. */
     assert(tp_secure_upgrade_init(&u,&config)==TP_OK);
     assert(tp_staged_upgrade_init(&s,&u,&image,signed1,116)==TP_OK && f.erases==1);
@@ -60,9 +73,9 @@ int main(void) {
     f.target.image[1][0]^=1;
     assert(tp_staged_upgrade_finish(&s)==TP_INVALID);
     f.target.image[1][0]^=1;
-    assert(tp_staged_upgrade_init(&s,&u,&image,signed1,116)==TP_OK);
-    assert(tp_staged_upgrade_step(&s)==TP_OK);
-    assert(tp_staged_upgrade_finish(&s)==TP_OK);
+    assert(tp_staged_guard_begin(&g,&image,signed1,116)==TP_OK && gf.locked);
+    assert(tp_staged_guard_step(&g)==TP_OK && gf.locked);
+    assert(tp_staged_guard_finish(&g)==TP_OK && !gf.locked && gf.releases==3);
     tp_boot_state state; assert(tp_boot_read(&u.boot,&state)==TP_OK && state.phase==TP_BOOT_READY);
     assert(tp_staged_upgrade_init(&s,&u,&image,signed1,116)==TP_BUSY && f.erases==1);
     uint8_t selected=0; assert(tp_boot_select(&u.boot,&selected)==TP_OK && selected==1);

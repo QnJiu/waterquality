@@ -56,5 +56,10 @@ int main(void) {
     o.healthy=NULL; assert(tp_f407_upgrade_service_start(&s,&o)==TP_INVALID && stage==0); o.healthy=health;
     for(int i=1;i<=3;i++) { stage=0; fail_at=i; assert(tp_f407_upgrade_service_start(&s,&o)==TP_IO_ERROR && stage==i); }
     stage=0; fail_at=0; assert(tp_f407_upgrade_service_start(&s,&o)==TP_OK && stage==3);
+    tp_staged_guard guard;
+    assert(tp_f407_upgrade_staged_init(NULL,&guard)==TP_INVALID);
+    assert(tp_f407_upgrade_staged_init(&s,&guard)==TP_OK);
+    assert(tp_staged_guard_begin(&guard,NULL,NULL,0)==TP_LOCK_BUSY);
+    assert(!guard.active);
     return 0;
 }

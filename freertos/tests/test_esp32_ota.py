@@ -102,6 +102,29 @@ class Tests(unittest.TestCase):
             ota.upload(client, manifest, io.BytesIO(image))
         self.assertEqual(client.state['phase'], 3)
 
+    def test_invalid_finish_reply_keeps_outcome_unknown(self):
+        class BadReply(FakeClient):
+            def __init__(self, image, ident, reply):
+                super().__init__(image, ident)
+                self.reply = reply
+            def command(self, cmd, payload=b''):
+                if cmd == ota.FINISH:
+                    self.state['phase'] = 3  # FINISH may have already succeeded
+                    if self.reply == 'malformed':
+                        raise ota.ProtocolError('invalid response header')
+                    if self.reply == 'missing':
+                        return ota.OK, None
+                    return ota.OK, dict(self.state, phase=2)
+                return super().command(cmd, payload)
+        image = b'firmware'
+        manifest, ident = manifest_for(image)
+        for reply in ('malformed', 'missing', 'wrong_phase'):
+            with self.subTest(reply=reply):
+                client = BadReply(image, ident, reply)
+                with self.assertRaises(ota.FinishUnknown):
+                    ota.upload(client, manifest, io.BytesIO(image))
+                self.assertEqual(client.state['phase'], 3)
+
     def test_reject_bad_image_before_any_command(self):
         image = b'firmware'
         manifest, ident = manifest_for(image)

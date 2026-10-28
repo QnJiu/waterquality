@@ -117,7 +117,7 @@ def main():
                       (result["bank"], result["version"]))
             except FinishUnknown as exc:
                 awaiting_version = version
-                progress = (1, "Finish response lost; awaiting firmware confirmation")
+                progress = (1, "Finish result unknown; awaiting firmware confirmation")
                 print("OTA result unknown:", exc)
             except (OSError, ValueError, ProtocolError) as exc:
                 if saved and was_awaiting:

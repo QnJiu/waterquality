@@ -214,15 +214,18 @@ def upload(client, manifest, image, retries=3):
             if attempt == retries:
                 raise FinishUnknown("finish response lost; check the confirmed device version")
             continue
-        except OSError:
-            # A short write or read error may occur after the device received
-            # FINISH, so the final result cannot be inferred from the UART.
+        except (OSError, ProtocolError):
+            # A transport error or malformed reply can occur after FINISH was
+            # accepted, so neither proves that staging failed.
             raise FinishUnknown("finish communication failed; check the confirmed device version")
         if result != OK:
             raise ProtocolError("finish failed: %d" % result)
-        state = checked(state)
-        if state["phase"] != 3 or state["written"] != size:
-            raise ProtocolError("unexpected final state")
+        try:
+            state = checked(state)
+            if state["phase"] != 3 or state["written"] != size:
+                raise ProtocolError("unexpected final state")
+        except ProtocolError:
+            raise FinishUnknown("finish state unavailable; check the confirmed device version")
         return state
 
 

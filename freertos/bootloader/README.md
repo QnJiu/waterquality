@@ -47,6 +47,18 @@ python tools/sign_manifest.py --image firmware.bin --key signing-key.pem --produ
 
 加密 PEM 私钥时增加 `--encrypted-key`，工具会交互式读取密码。输出的 Manifest ID 是签名正文的 SHA-256；发送工具自动计算该 ID，也可用 `--manifest-id` 指定期望值进行核对。发送前工具检查 TPU1 清单字段、镜像大小和 SHA-256，检查通过不代表签名有效，设备仍须独立验签；`--manifest` 和 `--image` 分别传入生成的清单与原镜像。工具不会覆盖已有输出文件；产品 ID、版本和目标槽必须与设备配置和升级策略一致。私钥只保存在可信签名环境，设备仅使用对应公钥；测试密钥不能用于实际部署。工具生成清单不表示设备已完成启动验签或硬件升级。
 
+## 通过 HTTPS 获取升级文件
+
+电脑端也可从 HTTPS 地址下载清单和镜像，再通过串口或 TCP 发送到设备：
+
+```text
+python freertos/tools/upgrade_client.py --serial COM3 --manifest-url https://example.com/manifest.bin --image-url https://example.com/firmware.bin
+```
+
+`--manifest` 与 `--manifest-url` 二选一，`--image` 与 `--image-url` 二选一，也可以混用本地文件和远程文件。HTTPS 使用 Python 默认的证书和主机名验证；只允许 HTTPS 重定向，不允许在地址中嵌入账号密码。远程清单上限为 116 字节，远程镜像上限为 F407 参考槽大小 384 KiB，下载超时使用 `--timeout`。下载结束后进行清单/镜像一致性检查，随后才连接设备。设备必须独立验签及校验镜像。下载失败时重新运行命令；设备端传输的断点恢复仍依靠已有协议。
+
+这是电脑端网关参考，不包含设备直接联网、云平台认证、版本发布管理或设备端云协议；TCP 到设备仍是明文，需由部署环境提供安全通道和访问控制。
+
 ## 每槽清单存储与启动验签
 
 `tp_signed_boot` 将签名清单存储到与镜像槽对应的两个独立可擦写槽，槽大小至少 120 字节，前 116 字节是清单，末尾 4 字节是最后提交标记。配置可信公钥、产品 ID、镜像读取和容量，再将 `tp_signed_boot_authenticate`、`tp_signed_boot_download_verify` 和 `tp_signed_boot_verify` 分别接入升级命令、下载验证和启动验证回调。下载验证先检查完整镜像，再擦写并回读清单，最后提交；启动验证每次重新读取清单，独立验签并计算镜像哈希，不依赖下载时的 RAM 缓存。各存储回调的上下文不同，下载的擦写接口需要由装配层适配到同一个 `image_ctx`。

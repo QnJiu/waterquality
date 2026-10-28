@@ -7,11 +7,14 @@ import socket
 import struct
 import sys
 import time
+import urllib.parse
+import urllib.request
 
 FLAG, ESC = 0x7E, 0x7D
 STATUS, BEGIN, RESUME, WRITE, FINISH = range(1, 6)
 OK, BUSY, INVALID, IO_ERROR, TIMEOUT, LOCK_BUSY = range(6)
 MAX_RAW = 520
+MAX_IMAGE_SIZE = 384 * 1024  # F407 reference slot
 
 
 class ProtocolError(Exception):
@@ -229,6 +232,29 @@ class SerialTransport:
         self.port.close()
 
 
+def require_https(url):
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username is not None:
+        raise ValueError("download URL must be HTTPS without embedded credentials")
+
+
+class HttpsRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        require_https(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def download(url, limit, timeout):
+    """Fetch one bounded file with certificate validation and HTTPS-only redirects."""
+    require_https(url)
+    opener = urllib.request.build_opener(HttpsRedirect())
+    with opener.open(url, timeout=timeout) as response:
+        data = response.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError("download exceeds maximum size")
+    return data
+
+
 def check_files(manifest, image, expected_id=None):
     """Check TPU1 file consistency before contacting the device.
 
@@ -255,16 +281,23 @@ def main():
     target.add_argument("--serial", metavar="PORT")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=10)
-    parser.add_argument("--manifest", required=True, type=pathlib.Path)
+    manifest_source = parser.add_mutually_exclusive_group(required=True)
+    manifest_source.add_argument("--manifest", type=pathlib.Path)
+    manifest_source.add_argument("--manifest-url", help="HTTPS URL for the TPU1 manifest")
     parser.add_argument("--manifest-id", help="optional expected manifest ID in hex")
-    parser.add_argument("--image", required=True, type=pathlib.Path)
+    image_source = parser.add_mutually_exclusive_group(required=True)
+    image_source.add_argument("--image", type=pathlib.Path)
+    image_source.add_argument("--image-url", help="HTTPS URL for the F407 image")
     args = parser.parse_args()
     transport = None
     try:
         if args.timeout <= 0 or args.baud <= 0:
             raise ValueError("timeout and baud must be positive")
         expected_id = bytes.fromhex(args.manifest_id) if args.manifest_id is not None else None
-        manifest, image = args.manifest.read_bytes(), args.image.read_bytes()
+        manifest = (download(args.manifest_url, 116, args.timeout) if args.manifest_url
+                    else args.manifest.read_bytes())
+        image = (download(args.image_url, MAX_IMAGE_SIZE, args.timeout) if args.image_url
+                 else args.image.read_bytes())
         manifest_id = check_files(manifest, image, expected_id)
         if args.tcp:
             host, port = args.tcp.rsplit(":", 1)

@@ -1,8 +1,10 @@
 import hashlib
+import io
 import pathlib
 import struct
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 import upgrade_client as u
@@ -65,6 +67,45 @@ class Tests(unittest.TestCase):
                 u.check_files(manifest, bad_image)
         with self.assertRaises(ValueError):
             u.check_files(manifest, image, bytes(32))
+
+    def test_https_download_and_redirect_policy(self):
+        for url in ("http://example.com/file", "file:///etc/passwd",
+                    "https://user:password@example.com/file"):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                u.download(url, 10, 1)
+        handler = u.HttpsRedirect()
+        request = u.urllib.request.Request("https://example.com/file")
+        with self.assertRaises(ValueError):
+            handler.redirect_request(request, None, 302, "Found", {}, "http://example.com/file")
+        opener = unittest.mock.Mock()
+        with patch.object(u.urllib.request, "build_opener", return_value=opener):
+            opener.open.return_value = io.BytesIO(b"12345")
+            self.assertEqual(u.download("https://example.com/file", 5, 2), b"12345")
+            opener.open.assert_called_with("https://example.com/file", timeout=2)
+            opener.open.return_value = io.BytesIO(b"123456")
+            with self.assertRaises(ValueError):
+                u.download("https://example.com/file", 5, 2)
+
+    def test_remote_files_checked_before_device_connection(self):
+        image = b"firmware"
+        body = struct.pack("<4sIIIB3x32s", b"TPU1", 1, 2, len(image), 1,
+                           hashlib.sha256(image).digest())
+        manifest = body + bytes(64)
+        argv = ["upgrade_client", "--tcp", "host:1234", "--manifest-url",
+                "https://example.com/manifest", "--image-url", "https://example.com/image"]
+        with patch.object(sys, "argv", argv), patch.object(u, "download", side_effect=[manifest, b"wrong"]), \
+             patch.object(u, "TcpTransport") as transport, patch.object(sys, "stderr", new_callable=io.StringIO):
+            self.assertEqual(u.main(), 1)
+            transport.assert_not_called()
+        state = {"bank": 1, "version": 2, "written": len(image)}
+        with patch.object(sys, "argv", argv), patch.object(u, "download", side_effect=[manifest, image]) as fetch, \
+             patch.object(u, "TcpTransport") as transport, patch.object(u, "upload", return_value=state) as upload, \
+             patch.object(sys, "stdout", new_callable=io.StringIO):
+            self.assertEqual(u.main(), 0)
+            self.assertEqual(fetch.call_args_list[0].args[1], 116)
+            self.assertEqual(fetch.call_args_list[1].args[1], u.MAX_IMAGE_SIZE)
+            self.assertEqual(upload.call_args.args[2], hashlib.sha256(body).digest())
+            transport.return_value.close.assert_called_once()
 
     def test_frames_and_recovery(self):
         self.assertEqual(u.crc16(b"123456789"), 0x4B37)

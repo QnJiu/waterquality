@@ -229,7 +229,7 @@ def main(argv=None):
     log = sub.add_parser('log')
     log.add_argument('--sequence', type=int, help='omit for latest event')
     cmd = sub.add_parser('command')
-    cmd.add_argument('name', choices=['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start', 'self-check'])
+    cmd.add_argument('name', choices=['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start', 'self-check', 'recover'])
     schedule = sub.add_parser('schedule')
     schedule.add_argument('mode', choices=['controlled', 'periodic', 'daily'])
     schedule.add_argument('seconds', type=int)
@@ -249,7 +249,7 @@ def main(argv=None):
                 valid, high, low = client.read(128, 3)
                 print(json.dumps({'temperature_c': float32(high, low) if valid else None}))
             elif args.action == 'command':
-                client.command(['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start', 'self-check'].index(args.name) + 1)
+                client.command(['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start', 'self-check', 'recover'].index(args.name) + 1)
                 print('Command accepted; check status for completion.')
             elif args.action == 'auto-standard-status':
                 print(json.dumps(client.auto_standard_status()))

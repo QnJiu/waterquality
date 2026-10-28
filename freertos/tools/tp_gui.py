@@ -77,7 +77,7 @@ class App:
         ttk.Label(frame, textvariable=self.status, justify='left').grid(sticky='w', pady=10)
         controls = ttk.Frame(frame); controls.grid(sticky='w')
         for label, command in (('读取状态', None), ('启动', 1), ('停止', 2),
-                               ('清故障', 3), ('下一步', 5), ('ADC恢复', 8), ('自检', 10)):
+                               ('清故障', 3), ('下一步', 5), ('ADC恢复', 8), ('自检', 10), ('故障恢复', 11)):
             ttk.Button(controls, text=label, command=lambda c=command: self.start('status' if c is None else 'command', c)).pack(side='left', padx=2)
         calibration = ttk.Frame(frame); calibration.grid(sticky='w', pady=(8, 0))
         for label, operation, command in (('读取标定状态', 'cal_status', None),

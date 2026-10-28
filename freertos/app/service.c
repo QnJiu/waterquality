@@ -360,6 +360,16 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
                 if (run_preflight(s)!=TP_OK) return TP_IO_ERROR;
             }
             return tp_clear_fault(s->controller);
+        case 11: {
+            /* Operator-requested recovery never resumes an interrupted run. */
+            if (s->maintenance || calibration_running(s) || standard_running(s)) return TP_BUSY;
+            if (s->controller->state!=TP_FAILED || !s->recover_adc || !s->preflight) return TP_INVALID;
+            s->controller->hal.safe_outputs(s->controller->hal.ctx);
+            tp_result r=s->recover_adc(s->recover_ctx);
+            if (r!=TP_OK) return r;
+            if (run_preflight(s)!=TP_OK) return TP_IO_ERROR;
+            return tp_clear_fault(s->controller);
+        }
         case 5: return s->maintenance ? TP_BUSY : tp_advance(s->controller, s->now_ms);
         case 6: return start_auto_cal(s);
         case 7: return apply_auto_cal(s);

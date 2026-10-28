@@ -97,5 +97,12 @@ int main(void) {
     assert(c.awaiting_advance && fabsf(c.readings[TP_READ_BLANK]-0.042f)<0.00001f);
     assert(command(&m,5)==6); tp_service_tick(&s,62,false,0);
     assert(c.state==TP_COMPLETE && f.safe_calls>=4);
+    /* Exercise the combined command through an actual Modbus frame. */
+    f.ready=false; f.now=100; assert(command(&m,1)==6);
+    tp_service_tick(&s,100,false,0); f.now=150; tp_service_tick(&s,150,false,0);
+    assert(c.state==TP_FAILED && !f.adc.configured);
+    f.fail_write=true; assert(command(&m,11)==(6|0x80) && c.state==TP_FAILED);
+    f.fail_write=false; assert(command(&m,11)==6 && c.state==TP_IDLE);
+    assert(tp_adc_reader_ready(&f.reader) && !c.result_valid);
     return 0;
 }

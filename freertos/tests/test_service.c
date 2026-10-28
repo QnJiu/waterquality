@@ -156,8 +156,27 @@ int main(void) {
     check_faults=0;
     assert(tp_service_write_holding(&s,0,1,&clear)==TP_OK && c.state==TP_IDLE);
     assert(tp_service_write_holding(&s,0,1,&clear)==TP_INVALID);
+    /* One-command recovery keeps the fault latched on every failed stage. */
+    uint16_t recover_all=11;
+    tp_stop(&c);
+    assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_INVALID); /* no ADC callback */
+    assert(tp_service_attach_adc_recovery(&s,NULL,recover)==TP_OK);
+    recovery_result=TP_IO_ERROR;
+    int prior_checks=checks, prior_safe=safe_count;
+    assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_IO_ERROR);
+    assert(c.state==TP_FAILED && checks==prior_checks && safe_count==prior_safe+1);
+    recovery_result=TP_OK; check_faults=TP_PREFLIGHT_LEVEL;
+    assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_IO_ERROR);
+    assert(c.state==TP_FAILED && s.preflight_faults==TP_PREFLIGHT_LEVEL);
+    check_faults=0;
+    c.fault=TP_FAULT_OVERTEMP; c.max_temperature_c=10;
+    assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_IO_ERROR && c.state==TP_FAILED);
+    c.max_temperature_c=100;
+    assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_OK && c.state==TP_IDLE);
+    assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_INVALID);
     assert(tp_service_enter_maintenance(&s)==TP_OK);
     assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_BUSY);
+    assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_BUSY);
     tp_init(&c,&hal,NULL,NULL,100);
     assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
     uint16_t time_words[2]={0x6553,0xf100}, clock_word=99; /* 1700000000 UTC */

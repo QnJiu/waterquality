@@ -8,7 +8,6 @@ from umqtt.simple import MQTTClient, MQTTException
 import config
 from modbus_status import read_status, read_temperature, read_confirmed_version
 from cloud import publish_status, publish_version, publish_progress
-from ota_notice import UpgradeNotice, load_pending, save_pending, clear_pending
 
 
 def connect_wifi():
@@ -50,7 +49,10 @@ def main():
                 rx=Pin(config.UART_RX), timeout=0)
     direction = Pin(config.RS485_DE, Pin.OUT, value=0)
     message_id = 0
-    notice = UpgradeNotice(config.OTA_TOPIC) if config.OTA_ENABLED else None
+    notice = None
+    if config.OTA_ENABLED:
+        from ota_notice import UpgradeNotice, load_pending, save_pending, clear_pending
+        notice = UpgradeNotice(config.OTA_TOPIC)
     progress = None
     state_file = getattr(config, "OTA_STATE_FILE", "ota_pending.txt")
     awaiting_version = load_pending(state_file) if notice else None

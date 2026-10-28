@@ -144,6 +144,39 @@ class CloudTest(unittest.TestCase):
             self.assertFalse(notice.valid_version('²'))
             self.assertTrue(notice.valid_version('4294967295'))
 
+    def test_main_publishes_without_optional_ota_files(self):
+        class Pin:
+            OUT = 1
+            def __init__(self, *args, **kwargs): pass
+        class Clock:
+            def ticks_ms(self): return 0
+            def ticks_add(self, a, b): return a + b
+            def ticks_diff(self, a, b): return a - b
+            def sleep_ms(self, ms): raise KeyboardInterrupt()
+        class Client:
+            sock = types.SimpleNamespace(close=lambda: None)
+            def __init__(self): self.sent = []
+            def publish(self, topic, payload, qos): self.sent.append((topic, json.loads(payload)))
+        mqtt = types.ModuleType('umqtt.simple')
+        mqtt.MQTTClient, mqtt.MQTTException = object, type('MQTTException', (Exception,), {})
+        cfg = types.SimpleNamespace(PUBLISH_INTERVAL_S=1, UART_ID=2, UART_TX=17, UART_RX=16,
+                                    RS485_DE=4, OTA_ENABLED=False, MQTT_TOPIC='status', MODBUS_ADDRESS=1)
+        modules = {'network': types.ModuleType('network'), 'ntptime': types.ModuleType('ntptime'),
+                   'machine': types.SimpleNamespace(UART=lambda *a, **kw: object(), Pin=Pin),
+                   'umqtt': types.ModuleType('umqtt'), 'umqtt.simple': mqtt, 'config': cfg,
+                   'modbus_status': load('modbus_status', 'modbus_status.py'), 'cloud': cloud,
+                   'ota_notice': None, 'ota_client': None, 'ota_https': None}
+        with patch.dict(sys.modules, modules):
+            main = load('esp32_cloud_main_no_ota', 'main.py')
+            client = Client()
+            main.time = Clock()
+            main.connect_wifi = lambda: types.SimpleNamespace(isconnected=lambda: True)
+            main.connect_mqtt = lambda: client
+            main.read_status = lambda *a: self.status
+            main.read_temperature = lambda *a: 23.5
+            with self.assertRaises(KeyboardInterrupt): main.main()
+        self.assertEqual(client.sent[0][1]['params']['State'], 2)
+
     def test_main_reports_only_confirmed_version(self):
         self.check_main_confirmed_version(False)
 

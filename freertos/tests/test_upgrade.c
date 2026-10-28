@@ -1,5 +1,6 @@
 #include "tp_upgrade.h"
 #include "tp_upgrade_commands.h"
+#include "tp_upgrade_wire.h"
 #include <assert.h>
 #include <string.h>
 
@@ -45,6 +46,58 @@ static tp_result authenticate(void *ctx,const uint8_t *data,size_t n,tp_download
     if(n!=2 || memcmp(data,"ok",2)) return TP_INVALID;
     *m=(tp_download_manifest){{1},2,4,1}; return TP_OK;
 }
+typedef struct { uint8_t frame[120]; size_t length; unsigned sends; bool fail; } wire_output;
+static tp_result wire_send(void *ctx,const uint8_t *p,size_t n) {
+    wire_output *o=ctx; assert(n<=sizeof(o->frame)); memcpy(o->frame,p,n); o->length=n; o->sends++;
+    return o->fail ? TP_IO_ERROR : TP_OK;
+}
+static tp_result deliver(tp_upgrade_wire *w,const uint8_t *p,size_t n) {
+    tp_result r=TP_OK;
+    for(size_t i=0;i<n;i++) { tp_result next=tp_upgrade_wire_byte(w,p[i]); if(next!=TP_OK) r=next; }
+    return r;
+}
+static size_t unescape(const wire_output *o,uint8_t *out) {
+    assert(o->length>=2 && o->frame[0]==0x7e && o->frame[o->length-1]==0x7e);
+    size_t n=0;
+    for(size_t i=1;i<o->length-1;i++) {
+        uint8_t b=o->frame[i]; if(b==0x7d) { assert(++i<o->length-1); b=o->frame[i]^0x20; }
+        out[n++]=b;
+    }
+    return n;
+}
+static void wire_test(void) {
+    store bs={0},ds={0}; images image={0}; memset(bs.slot,0xff,sizeof(bs.slot)); memset(ds.slot,0xff,sizeof(ds.slot));
+    tp_boot_io boot={{&bs,read_slot,erase_slot,write_slot},&image,verify_boot};
+    tp_download_io download={{&ds,read_slot,erase_slot,write_slot},&image,erase_image,read_image,write_image,verify_download};
+    tp_upgrade upgrade={&boot,&download}; tp_upgrade_commands c={&upgrade,NULL,authenticate};
+    wire_output output={0}; tp_upgrade_wire wire; uint8_t frame[TP_UP_WIRE_ENCODED_MAX],decoded[120]; size_t n;
+    assert(tp_boot_provision(&boot,0,1)==TP_OK && tp_upgrade_wire_init(&wire,&c,&output,wire_send)==TP_OK);
+    assert(tp_upgrade_wire_request(TP_UP_CMD_BEGIN,0x7d7e,(const uint8_t *)"ok",2,frame,sizeof(frame),&n)==TP_OK);
+    assert(deliver(&wire,frame,n)==TP_OK && image.erases==1 && output.sends==1);
+    assert(unescape(&output,decoded)==56 && decoded[0]==1 && decoded[1]==0x82 && decoded[2]==0x7e && decoded[3]==0x7d);
+    assert(decoded[6]==TP_OK && decoded[7]==1 && decoded[8]==TP_DOWNLOAD_WRITING);
+    const uint8_t write[]={0,0,0,0,'d','a','t','a'};
+    assert(tp_upgrade_wire_request(TP_UP_CMD_WRITE,3,write,sizeof(write),frame,sizeof(frame),&n)==TP_OK);
+    frame[n-2]^=1; assert(deliver(&wire,frame,n)==TP_INVALID && !image.writes && output.sends==1);
+    assert(tp_upgrade_wire_request(TP_UP_CMD_WRITE,3,write,sizeof(write),frame,sizeof(frame),&n)==TP_OK);
+    output.fail=true; assert(deliver(&wire,frame,n)==TP_IO_ERROR && image.writes==1);
+    output.fail=false;
+    assert(tp_upgrade_wire_request(TP_UP_CMD_STATUS,4,NULL,0,frame,sizeof(frame),&n)==TP_OK);
+    assert(deliver(&wire,frame,n)==TP_OK); assert(unescape(&output,decoded)==56 && decoded[18]==4);
+    assert(tp_upgrade_wire_request(TP_UP_CMD_FINISH,5,NULL,0,frame,sizeof(frame),&n)==TP_OK);
+    assert(deliver(&wire,frame,n)==TP_OK); assert(unescape(&output,decoded)==56 && decoded[6]==TP_OK && decoded[8]==TP_DOWNLOAD_VERIFIED);
+    assert(tp_upgrade_wire_byte(&wire,0x7d)==TP_OK);
+    assert(tp_upgrade_wire_byte(&wire,0x01)==TP_INVALID);
+    assert(tp_upgrade_wire_byte(&wire,0x7e)==TP_INVALID);
+    assert(tp_upgrade_wire_request(TP_UP_CMD_STATUS,6,NULL,0,frame,sizeof(frame),&n)==TP_OK);
+    assert(deliver(&wire,frame,n)==TP_OK);
+    assert(tp_upgrade_wire_byte(&wire,0x42)==TP_OK); tp_upgrade_wire_reset(&wire);
+    assert(deliver(&wire,frame,n)==TP_OK);
+    for(size_t i=0;i<TP_UP_WIRE_RAW_MAX;i++) assert(tp_upgrade_wire_byte(&wire,0x55)==TP_OK);
+    assert(tp_upgrade_wire_byte(&wire,0x55)==TP_INVALID);
+    assert(tp_upgrade_wire_byte(&wire,0x7e)==TP_INVALID);
+    assert(deliver(&wire,frame,n)==TP_OK);
+}
 static void commands_test(void) {
     store bs={0},ds={0}; images image={0};
     memset(bs.slot,0xff,sizeof(bs.slot)); memset(ds.slot,0xff,sizeof(ds.slot));
@@ -68,6 +121,7 @@ static void commands_test(void) {
     assert(tp_upgrade_command_execute(&c,TP_UP_CMD_WRITE,first,4,&reply)==TP_INVALID);
 }
 int main(void) {
+    wire_test();
     commands_test();
     store bs,ds; images image={0};
     memset(&bs,0,sizeof(bs)); memset(&ds,0,sizeof(ds));

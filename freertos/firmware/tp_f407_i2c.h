@@ -16,5 +16,9 @@ typedef struct { bool initialized; } tp_f407_i2c;
 typedef struct { SemaphoreHandle_t mutex; } tp_f407_i2c;
 #endif
 tp_result tp_f407_i2c_init(tp_f407_i2c *bus);
+#ifdef TP_F407_I2C_POLL_ONLY
+/* Wait for STOP to finish, then disable I2C2 and release its pins. */
+tp_result tp_f407_i2c_poll_shutdown(tp_f407_i2c *bus);
+#endif
 tp_i2c_io tp_f407_i2c_io(tp_f407_i2c *bus);
 #endif

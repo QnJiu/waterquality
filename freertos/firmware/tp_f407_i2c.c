@@ -123,6 +123,21 @@ tp_result tp_f407_i2c_init(tp_f407_i2c *bus) {
     #endif
     return TP_OK;
 }
+#ifdef TP_F407_I2C_POLL_ONLY
+tp_result tp_f407_i2c_poll_shutdown(tp_f407_i2c *bus) {
+    if (!bus || !bus->initialized) return TP_INVALID;
+    tp_result r=idle(DWT->CYCCNT);
+    if (r!=TP_OK) return r;
+    I2C2->CR1=0;
+    RCC->APB1RSTR |= RCC_APB1RSTR_I2C2RST;
+    RCC->APB1RSTR &= ~RCC_APB1RSTR_I2C2RST;
+    RCC->APB1ENR &= ~RCC_APB1ENR_I2C2EN;
+    LL_GPIO_SetPinMode(GPIOB,LL_GPIO_PIN_10,LL_GPIO_MODE_INPUT);
+    LL_GPIO_SetPinMode(GPIOB,LL_GPIO_PIN_11,LL_GPIO_MODE_INPUT);
+    bus->initialized=false;
+    return TP_OK;
+}
+#endif
 tp_i2c_io tp_f407_i2c_io(tp_f407_i2c *bus) {
     tp_i2c_io io={bus,write_bus,read_bus}; return io;
 }

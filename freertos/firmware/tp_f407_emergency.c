@@ -3,7 +3,8 @@
 
 /* Low-active valves, heater, and pump enable. Preload inactive output levels
  * before changing alternate-function pins to GPIO. No RTOS or driver state is
- * touched: after this function the processor must remain in the fault path. */
+ * touched: running drivers cannot resume after this function. It may also be
+ * called at reset, before any driver is initialized. */
 static void output_mode(GPIO_TypeDef *port, unsigned pin) {
     port->OTYPER &= ~(1u << pin);
     port->MODER = (port->MODER & ~(3u << (2u * pin))) | (1u << (2u * pin));

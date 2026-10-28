@@ -10,6 +10,8 @@ uint32_t SystemCoreClock=8000000u;
 static tp_f030_rx_event queue[32];
 static unsigned head, count;
 static uint32_t clock_ms;
+static BaseType_t scheduler=taskSCHEDULER_NOT_STARTED;
+static bool unlocked;
 QueueHandle_t xQueueCreate(unsigned length,size_t size) {
     assert(length==32 && size==sizeof(queue[0])); head=count=0; return queue;
 }
@@ -29,11 +31,20 @@ UBaseType_t uxQueueMessagesWaiting(QueueHandle_t q) { assert(q==queue); return c
 BaseType_t xTaskCreate(void (*fn)(void *),const char *name,uint16_t stack,void *ctx,UBaseType_t p,TaskHandle_t *out) {
     assert(fn && name && stack && ctx && p); *out=ctx; return pdPASS;
 }
-BaseType_t xTaskGetSchedulerState(void) { return taskSCHEDULER_NOT_STARTED; }
+BaseType_t xTaskGetSchedulerState(void) { return scheduler; }
 TickType_t xTaskGetTickCount(void) { return clock_ms; }
 void vTaskNotifyGiveFromISR(TaskHandle_t t,BaseType_t *wake) { assert(t); (void)wake; }
+BaseType_t xTaskNotifyGive(TaskHandle_t t) { assert(t); return pdPASS; }
 uint32_t ulTaskNotifyTake(BaseType_t clear,TickType_t wait) { (void)clear; (void)wait; return 0; }
 static tp_result inputs(void *ctx,tp_sub_inputs *out) { (void)ctx; *out=(tp_sub_inputs){0}; return TP_OK; }
+static tp_result lock_output(void *ctx,bool open) { (void)ctx; unlocked=open; return TP_OK; }
+static tp_result reader_send(void *ctx,const uint8_t *data,size_t n) { (void)ctx; (void)data; (void)n; return TP_OK; }
+static tp_result reader_receive(void *ctx,uint8_t *data,size_t cap,size_t *n) {
+    (void)ctx; (void)data; (void)cap; (void)n; return TP_BUSY;
+}
+static tp_result request(void *ctx,uint32_t id,const uint8_t *card,size_t n) {
+    (void)ctx; (void)id; (void)card; (void)n; return TP_OK;
+}
 static void receive_byte(uint8_t b,uint32_t us) {
     fake_tim.CNT=us; fake_tim.SR=0; fake_usart.RDR=b; fake_usart.ISR=USART_ISR_RXNE;
     USART1_IRQHandler(); fake_usart.ISR=0;
@@ -104,6 +115,31 @@ int main(void) {
     fake_tim.CNT=33000; clock_ms=33; service_once(&s); assert(s.transmitting);
     finish_tx(reply); assert(tp_sub_master_receive(&master,33,reply,sizeof(reply))==TP_OK);
     assert(master.status.droplet_count==UINT32_MAX && master.status.faults==TP_SUB_DEVICE_FAULT);
+
+    tp_pn532_io reader={NULL,reader_send,reader_receive};
+    tp_door_io output={NULL,lock_output}; tp_door_service door;
+    assert(tp_door_service_init(&door,&reader,&output,NULL,request,1000,50,1,20,100,5)==TP_OK);
+    s.app.door=&door;
+    assert(tp_f030_subordinate_authorize(&s,5,true)==TP_INVALID);
+    scheduler=taskSCHEDULER_RUNNING;
+    uint8_t card[]={1,2,3,4}; bool new_request=false; uint32_t id=0;
+    clock_ms=40;
+    assert(tp_door_observe(&door.door,clock_ms,card,sizeof(card),&new_request,&id)==TP_OK && new_request);
+    assert(tp_f030_subordinate_authorize(&s,id+1,true)==TP_OK);
+    assert(tp_f030_subordinate_authorize(&s,id,true)==TP_BUSY);
+    service_once(&s); assert(!unlocked && door.door.auth_pending);
+    assert(tp_f030_subordinate_authorize(&s,id,false)==TP_OK);
+    service_once(&s); assert(!unlocked && !door.door.auth_pending);
+    assert(tp_door_observe(&door.door,41,NULL,0,&new_request,&id)==TP_OK);
+    assert(tp_door_observe(&door.door,42,card,sizeof(card),&new_request,&id)==TP_OK && new_request);
+    clock_ms=43;
+    assert(tp_f030_subordinate_authorize(&s,id,true)==TP_OK);
+    service_once(&s); assert(unlocked && door.door.state==TP_DOOR_UNLOCKED);
+    clock_ms=63; service_once(&s); assert(!unlocked);
+    assert(tp_door_observe(&door.door,64,NULL,0,&new_request,&id)==TP_OK);
+    assert(tp_door_observe(&door.door,65,card,sizeof(card),&new_request,&id)==TP_OK && new_request);
+    assert(tp_f030_subordinate_authorize(&s,id,true)==TP_OK);
+    clock_ms=165; service_once(&s); assert(!unlocked && !door.door.auth_pending);
 
     timer_high=65536u; fake_tim.CNT=7; fake_tim.SR=TIM_SR_UIF;
     assert(time_us()==131079u); TIM3_IRQHandler(); fake_tim.SR=0;

@@ -65,6 +65,17 @@ void tp_f030_subordinate_droplet_from_isr(tp_f030_subordinate *s,BaseType_t *wak
     portCLEAR_INTERRUPT_MASK_FROM_ISR(mask);
     vTaskNotifyGiveFromISR(s->task,wake);
 }
+tp_result tp_f030_subordinate_authorize(tp_f030_subordinate *s,uint32_t id,bool approved) {
+    if(!s || s!=instance || !s->app.door ||
+       xTaskGetSchedulerState()!=taskSCHEDULER_RUNNING) return TP_INVALID;
+    taskENTER_CRITICAL();
+    if(s->authorization_pending) { taskEXIT_CRITICAL(); return TP_BUSY; }
+    s->authorization_id=id; s->authorization_approved=approved;
+    s->authorization_pending=true;
+    taskEXIT_CRITICAL();
+    xTaskNotifyGive(s->task);
+    return TP_OK;
+}
 static void hardware_start(void) {
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
     RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
@@ -87,10 +98,16 @@ static void service_once(tp_f030_subordinate *s) {
     taskENTER_CRITICAL();
     uint32_t droplets=s->droplets_pending;
     bool droplets_lost=s->droplets_overflow;
+    bool authorized=s->authorization_pending;
+    uint32_t authorization_id=s->authorization_id;
+    bool approved=s->authorization_approved;
+    s->authorization_pending=false;
     s->droplets_pending=0; s->droplets_overflow=false;
     taskEXIT_CRITICAL();
     tp_sub_node_droplets(&s->app.node,droplets);
     if(droplets_lost) tp_sub_node_count_error(&s->app.node);
+    if(authorized && s->app.door)
+        (void)tp_door_service_authorize(s->app.door,(uint32_t)xTaskGetTickCount(),authorization_id,approved);
     if(s->app.door)
         s->app.door_result=tp_door_service_tick(s->app.door,(uint32_t)xTaskGetTickCount());
     taskENTER_CRITICAL();

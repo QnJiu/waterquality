@@ -23,6 +23,8 @@ typedef struct {
     volatile bool transmitting, overflow;
     volatile uint32_t droplets_pending;
     volatile bool droplets_overflow;
+    uint32_t authorization_id;
+    bool authorization_approved, authorization_pending;
     bool processing_rx;
 } tp_f030_subordinate;
 
@@ -33,4 +35,6 @@ tp_result tp_f030_subordinate_init(tp_f030_subordinate *, void *input_ctx,
     bool door_fault_is_device_fault, uint16_t stack_words, UBaseType_t priority);
 /* Call from an ISR after the scheduler starts. wake is passed to portYIELD_FROM_ISR. */
 void tp_f030_subordinate_droplet_from_isr(tp_f030_subordinate *,BaseType_t *wake);
+/* Task context only, after scheduler start. TP_OK means queued, not accepted. */
+tp_result tp_f030_subordinate_authorize(tp_f030_subordinate *,uint32_t id,bool approved);
 #endif

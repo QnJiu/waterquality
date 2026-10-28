@@ -10,6 +10,7 @@ typedef int BaseType_t;
 #define configMAX_PRIORITIES 8
 #define pdMS_TO_TICKS(ms) (ms)
 #define taskSCHEDULER_NOT_STARTED 0
+#define taskSCHEDULER_RUNNING 1
 #define taskENTER_CRITICAL() ((void)0)
 #define taskEXIT_CRITICAL() ((void)0)
 #define portYIELD_FROM_ISR(wake) ((void)(wake))

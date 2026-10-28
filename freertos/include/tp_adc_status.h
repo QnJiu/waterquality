@@ -7,13 +7,15 @@
  * status (0 waiting, 1 valid, 2 error), tp_result, channel, sample sequence
  * (16-bit wrapping), signed microvolts high word then low word, rounded to the
  * nearest microvolt (half away from zero). On failure the
- * value is cleared. External synchronization is required for multiple tasks. */
+ * value is cleared. Addresses 6..13 repeat these six fields between two
+ * copies of a 16-bit revision, incremented after every completed attempt.
+ * External synchronization is required for multiple tasks. */
 typedef struct {
     tp_adc_reader *reader;
     uint32_t period_ms, next_ms;
     uint8_t channel;
     bool sampling;
-    uint16_t status, result, sequence;
+    uint16_t status, result, sequence, revision;
     int32_t microvolts;
 } tp_adc_status;
 tp_result tp_adc_status_init(tp_adc_status *s, tp_adc_reader *reader,

@@ -10,7 +10,7 @@
 #include "posix_board_if.h"
 #include "../../tests/adc_slice_vector.h"
 
-static uint8_t response[17];
+static uint8_t response[21];
 static atomic_t response_length;
 static atomic_t response_overflow;
 
@@ -40,7 +40,7 @@ static void test_thread(void *a, void *b, void *c) {
     ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
     const struct device *uart = DEVICE_DT_GET(DT_NODELABEL(tp_uart));
     const struct gpio_dt_spec drdy = GPIO_DT_SPEC_GET(DT_ALIAS(tp_adc), drdy_gpios);
-    uint8_t request[] = TP_SLICE_REQUEST;
+    uint8_t request[] = {1, 3, 0, 6, 0, 8, 0xa4, 0x0d};
     size_t received = 0;
     k_sleep(K_MSEC(200));
     if (gpio_emul_input_set(drdy.port, drdy.pin, 0) != 0) goto fail;
@@ -53,12 +53,13 @@ static void test_thread(void *a, void *b, void *c) {
     }
     if (received != sizeof(response) || atomic_get(&response_overflow)) goto fail;
     uint16_t crc = crc16(response, sizeof(response) - 2);
-    if (response[0] != 1 || response[1] != 3 || response[2] != 12 ||
-        response[3] != 0 || response[4] != 1 || response[5] != 0 || response[6] != 0 ||
-        response[7] != 0 || response[8] != 0 || (response[9] == 0 && response[10] == 0) ||
-        response[11] != (uint8_t)(TP_SLICE_UV >> 24) || response[12] != (uint8_t)(TP_SLICE_UV >> 16) ||
-        response[13] != (uint8_t)(TP_SLICE_UV >> 8) || response[14] != (uint8_t)TP_SLICE_UV ||
-        response[15] != (uint8_t)crc || response[16] != (uint8_t)(crc >> 8)) goto fail;
+    if (response[0] != 1 || response[1] != 3 || response[2] != 16 ||
+        response[3] != response[17] || response[4] != response[18] ||
+        response[5] != 0 || response[6] != 1 || response[7] != 0 || response[8] != 0 ||
+        response[9] != 0 || response[10] != 0 || (response[11] == 0 && response[12] == 0) ||
+        response[13] != (uint8_t)(TP_SLICE_UV >> 24) || response[14] != (uint8_t)(TP_SLICE_UV >> 16) ||
+        response[15] != (uint8_t)(TP_SLICE_UV >> 8) || response[16] != (uint8_t)TP_SLICE_UV ||
+        response[19] != (uint8_t)crc || response[20] != (uint8_t)(crc >> 8)) goto fail;
     printk("TP_NATIVE_SELFTEST PASS\n");
     posix_exit(0);
 fail:

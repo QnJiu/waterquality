@@ -41,7 +41,7 @@ int main(void) {
     shared_slice_vector();
     fake_adc f = {0}; tp_ads1220 a; tp_ads1220_io io = {&f, transfer, ready};
     uint8_t regs[4] = {1,0,0,0}; tp_adc_channel ch = {8, 0.000001f};
-    tp_adc_reader reader; tp_adc_status s; uint16_t values[6];
+    tp_adc_reader reader; tp_adc_status s; uint16_t values[8];
     assert(tp_ads1220_init(&a, &io, regs, 50) == TP_OK);
     assert(tp_adc_reader_init(&reader, &a, &ch, 1) == TP_OK);
     assert(tp_adc_reader_ready(&reader) && !tp_adc_reader_ready(NULL));
@@ -59,11 +59,19 @@ int main(void) {
     assert(tp_modbus_frame(&modbus, request, sizeof(request), reply, sizeof(reply), &length) == TP_OK);
     assert(length == 17 && reply[0] == 1 && reply[1] == 3 && reply[2] == 12);
     assert(reply[4] == 1 && reply[10] == 1 && reply[13] == 4 && reply[14] == 0xd2);
-    assert(tp_adc_status_read(&s, 5, 2, values) == TP_INVALID);
+    assert(tp_adc_status_read(&s, 6, 8, values) == TP_OK);
+    assert(values[0] == 1 && values[1] == 1 && values[4] == 1 &&
+           values[6] == 1234 && values[7] == values[0]);
+    assert(tp_adc_status_read(&s, 13, 2, values) == TP_INVALID);
     tp_adc_status_poll(&s, 84); assert(!s.sampling);
     tp_adc_status_poll(&s, 85); assert(s.sampling);
+    uint16_t before;
+    assert(tp_adc_status_read(&s, 6, 1, &before) == TP_OK);
     f.ready = false; tp_adc_status_poll(&s, 135);
     assert(s.status == 2 && s.result == TP_TIMEOUT && s.microvolts == 0 && s.sequence == 1);
+    assert(tp_adc_status_read(&s, 7, 7, values) == TP_OK);
+    assert(values[0] == 2 && values[1] == TP_TIMEOUT && values[5] == 0 &&
+           values[6] != before); /* change during a per-register read is detectable */
     assert(!tp_adc_reader_ready(&reader)); /* Clear-fault alone cannot restore the ADC. */
     return 0;
 }

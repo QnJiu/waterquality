@@ -25,13 +25,16 @@ void tp_adc_status_poll(tp_adc_status *s, uint32_t now) {
     s->result = (uint16_t)r;
     s->status = r == TP_OK ? 1u : 2u;
     if (r != TP_OK) s->microvolts = 0;
+    s->revision++;
 }
 tp_result tp_adc_status_read(void *ctx, uint16_t address, uint16_t count, uint16_t *values) {
     tp_adc_status *s = ctx;
-    if (!s || !values || !count || (uint32_t)address + count > 6u) return TP_INVALID;
+    if (!s || !values || !count || (uint32_t)address + count > 14u) return TP_INVALID;
     uint32_t uv = (uint32_t)s->microvolts;
-    uint16_t regs[6] = {s->status, s->result, s->channel, s->sequence,
-                        (uint16_t)(uv >> 16), (uint16_t)uv};
+    uint16_t regs[14] = {s->status, s->result, s->channel, s->sequence,
+                         (uint16_t)(uv >> 16), (uint16_t)uv,
+                         s->revision, s->status, s->result, s->channel, s->sequence,
+                         (uint16_t)(uv >> 16), (uint16_t)uv, s->revision};
     memcpy(values, regs + address, count * sizeof(*values));
     return TP_OK;
 }

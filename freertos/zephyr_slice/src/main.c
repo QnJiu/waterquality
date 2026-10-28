@@ -56,7 +56,9 @@ int main(void) {
                 r = tp_adc_reader_init(&reader, &adc, &channel, 1);
                 if (r == TP_OK) {
                     k_mutex_lock(&status_mutex, K_FOREVER);
+                    uint16_t revision = status.revision;
                     r = tp_adc_status_init(&status, &reader, 0, 1000, k_uptime_get_32());
+                    status.revision = (uint16_t)(revision + 1u);
                     k_mutex_unlock(&status_mutex);
                 }
                 initialized = r == TP_OK;
@@ -64,6 +66,7 @@ int main(void) {
             if (r != TP_OK) {
                 k_mutex_lock(&status_mutex, K_FOREVER);
                 status.status = 2; status.result = r; status.microvolts = 0;
+                status.revision++;
                 k_mutex_unlock(&status_mutex);
                 k_sleep(K_MSEC(1000));
                 continue;

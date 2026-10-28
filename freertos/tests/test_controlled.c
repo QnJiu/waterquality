@@ -95,5 +95,16 @@ int main(void) {
     assert(tp_start(&c4,wait_recipe,2,300)==TP_OK); tp_tick(&c4,300);
     j.temperature=NAN; tp_tick(&c4,500);
     assert(c4.state==TP_FAILED && c4.fault==TP_FAULT_SENSOR && j.safe==3);
+    /* A failed first temperature check must happen before starting a pump. */
+    fake k={.interlock=true,.temperature=100};
+    tp_hal hal5={&k,valves,pump,poll,temp,heat,adc,interlock,safe};
+    tp_controller c5; tp_init(&c5,&hal5,NULL,&pid,100);
+    const tp_step pump_recipe[]={ {.kind=TP_STEP_PUMP,.timeout_ms=1000,.arg.pump={100,500}},
+        {.kind=TP_STEP_END} };
+    assert(tp_start(&c5,pump_recipe,2,0)==TP_OK); tp_tick(&c5,0);
+    assert(c5.state==TP_FAILED && c5.fault==TP_FAULT_OVERTEMP && k.pumps==0 && k.safe==1);
+    assert(tp_clear_fault(&c5)==TP_OK); k.temperature=NAN;
+    assert(tp_start(&c5,pump_recipe,2,200)==TP_OK); tp_tick(&c5,200);
+    assert(c5.state==TP_FAILED && c5.fault==TP_FAULT_SENSOR && k.pumps==0 && k.safe==3);
     puts("controlled stepping checks passed"); return 0;
 }

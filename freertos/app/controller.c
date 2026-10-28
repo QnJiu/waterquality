@@ -79,11 +79,10 @@ void tp_tick(tp_controller *c, uint32_t now) {
     if (!c->hal.interlocks_ok(c->hal.ctx)) { fail(c, TP_FAULT_INTERLOCK); return; }
     if (c->index >= c->recipe_len) { fail(c, TP_FAULT_RECIPE); return; }
     const tp_step *s = &c->recipe[c->index];
-    if (!c->entered && !c->awaiting_advance) {
+    bool entering = !c->entered && !c->awaiting_advance;
+    if (entering) {
         c->entered = true; c->entered_ms = now; c->sample_count = 0; c->sample_sum = 0;
         c->last_sample_ms = now - TP_SAMPLE_PERIOD_MS;
-        if (s->kind == TP_STEP_PUMP && c->hal.pump_start(c->hal.ctx, s->arg.pump.steps,
-                s->arg.pump.frequency_hz) != TP_OK) { fail(c, TP_FAULT_PUMP); return; }
         /* A new reading supersedes the previous value and any concentration
          * calculated from it. Only a later CALCULATE can publish a result. */
         if (s->kind == TP_STEP_READ) {
@@ -127,6 +126,8 @@ void tp_tick(tp_controller *c, uint32_t now) {
     case TP_STEP_VALVES:
         if (c->hal.set_valves(c->hal.ctx, s->arg.valves.mask) != TP_OK) fail(c, TP_FAULT_IO); else next(c, now); break;
     case TP_STEP_PUMP: {
+        if (entering && c->hal.pump_start(c->hal.ctx, s->arg.pump.steps,
+                s->arg.pump.frequency_hz) != TP_OK) { fail(c, TP_FAULT_PUMP); break; }
         bool done = false; tp_result r = c->hal.pump_poll(c->hal.ctx, &done);
         if (r != TP_OK && r != TP_BUSY) fail(c, TP_FAULT_PUMP); else if (r == TP_OK && done) next(c, now); break;
     }

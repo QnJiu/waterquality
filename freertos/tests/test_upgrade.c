@@ -73,6 +73,8 @@ static void wire_test(void) {
     wire_output output={0}; tp_upgrade_wire wire; uint8_t frame[TP_UP_WIRE_ENCODED_MAX],decoded[120]; size_t n;
     assert(tp_boot_provision(&boot,0,1)==TP_OK && tp_upgrade_wire_init(&wire,&c,&output,wire_send)==TP_OK);
     assert(tp_upgrade_wire_request(TP_UP_CMD_BEGIN,0x7d7e,(const uint8_t *)"ok",2,frame,sizeof(frame),&n)==TP_OK);
+    const uint8_t expected[]={0x7e,0x01,0x02,0x7d,0x5e,0x7d,0x5d,0x02,0x00,0x6f,0x6b,0xa9,0xb4,0x7e};
+    assert(n==sizeof(expected) && !memcmp(frame,expected,n));
     assert(deliver(&wire,frame,n)==TP_OK && image.erases==1 && output.sends==1);
     assert(unescape(&output,decoded)==56 && decoded[0]==1 && decoded[1]==0x82 && decoded[2]==0x7e && decoded[3]==0x7d);
     assert(decoded[6]==TP_OK && decoded[7]==1 && decoded[8]==TP_DOWNLOAD_WRITING);

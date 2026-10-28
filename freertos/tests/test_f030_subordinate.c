@@ -85,6 +85,16 @@ int main(void) {
     tp_sub_master master;
     assert(tp_f030_subordinate_init(&s,NULL,inputs,NULL,false,384,2)==TP_OK);
     hardware_start(); fake_tim.SR=0;
+    assert(idle_wait(&s,0)==10);
+    count=1; assert(idle_wait(&s,0)==1); count=0;
+    s.droplets_pending=1; assert(idle_wait(&s,0)==1); s.droplets_pending=0;
+    s.droplets_overflow=true; assert(idle_wait(&s,0)==1); s.droplets_overflow=false;
+    s.authorization_pending=true; assert(idle_wait(&s,0)==1); s.authorization_pending=false;
+    s.recovery_inflight=true; assert(idle_wait(&s,0)==1); s.recovery_inflight=false;
+    s.transmitting=true; assert(idle_wait(&s,0)==1); s.transmitting=false;
+    fake_usart.ISR=USART_ISR_RXNE; assert(idle_wait(&s,0)==1); fake_usart.ISR=0;
+    s.app.node.link.receiver.receiving=true; assert(idle_wait(&s,0)==1);
+    s.app.node.link.receiver.receiving=false;
     assert(tp_sub_master_init(&master,100,200,9)==TP_OK);
     assert(tp_sub_master_request(&master,0,req)==TP_OK);
     receive_frame(req,100); fake_tim.CNT=1000; service_once(&s); assert(!s.transmitting);

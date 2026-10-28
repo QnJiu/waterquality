@@ -188,6 +188,21 @@ static void service_once(tp_f030_subordinate *s) {
     if(clear && !s->transmitting)
         (void)tp_sub_node_tick(&s->app.node,now,(uint32_t)xTaskGetTickCount());
 }
+/* Avoid delaying a partial frame, pending ISR event, or active door I/O.
+ * Notifications arriving after this check remain pending in FreeRTOS. */
+static TickType_t idle_wait(tp_f030_subordinate *s,uint32_t now_ms) {
+    taskENTER_CRITICAL();
+    bool idle=!s->transmitting && !s->processing_rx && !s->overflow &&
+              !s->droplets_pending && !s->droplets_overflow &&
+              !s->authorization_pending && !s->recovery_requested &&
+              !s->recovery_inflight && !uxQueueMessagesWaiting(s->rx) &&
+              !(USART1->ISR & RX_FLAGS);
+    taskEXIT_CRITICAL();
+    uint32_t budget=0;
+    if(s->recovering || s->verifying_reader ||
+       !tp_sub_app_sleep_budget(&s->app,now_ms,10u,idle,&budget)) return 1;
+    return (TickType_t)budget;
+}
 static void run(void *ctx) {
     tp_f030_subordinate *s=ctx;
     hardware_start();
@@ -202,7 +217,7 @@ static void run(void *ctx) {
         tp_f030_reference_inputs_button_tick((uint32_t)xTaskGetTickCount());
 #endif
         service_once(s);
-        (void)ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(1));
+        (void)ulTaskNotifyTake(pdTRUE,idle_wait(s,(uint32_t)xTaskGetTickCount()));
     }
 }
 tp_result tp_f030_subordinate_init(tp_f030_subordinate *s,void *input_ctx,

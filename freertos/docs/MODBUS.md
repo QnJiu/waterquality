@@ -90,6 +90,7 @@ python tools/tp_modbus.py --port COM3 command self-check
 python tools/tp_modbus.py --port COM3 command auto-cal-start
 python tools/tp_modbus.py --port COM3 auto-cal-status
 python tools/tp_modbus.py --port COM3 command auto-cal-apply
+python tools/tp_modbus.py --port COM3 log-stats
 python tools/tp_modbus.py --port COM3 log
 python tools/tp_modbus.py --port COM3 log --sequence 1
 ```
@@ -119,3 +120,5 @@ F407 固件可配置 `-DTP_USE_FREEMODBUS=ON`，默认关闭。各 UART 的现�
 命令 10 可在空闲、完成或故障状态下单独执行已配置的启动前自检，并更新寄存器 19；失败会返回 Modbus 异常，同时保留故障位供读取。它不会清除控制器故障或启动检测。运行、标定、核查或维护期间拒绝；未配置自检时也拒绝。检查内容及其物理有效性取决于板级回调。
 
 日志统计使用一次寄存器读取内的原子快照，计数器为本次上电后的 32 位数值，溢出回绕；丢弃数大于零表示可能缺失记录。查询请求不计入事件入队数，I/O 错误数与丢弃数的含义不同。
+
+`log-stats` 以 JSON 输出日志是否可用和入队、写入、丢弃、I/O 错误计数；未接入日志时 `available` 为 `false`，计数为 `null`。

@@ -98,6 +98,32 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.Client(p, 1).check_standard([float('nan')]*5)
 
+    def test_log_stats(self):
+        words = [1, 1, 2, 0, 3, 0xffff, 0xffff, 0, 4]
+        p = Port(m.frame(bytes([1, 3, 18]) + struct.pack('>9H', *words)))
+        self.assertEqual(m.Client(p, 1).log_stats(),
+                         {'available': True, 'queued': 65538, 'written': 3,
+                          'dropped': 0xffffffff, 'io_errors': 4})
+        self.assertEqual(p.sent, m.frame(bytes.fromhex('0103006e0009')))
+        p = Port(m.frame(bytes([1, 3, 18]) + struct.pack('>9H', 0, *([1] * 8))))
+        self.assertEqual(m.Client(p, 1).log_stats(),
+                         {'available': False, 'queued': None, 'written': None,
+                          'dropped': None, 'io_errors': None})
+        p = Port(m.frame(bytes([1, 3, 18]) + struct.pack('>9H', 2, *([0] * 8))))
+        with self.assertRaises(m.ModbusError): m.Client(p, 1).log_stats()
+
+    def test_log_stats_cli(self):
+        class SerialPort(Port):
+            def __init__(self, *args, **kwargs):
+                super().__init__(m.frame(bytes([1, 3, 18]) + struct.pack('>9H', 1, 0, 5, 0, 4, 0, 1, 0, 0)))
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        text = io.StringIO()
+        with patch.dict(sys.modules, {'serial': SimpleNamespace(Serial=SerialPort)}), contextlib.redirect_stdout(text):
+            self.assertEqual(m.main(['--port', 'COM3', 'log-stats']), 0)
+        self.assertEqual(__import__('json').loads(text.getvalue()),
+                         {'available': True, 'queued': 5, 'written': 4, 'dropped': 1, 'io_errors': 0})
+
     def test_log_query(self):
         words = [3, 0, 7, 2, 0, 1, 0, 0, 0, 42, 0x3f80, 0]
         response = m.frame(bytes.fromhex('011000320003')) + m.frame(bytes([1, 3, 24]) + struct.pack('>12H', *words))

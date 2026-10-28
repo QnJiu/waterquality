@@ -154,6 +154,15 @@ class Client:
         return {'state': names[state] if state < len(names) else 'unknown',
                 'state_code': state, 'error_code': error}
 
+    def log_stats(self):
+        v = self.read(110, 9)
+        if v[0] not in (0, 1):
+            raise ModbusError('invalid log statistics availability')
+        names = ('queued', 'written', 'dropped', 'io_errors')
+        return {'available': bool(v[0]), **{
+            name: (v[1 + 2*i] << 16) | v[2 + 2*i] if v[0] else None
+            for i, name in enumerate(names)}}
+
     def log(self, sequence=None):
         if sequence is not None and not 0 <= sequence <= 0xffffffff:
             raise ValueError('invalid event sequence')
@@ -198,6 +207,7 @@ def main(argv=None):
     get_config.add_argument('--output', help='save JSON as UTF-8')
     config = sub.add_parser('set-config')
     config.add_argument('file', help='complete JSON configuration file')
+    sub.add_parser('log-stats', help='show event log health counters')
     log = sub.add_parser('log')
     log.add_argument('--sequence', type=int, help='omit for latest event')
     cmd = sub.add_parser('command')
@@ -238,6 +248,8 @@ def main(argv=None):
                 with open(args.file, encoding='utf-8-sig') as f:
                     client.set_config(json.load(f))
                 print('Configuration updated in RAM; use command save and check status to persist.')
+            elif args.action == 'log-stats':
+                print(json.dumps(client.log_stats()))
             elif args.action == 'log':
                 print(client.log(args.sequence))
             else:

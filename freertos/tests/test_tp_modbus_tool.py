@@ -92,6 +92,21 @@ class Tests(unittest.TestCase):
                 self.assertEqual(m.main(['--port', 'COM3', 'temperature']), 0)
             self.assertIn('"temperature_c": ' + expected, text.getvalue())
 
+    def test_readings_cli(self):
+        class SerialPort(Port):
+            instance = None
+            def __init__(self, *args, **kwargs):
+                super().__init__(m.frame(bytes([1, 3, 14]) + struct.pack('>Hfff', 5, 1.25, 99.0, 3.5)))
+                SerialPort.instance = self
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        text = io.StringIO()
+        with patch.dict(sys.modules, {'serial': SimpleNamespace(Serial=SerialPort)}), contextlib.redirect_stdout(text):
+            self.assertEqual(m.main(['--port', 'COM3', 'readings']), 0)
+        self.assertEqual(__import__('json').loads(text.getvalue()),
+                         {'blank': 1.25, 'reacted': None, 'turbidity': 3.5})
+        self.assertEqual(SerialPort.instance.sent, m.frame(bytes.fromhex('010300840007')))
+
     def test_auto_calibration_cli(self):
         class SerialPort(Port):
             def __init__(self, *args, **kwargs):

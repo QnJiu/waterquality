@@ -64,6 +64,8 @@ F407 与 F030 的教学装配可通过 F407 构建选项 `TP_F407_TEACHING_SUBOR
 
 已接入串口的设备运行检测时，可用 `python tools/tp_modbus.py --port COM3 temperature` 查看最近一次温度采样；未运行或尚未采样时显示 null。
 
+可用 `python tools/tp_modbus.py --port COM3 readings` 查看空白、反应后和浊度三个采样信号，未采集项显示 `null`；教学板配置下单位为伏特。它们与最终浓度不同，详见 `docs/MODBUS.md`。
+
 每日定时模式需要先设置 RTC。可用 `python tools/tp_modbus.py --port COM3 set-clock <UTC秒数>` 设置，然后用 `clock-status` 查询结果；具体地址见 `docs/MODBUS.md`；校时只允许在设备未运行时操作。
 
 ## 3. 故障后如何操作

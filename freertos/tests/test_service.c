@@ -36,6 +36,21 @@ int main(void) {
     tp_init(&c,&hal,NULL,NULL,100);
     tp_step recipe[]={ {.kind=TP_STEP_WAIT,.timeout_ms=1000,.arg.wait={1000}}, {.kind=TP_STEP_END} };
     tp_service s; assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    /* Snapshot exposes only valid readings from the current recipe. */
+    uint16_t readings[7];
+    assert(tp_service_read_holding(&s,132,7,readings)==TP_OK && readings[0]==0);
+    c.state=TP_RUNNING; c.valid_readings=1; c.readings[0]=1.25f; c.readings[1]=99;
+    assert(tp_service_read_holding(&s,132,7,readings)==TP_OK && readings[0]==1 &&
+           get_float(&readings[1])==1.25f && get_float(&readings[3])==0);
+    c.valid_readings=7; c.readings[1]=2; c.readings[2]=3; c.state=TP_COMPLETE;
+    assert(tp_service_read_holding(&s,132,7,readings)==TP_OK && readings[0]==7 &&
+           get_float(&readings[3])==2 && get_float(&readings[5])==3);
+    assert(tp_start(&c,recipe,2,0)==TP_OK);
+    assert(tp_service_read_holding(&s,132,7,readings)==TP_OK && readings[0]==0);
+    c.valid_readings=1; tp_stop(&c);
+    assert(tp_service_read_holding(&s,132,7,readings)==TP_OK && readings[0]==0 && readings[1]==0);
+    tp_init(&c,&hal,NULL,NULL,100);
+    assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
     /* Rewriting an unchanged schedule must preserve its trigger history. */
     tp_step end_recipe[]={ {.kind=TP_STEP_END} };
     tp_controller schedule_controller; tp_service schedule_service;
@@ -60,13 +75,13 @@ int main(void) {
     tp_init(&result_controller,&hal,NULL,NULL,100);
     assert(tp_service_init(&result_service,&result_controller,end_recipe,1,0)==TP_OK);
     assert(tp_service_attach_preflight(&result_service,NULL,preflight)==TP_OK);
-    result_controller.state=TP_COMPLETE; result_controller.result_valid=true;
+    result_controller.state=TP_COMPLETE; result_controller.result_valid=true; result_controller.valid_readings=7;
     result_controller.result_mg_l=1.5f; check_faults=TP_PREFLIGHT_LEVEL;
     uint16_t result_begin=1, result_words[4];
     assert(tp_service_write_holding(&result_service,0,1,&result_begin)==TP_IO_ERROR);
     assert(tp_service_read_holding(&result_service,13,4,result_words)==TP_OK);
     assert(result_words[0]==TP_IO_ERROR && result_words[3]==0);
-    assert(result_service.preflight_faults==TP_PREFLIGHT_LEVEL);
+    assert(result_service.preflight_faults==TP_PREFLIGHT_LEVEL && result_controller.valid_readings==0);
     result_controller.result_valid=true;
     uint16_t result_periodic[]={TP_MODE_PERIODIC,0,1,0,0};
     assert(tp_service_write_holding(&result_service,1,5,result_periodic)==TP_OK);

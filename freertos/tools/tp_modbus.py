@@ -225,6 +225,7 @@ def main(argv=None):
     p.add_argument('--timeout', type=float, default=2.0)
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('status')
+    sub.add_parser('readings', help='show measurement signal readings')
     sub.add_parser('temperature', help='show the latest temperature during a measurement')
     sub.add_parser('clock-status', help='show RTC time and last setting result')
     clock = sub.add_parser('set-clock', help='set RTC using UTC Unix seconds')
@@ -261,6 +262,10 @@ def main(argv=None):
                 print('Clock request accepted; use clock-status to check completion.')
             elif args.action == 'clock-status':
                 print(json.dumps(client.clock_status()))
+            elif args.action == 'readings':
+                words = client.read(132, 7)
+                print(json.dumps({name: float32(words[1+2*i], words[2+2*i]) if words[0] & (1 << i) else None
+                                  for i, name in enumerate(('blank', 'reacted', 'turbidity'))}))
             elif args.action == 'temperature':
                 valid, high, low = client.read(128, 3)
                 print(json.dumps({'temperature_c': float32(high, low) if valid else None}))

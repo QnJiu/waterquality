@@ -29,6 +29,7 @@ static tp_result start(tp_service *s) {
     if (s->controller->state!=TP_RUNNING && s->controller->state!=TP_FAILED && run_preflight(s)!=TP_OK) {
         /* A rejected new measurement must not publish the previous result as current. */
         s->controller->result_valid=false;
+        s->controller->valid_readings=0;
         s->last_start_result=TP_IO_ERROR; return TP_IO_ERROR;
     }
     s->last_start_result=tp_start(s->controller,s->recipe,s->recipe_len,s->now_ms);
@@ -281,6 +282,17 @@ tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, u
         return TP_OK;
     }
     tp_service *s = ctx;
+    if (s && s->controller && values && count && address>=132 && (uint32_t)address+count<=139) {
+        tp_controller *c=s->controller;
+        uint16_t mask=(c->state==TP_RUNNING || c->state==TP_COMPLETE) ? c->valid_readings : 0;
+        uint16_t words[7]={mask,0,0,0,0,0,0};
+        for (unsigned i=0;i<TP_READ_COUNT;i++) {
+            float value=(mask & (1u<<i)) ? c->readings[i] : 0;
+            words[1+2*i]=float_word(value,false); words[2+2*i]=float_word(value,true);
+        }
+        for (uint16_t i=0;i<count;i++) values[i]=words[address-132+i];
+        return TP_OK;
+    }
     if (s && s->controller && values && address==131 && count==1) {
         values[0]=s->maintenance ? 1 : 0;
         return TP_OK;

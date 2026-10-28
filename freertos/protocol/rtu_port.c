@@ -22,6 +22,15 @@ void tp_rtu_port_error(tp_rtu_port *p, uint32_t now) {
     tp_rtu_receiver_error(&p->receiver,now);
     if (p->receiver.frame && p->error) p->error(p->ctx,p->port,TP_IO_ERROR);
 }
+void tp_rtu_port_overflow(tp_rtu_port *p, uint32_t now) {
+    if (!p || !p->receiver.frame) return;
+    /* The lost event may have belonged to the buffered frame. */
+    p->receiver.receiving = true;
+    p->receiver.invalid = true;
+    p->receiver.length = 0;
+    p->receiver.last_byte_us = now;
+    if (p->error) p->error(p->ctx,p->port,TP_IO_ERROR);
+}
 void tp_rtu_port_poll(tp_rtu_port *p, uint32_t now) {
     if (p) tp_rtu_receiver_poll(&p->receiver,now);
 }

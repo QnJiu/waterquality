@@ -58,7 +58,7 @@ static void uart_task(void *arg) {
         uint32_t lost_at=TIM5->CNT;
         if (lost) { u->overflow=false; (void)xQueueReset(u->events); }
         taskEXIT_CRITICAL();
-        if (lost) tp_rtu_port_error(&u->port,lost_at);
+        if (lost) tp_rtu_port_overflow(&u->port,lost_at);
         while (xQueueReceive(u->events,&e,0)==pdPASS) {
             if (e.error) tp_rtu_port_error(&u->port,e.at_us);
             else tp_rtu_port_byte(&u->port,e.byte,e.at_us);

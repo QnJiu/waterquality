@@ -69,5 +69,13 @@ int main(void) {
     tp_rtu_port_poll(&ports[1],2014000);
     assert(concurrent.errors[0]==1 && concurrent.errors[1]==0);
     assert(concurrent.replies[0]==100 && concurrent.replies[1]==101);
+    /* A delayed overflow must discard even a complete-looking request. */
+    for (unsigned i=0;i<8;i++) tp_rtu_port_byte(&ports[0],first[i],2020000+i*1000);
+    tp_rtu_port_overflow(&ports[0],2040000);
+    tp_rtu_port_poll(&ports[0],2050000);
+    assert(concurrent.replies[0]==100 && concurrent.received[0]==100);
+    assert(concurrent.errors[0]==2);
+    send_frame(&ports[0],first,2060000);
+    assert(concurrent.replies[0]==101);
     puts("RTU port integration checks passed"); return 0;
 }

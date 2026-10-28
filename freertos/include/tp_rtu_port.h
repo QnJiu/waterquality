@@ -17,5 +17,7 @@ tp_result tp_rtu_port_init(tp_rtu_port *p, unsigned port, uint32_t baud, uint8_t
     void (*error)(void *, unsigned, tp_result));
 void tp_rtu_port_byte(tp_rtu_port *p, uint8_t byte, uint32_t completion_us);
 void tp_rtu_port_error(tp_rtu_port *p, uint32_t completion_us);
+/* Queue overflow loses ordering: discard the current frame unconditionally. */
+void tp_rtu_port_overflow(tp_rtu_port *p, uint32_t now_us);
 void tp_rtu_port_poll(tp_rtu_port *p, uint32_t now_us);
 #endif

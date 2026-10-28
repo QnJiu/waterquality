@@ -1,5 +1,6 @@
 #include "tp_modbus.h"
 #include "tp_service.h"
+#include "tp_event_transition.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -76,6 +77,45 @@ static tp_result set_automatic_mode(tp_modbus *m,uint16_t mode) {
     return r==TP_OK && n==8 && response[0]==1 && response[1]==16 &&
         response[2]==0 && response[3]==1 && response[4]==0 && response[5]==5 &&
         crc(response,6)==(uint16_t)(response[6]|((uint16_t)response[7]<<8)) ? TP_OK : TP_IO_ERROR;
+}
+/* Small in-memory storage to demonstrate a completed measurement journal. */
+typedef struct { uint8_t bytes[128]; uint32_t requested; } journal_memory;
+static tp_result journal_read(void *p,uint32_t offset,void *data,size_t size) {
+    journal_memory *m=p;
+    if(offset>sizeof(m->bytes) || size>sizeof(m->bytes)-offset) return TP_INVALID;
+    memcpy(data,m->bytes+offset,size); return TP_OK;
+}
+static tp_result journal_write(void *p,uint32_t offset,const void *data,size_t size) {
+    journal_memory *m=p;
+    if(offset>sizeof(m->bytes) || size>sizeof(m->bytes)-offset) return TP_INVALID;
+    memcpy(m->bytes+offset,data,size); return TP_OK;
+}
+static tp_result journal_request(void *p,bool latest,uint32_t sequence) {
+    journal_memory *m=p;
+    if(latest) return TP_INVALID;
+    m->requested=sequence; return TP_OK;
+}
+static int verify_journal(tp_service *service,tp_modbus *modbus,journal_memory *memory,
+                          const tp_event_log_io *io,float expected) {
+    tp_event_log reopened; tp_event stored;
+    if(tp_event_log_open(&reopened,io)!=TP_OK) return 1;
+    uint8_t query[]={1,16,0,50,0,3,6,0,1,0,0,0,1,0,0}, response[64];
+    size_t n=0; uint16_t sum=crc(query,13); query[13]=(uint8_t)sum; query[14]=(uint8_t)(sum>>8);
+    if(tp_modbus_frame(modbus,query,sizeof(query),response,sizeof(response),&n)!=TP_OK ||
+       n!=8 || response[1]!=16 || memory->requested!=1 ||
+       tp_event_log_read(&reopened,memory->requested,&stored)!=TP_OK) return 1;
+    tp_service_log_complete(service,TP_OK,&stored);
+    uint8_t read[]={1,3,0,53,0,12,0,0};
+    sum=crc(read,6); read[6]=(uint8_t)sum; read[7]=(uint8_t)(sum>>8);
+    if(tp_modbus_frame(modbus,read,sizeof(read),response,sizeof(response),&n)!=TP_OK ||
+       n!=29 || response[1]!=3 || response[2]!=24 || response[4]!=3 ||
+       response[8]!=1 || response[10]!=TP_EVENT_COMPLETED || response[12]!=1) return 1;
+    uint32_t bits=((uint32_t)response[23]<<24)|((uint32_t)response[24]<<16)|
+                  ((uint32_t)response[25]<<8)|response[26];
+    float value; memcpy(&value,&bits,sizeof(value));
+    if(fabsf(value-expected)>0.0001f) return 1;
+    printf("journal: reopened sequence 1 and read concentration %.4f through Modbus\n",(double)value);
+    return 0;
 }
 /* Illustrative valve bits: sample, reagent, rinse and drain. This is a
  * software exercise, not an analytical method or hardware configuration. */
@@ -158,8 +198,9 @@ int main(int argc,char **argv) {
     bool recover_sensor=argc==2 && !strcmp(argv[1],"recover-sensor");
     bool periodic=argc==2 && !strcmp(argv[1],"periodic");
     bool daily=argc==2 && !strcmp(argv[1],"daily");
-    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover && !recover_sensor && !periodic && !daily)) {
-        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|recover-sensor|periodic|daily|calibration]\n"); return 2;
+    bool journal_mode=argc==2 && !strcmp(argv[1],"journal");
+    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover && !recover_sensor && !periodic && !daily && !journal_mode)) {
+        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|recover-sensor|periodic|daily|calibration|journal]\n"); return 2;
     }
     plant x={.temperature=20,.interlock=true,.adc_ready=true};
     tp_hal hal={&x,valves,pump,pump_poll,temperature,heater,adc,interlock,safe};
@@ -171,6 +212,11 @@ int main(int argc,char **argv) {
        tp_service_attach_preflight(&service,&x,preflight)!=TP_OK ||
        tp_service_attach_adc_recovery(&service,&x,recover_adc)!=TP_OK) return 1;
     tp_modbus modbus={&service,1,tp_service_read_holding,tp_service_write_holding};
+    journal_memory memory={0};
+    tp_event_log_io journal_io={&memory,journal_read,journal_write,sizeof(memory.bytes)};
+    tp_event_log journal;
+    if(journal_mode && (tp_event_log_open(&journal,&journal_io)!=TP_OK ||
+       tp_service_attach_log(&service,&memory,journal_request)!=TP_OK)) return 1;
     bool automatic=periodic || daily;
     if(automatic) {
         if(set_automatic_mode(&modbus,periodic ? TP_MODE_PERIODIC : TP_MODE_DAILY)!=TP_OK) return 1;
@@ -184,7 +230,13 @@ int main(int argc,char **argv) {
         if((fault_sensor || recover_sensor) && recipe[controller.index].kind==TP_STEP_READ) x.sensor_error=true;
         if(stop_rinse && x.pump_active && x.valves==RINSE && command(&modbus,2)!=TP_OK) return 1;
         if(controller.awaiting_advance && (automatic || command(&modbus,5)!=TP_OK)) return 1;
+        tp_run_state before=controller.state;
         tp_service_tick(&service,x.now,daily,946684800LL+(int64_t)(x.now/1000u));
+        if(journal_mode && before==TP_RUNNING && controller.state==TP_COMPLETE) {
+            tp_event event;
+            if(!tp_event_transition(before,&controller,&event) ||
+               tp_event_log_append(&journal,&event)!=TP_OK) return 1;
+        }
         if(automatic && ((x.now<60000 && controller.state!=TP_IDLE) ||
                          (x.now==60000 && controller.state!=TP_RUNNING))) return 1;
         if(controller.index!=last && controller.state==TP_RUNNING) {
@@ -233,6 +285,7 @@ int main(int argc,char **argv) {
     if(fault_sensor) return controller.state==TP_FAILED && controller.fault==TP_FAULT_SENSOR ? 0 : 1;
     if(stop_rinse) return controller.state==TP_FAILED && controller.fault==TP_FAULT_STOP &&
         x.pump_count==3 && x.pump_valves[2]==RINSE ? 0 : 1;
+    if(journal_mode && verify_journal(&service,&modbus,&memory,&journal_io,controller.result_mg_l)) return 1;
     if(x.pump_count!=4 || x.pump_valves[0]!=SAMPLE || x.pump_valves[1]!=REAGENT ||
        x.pump_valves[2]!=RINSE || x.pump_valves[3]!=DRAIN) return 1;
     return controller.state==TP_COMPLETE && controller.result_valid &&

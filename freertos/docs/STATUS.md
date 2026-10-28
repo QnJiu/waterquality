@@ -132,3 +132,5 @@ W25Q128 已提供芯片驱动、镜像暂存适配器及可选 F407 SPI1 参考�
 - Signed staging reception now authenticates the manifest before erase, supports
   checkpoint resume and rechecks the complete staging image. It is a transport-
   independent API; networking and board storage partitioning are not wired yet.
+
+暂存接收现已提供可复用升级帧协议的命令处理器，支持签名清单重新认证、断点续传和暂存校验；完成下载后仍需调用受保护的复制及启动暂存流程。通信任务与具体网络驱动仍待板级装配。

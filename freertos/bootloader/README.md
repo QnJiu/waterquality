@@ -135,3 +135,13 @@ lock itself; coordinate the handoff so the staging image stays exclusively owned
 Pass the same signed manifest and a reader of the same staging image to the
 staged guard. A transport task, board-specific partition layout and actual
 network protocol remain to be integrated for the selected hardware.
+
+`tp_stage_commands` connects this receiver to `tp_upgrade_stream` and the existing
+framed upgrade protocol via `tp_upgrade_wire_set_executor`. Initialize the command
+context, pass a non-null `tp_upgrade_commands` placeholder to stream initialization,
+and bind `tp_stage_commands_execute` as its executor. After reconnect or reset,
+`BEGIN` must carry the signed manifest again; it reauthenticates and returns the
+persisted progress. `STATUS` and `RESUME` are available after a successful BEGIN.
+`FINISH` confirms only the staging download: the separate guarded copy and boot
+staging step must still be run. The command context does not take a lock or create
+a transport task; the owner is responsible for the lock and staging handoff above.

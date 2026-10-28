@@ -50,9 +50,13 @@ int main(void) {
     clock_ms=155; assert(tp_freertos_subordinate_tick(&s,155000,clock_ms)==TP_OK);
     status.faults=0;
     assert(tp_sub_reply(request,sizeof(request),&status,reply)==TP_OK);
+    /* The bytes arrived in time, but the task processes them after the deadline. */
+    clock_ms=180;
     for(size_t i=0;i<sizeof(reply);i++)
-        assert(tp_freertos_subordinate_byte_at(&s,reply[i],155100+(uint32_t)i*100,156,160)==TP_OK);
-    clock_ms=160; assert(tp_freertos_subordinate_tick(&s,160000,clock_ms)==TP_OK);
+        assert(tp_freertos_subordinate_byte_at(&s,reply[i],155100+(uint32_t)i*100,156,clock_ms)==TP_OK);
+    assert(tp_freertos_subordinate_tick(&s,180000,clock_ms)==TP_OK);
+    assert(tp_freertos_subordinate_healthy(&s));
+    assert(tp_freertos_subordinate_resource_faults(&s)==0);
     clock_ms=255; assert(tp_freertos_subordinate_healthy(&s));
     clock_ms=256; assert(!tp_freertos_subordinate_healthy(&s));
     return 0;

@@ -31,7 +31,8 @@ static bool valid_step(const tp_step *s) {
         isfinite(s->arg.heat.tolerance_c) && s->arg.heat.tolerance_c > 0;
     case TP_STEP_HOLD: case TP_STEP_WAIT: return s->arg.wait.duration_ms <= TP_MAX_DURATION &&
         s->timeout_ms >= s->arg.wait.duration_ms;
-    case TP_STEP_READ: return s->timeout_ms && s->arg.read.slot < TP_READ_COUNT && s->arg.read.samples;
+    case TP_STEP_READ: return s->timeout_ms && s->arg.read.slot < TP_READ_COUNT && s->arg.read.samples &&
+        (!s->arg.read.trim_extremes || s->arg.read.samples >= 3);
     default: return true;
     }
 }
@@ -116,9 +117,19 @@ void tp_tick(tp_controller *c, uint32_t now) {
         if (expired(now, c->last_sample_ms, TP_SAMPLE_PERIOD_MS)) {
             float sample; tp_result r = c->hal.read_adc(c->hal.ctx, s->arg.read.channel, &sample);
             if (r == TP_OK && isfinite(sample)) {
+                if (!c->sample_count) c->sample_min = c->sample_max = sample;
+                else {
+                    if (sample < c->sample_min) c->sample_min = sample;
+                    if (sample > c->sample_max) c->sample_max = sample;
+                }
                 c->sample_sum += sample; c->sample_count++; c->last_sample_ms = now;
                 if (c->sample_count == s->arg.read.samples) {
-                    c->readings[s->arg.read.slot] = c->sample_sum / c->sample_count;
+                    double sum = c->sample_sum;
+                    unsigned count = c->sample_count;
+                    if (s->arg.read.trim_extremes) { sum -= c->sample_min; sum -= c->sample_max; count -= 2; }
+                    float mean = (float)(sum / count);
+                    if (!isfinite(mean)) { fail(c, TP_FAULT_SENSOR); return; }
+                    c->readings[s->arg.read.slot] = mean;
                     c->valid_readings |= (uint8_t)(1u << s->arg.read.slot); next(c, now);
                 }
             } else if (r != TP_BUSY) fail(c, TP_FAULT_SENSOR);

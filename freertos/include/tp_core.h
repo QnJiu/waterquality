@@ -22,7 +22,7 @@ typedef struct {
         struct { int32_t steps; uint32_t frequency_hz; } pump;
         struct { float target_c; float tolerance_c; } heat;
         struct { uint32_t duration_ms; } wait;
-        struct { tp_reading slot; uint8_t channel; uint8_t samples; } read;
+        struct { tp_reading slot; uint8_t channel; uint8_t samples; bool trim_extremes; } read;
     } arg;
 } tp_step;
 
@@ -61,7 +61,8 @@ typedef struct {
     bool entered, heating, result_valid, single_step, awaiting_advance;
     uint32_t advance_wait_ms;
     float target_c, max_temperature_c, result_mg_l;
-    float readings[TP_READ_COUNT], sample_sum;
+    float readings[TP_READ_COUNT], sample_min, sample_max;
+    double sample_sum;
     uint8_t valid_readings, sample_count;
     tp_pid pid;
     tp_calibration calibration;

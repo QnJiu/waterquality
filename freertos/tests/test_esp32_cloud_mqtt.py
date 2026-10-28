@@ -160,6 +160,12 @@ class CloudTest(unittest.TestCase):
         self.assertEqual([m['params']['version'] for m in reports], ['12'])
 
     def test_ota_progress_after_staging_and_confirmation(self):
+        self.check_ota_progress(False)
+
+    def test_ota_progress_after_lost_finish_response(self):
+        self.check_ota_progress(True)
+
+    def check_ota_progress(self, uncertain):
         class Pin:
             OUT = 1
             def __init__(self, *args, **kwargs): pass
@@ -191,12 +197,16 @@ class CloudTest(unittest.TestCase):
                                     OTA_INFORM_TOPIC='/ota/device/inform/p/d', OTA_PROGRESS_TOPIC='/ota/device/progress/p/d',
                                     MQTT_TOPIC='status', MODBUS_ADDRESS=1)
         notice = load('ota_notice', 'ota_notice.py')
-        notice.stage_bundle = lambda *args: {'bank': 1, 'version': 12}
+        class FinishUnknown(TimeoutError): pass
+        def stage(*args):
+            if uncertain: raise FinishUnknown('response lost')
+            return {'bank': 1, 'version': 12}
+        notice.stage_bundle = stage
         modules = {'network': types.ModuleType('network'), 'ntptime': types.ModuleType('ntptime'),
                    'machine': types.SimpleNamespace(UART=lambda *a, **kw: object(), Pin=Pin),
                    'umqtt': types.ModuleType('umqtt'), 'umqtt.simple': mqtt, 'config': cfg,
                    'modbus_status': load('modbus_status', 'modbus_status.py'), 'cloud': cloud,
-                   'ota_notice': notice, 'ota_client': types.SimpleNamespace(ProtocolError=type('ProtocolError', (Exception,), {}))}
+                   'ota_notice': notice, 'ota_client': types.SimpleNamespace(ProtocolError=type('ProtocolError', (Exception,), {}), FinishUnknown=FinishUnknown)}
         with patch.dict(sys.modules, modules):
             main = load('esp32_cloud_main_progress', 'main.py')
             client, versions = Client(), iter([None, 12, 12])

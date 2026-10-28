@@ -55,6 +55,17 @@ class Tests(unittest.TestCase):
         self.assertEqual(client.writes, [0, 256, 512])
         self.assertEqual(client.storage, image)
 
+    def test_finish_timeout_reports_unknown_outcome(self):
+        class LostFinish(FakeClient):
+            def command(self, cmd, payload=b''):
+                if cmd == ota.FINISH:
+                    raise TimeoutError()
+                return super().command(cmd, payload)
+        image = b'firmware'
+        manifest, ident = manifest_for(image)
+        with self.assertRaises(ota.FinishUnknown):
+            ota.upload(LostFinish(image, ident), manifest, io.BytesIO(image), retries=1)
+
     def test_reject_bad_image_before_any_command(self):
         image = b'firmware'
         manifest, ident = manifest_for(image)

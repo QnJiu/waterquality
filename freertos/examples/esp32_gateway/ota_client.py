@@ -9,6 +9,10 @@ MAX_RAW = 520
 MAX_IMAGE_SIZE = 384 * 1024  # F407 reference slot
 
 
+class FinishUnknown(TimeoutError):
+    """The final request was sent, but its result could not be observed."""
+
+
 class ProtocolError(Exception):
     pass
 
@@ -203,7 +207,7 @@ def upload(client, manifest, image, retries=3):
             result, state = client.command(FINISH)
         except TimeoutError:
             if attempt == retries:
-                raise
+                raise FinishUnknown("finish response lost; check the confirmed device version")
             continue
         if result != OK:
             raise ProtocolError("finish failed: %d" % result)

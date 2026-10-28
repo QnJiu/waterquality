@@ -97,7 +97,7 @@ def main():
                 client.sock.close()
         if notice and notice.pending:
             from ota_notice import stage_bundle
-            from ota_client import ProtocolError
+            from ota_client import ProtocolError, FinishUnknown
             url, version = notice.pending
             notice.pending = None
             try:
@@ -107,6 +107,10 @@ def main():
                 progress = (1, "Package staged; awaiting firmware confirmation")
                 print("Staged bank %d, firmware version %d; restart and confirmation pending" %
                       (result["bank"], result["version"]))
+            except FinishUnknown as exc:
+                awaiting_version = version
+                progress = (1, "Finish response lost; awaiting firmware confirmation")
+                print("OTA result unknown:", exc)
             except (OSError, ValueError, ProtocolError) as exc:
                 awaiting_version = None
                 progress = (-1, "Download or staging failed")

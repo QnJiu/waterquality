@@ -41,7 +41,7 @@ ctest --test-dir build --output-on-failure
 
 截图中的 40 分钟、0–10 mg/L、±2% 和标准符合性均需要真实仪器及方法验证，当前模拟结果不能证明这些指标。更详细的软件状态见 `docs/STATUS.md`。
 
-器件型号和对应代码可查 [教学参考器件清单](COMPONENTS.md)。
+器件型号和对应代码可查 [教学参考器件清单](COMPONENTS.md)；按设计要求查找测试入口可看 [设计要求与软件验证对照](REQUIREMENTS.md)。
 
 ## Windows 交叉编译路径
 

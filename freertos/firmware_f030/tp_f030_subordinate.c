@@ -1,6 +1,9 @@
 #include "tp_f030_subordinate.h"
 #include "stm32f0xx.h"
 #include <string.h>
+#ifdef TP_F030_WAKE_INPUT
+#include "tp_f030_wake_input.h"
+#endif
 #ifdef TP_F030_REFERENCE_INPUTS
 #include "tp_f030_reference_inputs.h"
 #endif
@@ -188,6 +191,9 @@ static void service_once(tp_f030_subordinate *s) {
 static void run(void *ctx) {
     tp_f030_subordinate *s=ctx;
     hardware_start();
+#ifdef TP_F030_WAKE_INPUT
+    tp_f030_wake_input_start(s);
+#endif
 #ifdef TP_F030_REFERENCE_INPUTS
     tp_f030_reference_inputs_start(s);
 #endif

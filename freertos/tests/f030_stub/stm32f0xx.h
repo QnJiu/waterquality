@@ -60,6 +60,7 @@ extern uint32_t SystemCoreClock;
 #define USART1_IRQn 27
 #define EXTI0_1_IRQn 5
 #define EXTI2_3_IRQn 6
+#define EXTI4_15_IRQn 7
 static inline void NVIC_SetPriority(int irq,unsigned p) { (void)irq; (void)p; }
 static inline void NVIC_ClearPendingIRQ(int irq) { (void)irq; }
 static inline void NVIC_EnableIRQ(int irq) { (void)irq; }

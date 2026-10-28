@@ -21,10 +21,18 @@ static bool is_stop(const tp_freertos_runtime *rt, const tp_runtime_frame *f) {
            (n == 11 && b[1] == 16 && b[4] == 0 && b[5] == 1 &&
             b[6] == 2 && b[7] == 0 && b[8] == 2);
 }
+static void emit_transition(tp_freertos_runtime *rt,tp_run_state before) {
+    tp_event event;
+    if(!rt->io.event || !tp_event_transition(before,rt->service->controller,&event)) return;
+    event.utc_valid=rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx,&event.utc_seconds);
+    rt->io.event(rt->io.ctx,&event);
+}
 static void process(tp_freertos_runtime *rt, const tp_runtime_frame *f) {
+    tp_run_state before=rt->service->controller->state;
     uint8_t response[TP_RUNTIME_FRAME_MAX]; size_t length = 0;
     tp_result r = tp_modbus_frame(&rt->ports[f->port], f->bytes, f->length,
                                   response, sizeof(response), &length);
+    emit_transition(rt,before);
     if (r == TP_OK && length && rt->io.send(rt->io.ctx, f->port, response, length) != TP_OK &&
         rt->io.communication_error) rt->io.communication_error(rt->io.ctx, f->port);
 }
@@ -86,7 +94,9 @@ static void task(void *arg) {
             tp_service_save_complete(rt->service,save_result);
         int64_t utc = 0;
         bool valid = rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx, &utc);
+        tp_run_state before=rt->service->controller->state;
         tp_service_tick(rt->service, (uint32_t)xTaskGetTickCount(), valid, utc);
+        emit_transition(rt,before);
         while (budget-- && xQueueReceive(rt->requests, &f, 0) == pdPASS) {
             /* Check again between requests to bound stop latency. */
             if (uxQueueMessagesWaiting(rt->stops)) {

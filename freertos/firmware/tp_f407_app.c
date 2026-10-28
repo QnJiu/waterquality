@@ -16,6 +16,9 @@ static void safe(void *p) {
 }
 static tp_result send(void *p,unsigned port,const uint8_t *bytes,size_t len) { return tp_f407_usart3_rtu_send(&((tp_f407_app *)p)->uart,port,bytes,len); }
 static bool now(void *p,int64_t *utc) { return tp_freertos_clock_now(&((tp_f407_app *)p)->clock,utc); }
+static void record_event(void *p,const tp_event *event) {
+    (void)tp_freertos_event_log_submit(&((tp_f407_app *)p)->events,event);
+}
 static void comm_error(void *p,unsigned port) {
     (void)port; tp_f407_app *a=p;
     taskENTER_CRITICAL(); a->communication_errors++; taskEXIT_CRITICAL();
@@ -35,6 +38,11 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     tp_i2c_io bus=tp_f407_i2c_io(&a->i2c);
     INIT(tp_mb85rc16_init(&a->fram,&bus,0)); a->store=tp_mb85rc16_store(&a->fram);
     INIT(tp_store_bootstrap(&a->store,&o->defaults,&a->config,&a->config_sequence,&a->config_source));
+    INIT(tp_mb85rc16_log_init(&a->log_region,&a->fram,256,1792));
+    tp_event_log_io event_io=tp_mb85rc16_log_io(&a->log_region);
+    INIT(tp_freertos_event_log_start(&a->events,&event_io,512,tskIDLE_PRIORITY));
+    tp_event boot={.type=TP_EVENT_BOOT,.detail=(uint16_t)a->config_source,.value=a->config_sequence};
+    INIT(tp_freertos_event_log_submit(&a->events,&boot));
     INIT(tp_ds3231_init(&a->rtc,&bus));
     INIT(tp_f407_ads1220_spi_init(&a->spi));
     tp_ads1220_io spi=tp_f407_ads1220_spi_io(&a->spi);
@@ -43,7 +51,7 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     tp_hal hal={a,valves,pump_start,pump_poll,temperature,heater,adc_read,interlocks,safe};
     tp_pid pid={0}; tp_init(&a->controller,&hal,&a->config.calibration,&pid,a->config.max_temperature_c);
     INIT(tp_service_init(&a->service,&a->controller,o->recipe,o->recipe_len,0));
-    tp_runtime_io io={a,send,now,comm_error};
+    tp_runtime_io io={a,send,now,comm_error,record_event};
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));
     INIT(tp_runtime_attach_storage(&a->runtime,&a->store,&a->config));
     INIT(tp_f407_temperature_start(&a->temperature,500,256,tskIDLE_PRIORITY+1));

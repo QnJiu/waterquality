@@ -3,6 +3,7 @@
 #include "tp_modbus.h"
 #include "tp_service.h"
 #include "tp_rtu_port.h"
+#include "tp_event_transition.h"
 #include "FreeRTOS.h"
 #include "queue.h"
 #include "task.h"
@@ -24,6 +25,8 @@ typedef struct {
     bool (*rtc_utc)(void *ctx, int64_t *seconds);
     /* Called on failed transmit/enqueue; never blocks. */
     void (*communication_error)(void *ctx, unsigned port);
+    /* Optional; must copy immediately without blocking. */
+    void (*event)(void *ctx, const tp_event *event);
 } tp_runtime_io;
 typedef struct {
     tp_service *service;

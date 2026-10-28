@@ -66,6 +66,9 @@ def read_event(client, sequence=None):
     timestamp = str(event['utc']) + ' UTC秒' if event['utc'] is not None else '无时间'
     text = ('序号：%d  类型：%d  详情：%d  时间：%s  原始值：0x%08X' %
             (event['sequence'], event['type'], event['detail'], timestamp, event['value_bits']))
+    if event['type'] == 5:
+        source = {0: '存储配置', 1: '默认配置'}.get(event['detail'], '未知来源')
+        text += '  配置来源：%s  配置序号：%d' % (source, event['value_bits'])
     if event['type'] == 2 and event['detail'] == 1:
         value = event['value_bits']
         concentration = float32(value >> 16, value & 0xffff)

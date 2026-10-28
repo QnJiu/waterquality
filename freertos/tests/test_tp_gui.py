@@ -127,6 +127,18 @@ class EventTest(unittest.TestCase):
         self.assertIn('序号：17', text)
         self.assertIn('浓度：1.000 mg/L', text)
 
+    def test_boot_event_explains_config_source(self):
+        class Client:
+            def __init__(self, detail): self.detail = detail
+            def log(self, sequence):
+                return {'sequence': 3, 'type': 5, 'detail': self.detail, 'utc': None,
+                        'value_bits': 17}
+        for detail, source in ((0, '存储配置'), (1, '默认配置'), (7, '未知来源')):
+            text = read_event(Client(detail))
+            self.assertIn('配置来源：' + source, text)
+            self.assertIn('配置序号：17', text)
+            self.assertIn('原始值：0x00000011', text)
+
     def test_other_events_do_not_claim_measurements(self):
         class Client:
             def log(self, sequence):

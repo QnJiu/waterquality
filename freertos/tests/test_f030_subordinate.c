@@ -236,6 +236,19 @@ int main(void) {
     assert(door_faults==5 && door.door.state==TP_DOOR_FAULT && !s.recovery_inflight);
     assert(tp_f030_subordinate_recover_door(&s)==TP_OK);
 
+    /* At startup the optional hardware reset precedes all reader traffic. */
+    assert(tp_door_service_init(&door,&reader,&output,NULL,request,1000,50,1,20,100,20)==TP_OK);
+    s.recovering=false; s.verifying_reader=false; s.recovery_inflight=false;
+    s.recovery_requested=false; s.app.door_unavailable=false;
+    unsigned faults_before_start=door_faults;
+    start_reader(&s);
+    assert(s.recovering && s.recovery_inflight && s.app.door_unavailable);
+    assert(door.door.state==TP_DOOR_FAULT && !unlocked && door_faults==faults_before_start+1);
+    recovery_result=TP_BUSY; service_once(&s);
+    assert(s.recovering && s.app.door_unavailable);
+    recovery_result=TP_OK; service_once(&s);
+    assert(s.verifying_reader && s.app.door_unavailable);
+
     timer_high=65536u; fake_tim.CNT=7; fake_tim.SR=TIM_SR_UIF;
     assert(time_us()==131079u); TIM3_IRQHandler(); fake_tim.SR=0;
     assert(time_us()==131079u);

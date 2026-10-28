@@ -203,9 +203,21 @@ static TickType_t idle_wait(tp_f030_subordinate *s,uint32_t now_ms) {
        !tp_sub_app_sleep_budget(&s->app,now_ms,10u,idle,&budget)) return 1;
     return (TickType_t)budget;
 }
+/* Reset an optionally configured reader before the first scan.  The same
+ * recovery path used after a fault keeps the device fault visible until a
+ * complete reader transaction succeeds. */
+static void start_reader(tp_f030_subordinate *s) {
+    if (!s->app.door || !s->door_recovery) return;
+    s->app.door_unavailable=true;
+    (void)tp_door_reader_fault(&s->app.door->door);
+    if (s->door_fault_handler) s->door_fault_handler(s->door_fault_ctx);
+    s->recovering=true;
+    s->recovery_inflight=true;
+}
 static void run(void *ctx) {
     tp_f030_subordinate *s=ctx;
     hardware_start();
+    start_reader(s);
 #ifdef TP_F030_WAKE_INPUT
     tp_f030_wake_input_start(s);
 #endif

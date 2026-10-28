@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
-from tp_gui import read_status
+from tp_gui import read_status, read_calibration_status
 
 
 def words(value):
@@ -39,6 +39,30 @@ class StatusTest(unittest.TestCase):
         self.assertIn('无有效温度', text)
         self.assertNotIn('1.250', text)
         self.assertNotIn('25.50', text)
+
+
+class CalibrationStatusTest(unittest.TestCase):
+    def test_running_and_passing(self):
+        class Client:
+            def auto_calibration_status(self):
+                return {'state': 'high', 'error_code': 0}
+            def auto_standard_status(self):
+                return {'state': 'complete', 'error': 0, 'passed': True, 'actual_mg_l': 5.0}
+        text = read_calibration_status(Client())
+        self.assertIn('高点采样', text)
+        self.assertIn('通过', text)
+        self.assertIn('5.000 mg/L', text)
+
+    def test_unavailable_results_are_not_shown_as_failures(self):
+        class Client:
+            def auto_calibration_status(self):
+                return {'state': 'unavailable', 'error_code': 0}
+            def auto_standard_status(self):
+                return {'state': 'unavailable', 'error': 0, 'passed': None, 'actual_mg_l': None}
+        text = read_calibration_status(Client())
+        self.assertIn('未配置', text)
+        self.assertIn('无结果', text)
+        self.assertNotIn('不通过', text)
 
 
 if __name__ == '__main__':

@@ -22,6 +22,23 @@ def read_status(client):
                               '是' if v[8] == 1 else '否', v[9], temp)
 
 
+def read_calibration_status(client):
+    """Read the two independent automatic workflow snapshots."""
+    cal = client.auto_calibration_status()
+    standard = client.auto_standard_status()
+    cal_names = {'unavailable': '未配置', 'idle': '空闲', 'low': '低点采样',
+                 'high': '高点采样', 'complete': '完成', 'failed': '失败',
+                 'cancelled': '已取消'}
+    std_names = {'unavailable': '未配置', 'idle': '空闲', 'running': '运行中',
+                 'complete': '完成', 'failed': '失败', 'cancelled': '已取消'}
+    actual = standard['actual_mg_l']
+    outcome = ('通过' if standard['passed'] else '不通过') if standard['passed'] is not None else '无结果'
+    concentration = '%.3f mg/L' % actual if actual is not None else '无'
+    return ('自动标定：%s  错误码：%d\n标液核查：%s  错误码：%d  结果：%s  浓度：%s' %
+            (cal_names.get(cal['state'], '未知'), cal['error_code'],
+             std_names.get(standard['state'], '未知'), standard['error'], outcome, concentration))
+
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -37,6 +54,7 @@ class App:
         self.offset = tk.StringVar(value='0')
         self.message = tk.StringVar(value='填写串口后点击读取状态')
         self.status = tk.StringVar(value='尚未读取')
+        self.cal_status = tk.StringVar(value='标定及核查状态尚未读取')
         frame = ttk.Frame(root, padding=12)
         frame.grid(sticky='nsew')
         row = ttk.Frame(frame); row.grid(sticky='w')
@@ -49,6 +67,14 @@ class App:
         for label, command in (('读取状态', None), ('启动', 1), ('停止', 2),
                                ('清故障', 3), ('下一步', 5), ('ADC恢复', 8), ('自检', 10)):
             ttk.Button(controls, text=label, command=lambda c=command: self.start('status' if c is None else 'command', c)).pack(side='left', padx=2)
+        calibration = ttk.Frame(frame); calibration.grid(sticky='w', pady=(8, 0))
+        for label, operation, command in (('读取标定状态', 'cal_status', None),
+                                          ('启动自动标定', 'command', 6),
+                                          ('应用标定', 'command', 7),
+                                          ('启动标液核查', 'command', 9)):
+            ttk.Button(calibration, text=label,
+                       command=lambda op=operation, c=command: self.start(op, c)).pack(side='left', padx=2)
+        ttk.Label(frame, textvariable=self.cal_status, justify='left').grid(sticky='w', pady=(4, 0))
         settings = ttk.Frame(frame); settings.grid(sticky='w', pady=10)
         ttk.Combobox(settings, textvariable=self.mode, values=('受控', '周期', '每日'),
                      state='readonly', width=5).pack(side='left')
@@ -79,8 +105,9 @@ class App:
         except ValueError as error:
             self.message.set(str(error)); return
         self.busy = True
-        if operation != 'status':
+        if operation not in ('status', 'cal_status'):
             self.status.set('命令发送后状态可能变化，请重新读取')
+            self.cal_status.set('命令发送后标定及核查状态可能变化，请重新读取')
         self.message.set('通信中…')
         def work():
             try:
@@ -90,6 +117,8 @@ class App:
                     client = Client(connection, address, 2)
                     if operation == 'status':
                         result = read_status(client)
+                    elif operation == 'cal_status':
+                        result = read_calibration_status(client)
                     elif operation == 'schedule':
                         client.schedule(*value)
                         result = '模式已写入内存；需要时点击保存配置并查询保存状态'
@@ -111,10 +140,15 @@ class App:
             if error:
                 if operation == 'status':
                     self.status.set('读取失败，状态未知')
+                elif operation == 'cal_status':
+                    self.cal_status.set('读取失败，标定及核查状态未知')
                 self.message.set('通信失败：' + error)
             elif operation == 'status':
                 self.status.set(result)
                 self.message.set('状态已读取；温度与状态为分别读取的快照')
+            elif operation == 'cal_status':
+                self.cal_status.set(result)
+                self.message.set('标定和核查状态为分别读取的快照')
             else:
                 self.message.set(result)
         self.root.after(100, self.poll)

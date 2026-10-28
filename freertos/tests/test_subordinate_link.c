@@ -52,5 +52,46 @@ int main(void) {
     assert(tp_sub_link_tick(&master,150000,150)==TP_OK);
     s.fail_send=true; deliver(&m,&slave,150100,150);
     assert(tp_sub_link_tick(&slave,154000,154)==TP_IO_ERROR);
+
+    /* A delayed queue must not extend the validity of a received status. */
+    endpoint delayed={0}; tp_sub_link timed;
+    tp_sub_status ok={0}; uint8_t reply[TP_SUB_RESPONSE_SIZE];
+    assert(tp_sub_link_master_init(&timed,&delayed,send,115200,10,50,20,10,7)==TP_OK);
+    assert(tp_sub_link_tick(&timed,0,0)==TP_OK);
+    assert(tp_sub_reply(delayed.bytes,delayed.len,&ok,reply)==TP_OK); delayed.len=0;
+    for(size_t i=0;i<sizeof(reply);i++)
+        assert(tp_sub_link_byte_at(&timed,reply[i],100+(uint32_t)i*100,2,8)==TP_OK);
+    assert(tp_sub_link_tick(&timed,4000,8)==TP_OK);
+    assert(tp_sub_link_healthy(&timed,11));
+    assert(!tp_sub_link_healthy(&timed,12));
+
+    /* A later byte closes the previous frame; retain the previous timestamp. */
+    assert(tp_sub_link_tick(&timed,50000,50)==TP_OK);
+    assert(tp_sub_reply(delayed.bytes,delayed.len,&ok,reply)==TP_OK); delayed.len=0;
+    for(size_t i=0;i<sizeof(reply);i++)
+        assert(tp_sub_link_byte_at(&timed,reply[i],50100+(uint32_t)i*100,52,58)==TP_OK);
+    assert(tp_sub_link_byte_at(&timed,0xff,55000,55,58)==TP_OK);
+    assert(tp_sub_link_healthy(&timed,61));
+    assert(!tp_sub_link_healthy(&timed,62));
+    assert(tp_sub_link_byte_at(&timed,0,56000,70,69)==TP_INVALID);
+
+    endpoint wrapped={0}; tp_sub_link wrap;
+    assert(tp_sub_link_master_init(&wrap,&wrapped,send,115200,10,50,20,10,9)==TP_OK);
+    assert(tp_sub_link_tick(&wrap,0,0xfffffffcu)==TP_OK);
+    assert(tp_sub_reply(wrapped.bytes,wrapped.len,&ok,reply)==TP_OK); wrapped.len=0;
+    for(size_t i=0;i<sizeof(reply);i++)
+        assert(tp_sub_link_byte_at(&wrap,reply[i],100+(uint32_t)i*100,0xfffffffeu,2)==TP_OK);
+    assert(tp_sub_link_tick(&wrap,4000,2)==TP_OK);
+    assert(tp_sub_link_healthy(&wrap,7));
+    assert(!tp_sub_link_healthy(&wrap,8));
+
+    endpoint stale={0}; tp_sub_link expired;
+    assert(tp_sub_link_master_init(&expired,&stale,send,115200,10,50,20,5,10)==TP_OK);
+    assert(tp_sub_link_tick(&expired,0,0)==TP_OK);
+    assert(tp_sub_reply(stale.bytes,stale.len,&ok,reply)==TP_OK); stale.len=0;
+    for(size_t i=0;i<sizeof(reply);i++)
+        assert(tp_sub_link_byte_at(&expired,reply[i],100+(uint32_t)i*100,1,10)==TP_OK);
+    assert(tp_sub_link_tick(&expired,4000,10)==TP_OK);
+    assert(!tp_sub_link_healthy(&expired,10));
     return 0;
 }

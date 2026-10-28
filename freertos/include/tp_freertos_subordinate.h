@@ -15,6 +15,8 @@ tp_result tp_freertos_subordinate_init(tp_freertos_subordinate *,void *,tp_sub_s
     uint32_t baud,uint8_t bits,uint32_t period_ms,uint32_t timeout_ms,
     uint32_t freshness_ms,uint32_t first_token);
 tp_result tp_freertos_subordinate_byte(tp_freertos_subordinate *,uint8_t,uint32_t us,uint32_t ms);
+tp_result tp_freertos_subordinate_byte_at(tp_freertos_subordinate *,uint8_t,uint32_t us,
+                                          uint32_t received_ms,uint32_t now_ms);
 tp_result tp_freertos_subordinate_error(tp_freertos_subordinate *,uint32_t us,uint32_t ms);
 tp_result tp_freertos_subordinate_tick(tp_freertos_subordinate *,uint32_t us,uint32_t ms);
 bool tp_freertos_subordinate_healthy(void *);

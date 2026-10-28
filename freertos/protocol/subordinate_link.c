@@ -5,6 +5,15 @@ static void frame(void *ctx,const uint8_t *data,size_t len) {
     tp_sub_link *l=ctx;
     if(l->role==TP_SUB_LINK_MASTER) {
         l->frame_result=tp_sub_poll_receive(&l->poll,l->now_ms,data,len);
+        if(l->frame_result==TP_OK && l->last_byte_timed) {
+            tp_sub_master *m=&l->poll.master;
+            if((uint32_t)(l->last_byte_ms-m->deadline_start)>=m->response_timeout_ms) {
+                m->have_status=false; l->frame_result=TP_INVALID;
+            } else {
+                m->last_success=l->last_byte_ms;
+                tp_sub_master_tick(m,l->now_ms);
+            }
+        }
         return;
     }
     /* Validate before reading sensors or sending a response. */
@@ -36,6 +45,13 @@ tp_result tp_sub_link_slave_init(tp_sub_link *l,void *ctx,tp_sub_send send,tp_su
 tp_result tp_sub_link_byte(tp_sub_link *l,uint8_t byte,uint32_t us,uint32_t ms) {
     if(!l || !l->initialized) return TP_INVALID;
     l->now_ms=ms; l->frame_result=TP_OK; tp_rtu_receiver_byte(&l->receiver,byte,us);
+    l->last_byte_timed=false;
+    return l->frame_result;
+}
+tp_result tp_sub_link_byte_at(tp_sub_link *l,uint8_t byte,uint32_t us,uint32_t received_ms,uint32_t now_ms) {
+    if(!l || !l->initialized || (uint32_t)(now_ms-received_ms)>0x7fffffffu) return TP_INVALID;
+    l->now_ms=now_ms; l->frame_result=TP_OK; tp_rtu_receiver_byte(&l->receiver,byte,us);
+    l->last_byte_ms=received_ms; l->last_byte_timed=true;
     return l->frame_result;
 }
 tp_result tp_sub_link_error(tp_sub_link *l,uint32_t us,uint32_t ms) {

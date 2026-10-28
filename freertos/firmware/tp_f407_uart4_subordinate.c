@@ -44,7 +44,8 @@ void UART4_IRQHandler(void) {
     if(!u) { (void)UART4->DR; return; }
     if(sr & RX_FLAGS) {
         uint8_t data=(uint8_t)UART4->DR;
-        tp_sub_uart_event e={TIM5->CNT,data,(sr & (RX_FLAGS & ~USART_SR_RXNE))!=0};
+        tp_sub_uart_event e={TIM5->CNT,(uint32_t)xTaskGetTickCountFromISR(),data,
+                             (sr & (RX_FLAGS & ~USART_SR_RXNE))!=0};
         if(xQueueSendFromISR(u->events,&e,&wake)!=pdPASS) u->overflow=true;
         vTaskNotifyGiveFromISR(u->task,&wake);
     }
@@ -70,8 +71,9 @@ static void uart_task(void *ctx) {
         if(lost) (void)tp_freertos_subordinate_error(&u->subordinate,lost_at,(uint32_t)xTaskGetTickCount());
         while(xQueueReceive(u->events,&e,0)==pdPASS) {
             uint32_t ms=(uint32_t)xTaskGetTickCount();
-            if(e.error) (void)tp_freertos_subordinate_error(&u->subordinate,e.us,ms);
-            else (void)tp_freertos_subordinate_byte(&u->subordinate,e.byte,e.us,ms);
+            if(e.error || (uint32_t)(ms-e.ms)>0x7fffffffu)
+                (void)tp_freertos_subordinate_error(&u->subordinate,e.us,ms);
+            else (void)tp_freertos_subordinate_byte_at(&u->subordinate,e.byte,e.us,e.ms,ms);
             if(u->overflow) break;
         }
         taskENTER_CRITICAL();

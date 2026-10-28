@@ -5,7 +5,7 @@
 
 /* Reference only: UART4 PC10/PC11 AF8, 115200 8N1, full duplex.
  * Initialize once before the scheduler, and retain this object for its life. */
-typedef struct { uint32_t us; uint8_t byte; bool error; } tp_sub_uart_event;
+typedef struct { uint32_t us, ms; uint8_t byte; bool error; } tp_sub_uart_event;
 typedef struct {
     tp_freertos_subordinate subordinate;
     QueueHandle_t events;

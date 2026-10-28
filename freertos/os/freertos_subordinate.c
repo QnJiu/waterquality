@@ -23,6 +23,11 @@ tp_result tp_freertos_subordinate_byte(tp_freertos_subordinate *s,uint8_t byte,u
     if(!s || !s->snapshot) return TP_INVALID;
     tp_result r=tp_sub_link_byte(&s->link,byte,us,ms); publish(s); return r;
 }
+tp_result tp_freertos_subordinate_byte_at(tp_freertos_subordinate *s,uint8_t byte,uint32_t us,
+                                           uint32_t received_ms,uint32_t now_ms) {
+    if(!s || !s->snapshot) return TP_INVALID;
+    tp_result r=tp_sub_link_byte_at(&s->link,byte,us,received_ms,now_ms); publish(s); return r;
+}
 tp_result tp_freertos_subordinate_error(tp_freertos_subordinate *s,uint32_t us,uint32_t ms) {
     if(!s || !s->snapshot) return TP_INVALID;
     tp_result r=tp_sub_link_error(&s->link,us,ms); publish(s); return r;

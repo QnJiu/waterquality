@@ -61,3 +61,8 @@ python tools/sign_manifest.py --image firmware.bin --key signing-key.pem --produ
 `tp_secure_upgrade_init` 以长期有效的配置组装签名认证、每槽清单、镜像读写、下载与启动元数据和命令入口。调用方提供三个互不重叠的双槽存储、两个镜像槽的读写擦除回调与容量、产品 ID 和可信公钥，初始化后可将 `commands` 交给 `tp_upgrade_wire` 或 F407 升级串口任务；`boot` 用于启动选择与试运行确认。初始化不会格式化存储、烧录工厂镜像或自动启动传输。对象包含内部指针，初始化后不能移动或复制，生命周期内必须单一所有者串行调用。
 
 主机集成测试使用临时生成的 P-256 私钥，从 Python 签名工具和升级客户端走真实的 C 协议、下载、清单持久化和启动验证；覆盖中断后重新认证、试运行确认与未确认回滚、签名及镜像篡改。依赖 `cryptography`，CMake 找到该依赖时自动注册测试。测试存储是内存替身，不代表目标 Flash 的掉电和擦写行为。
+### 升级专用 FRAM 参考布局
+
+`tp_upgrade_fram` 为升级记录提供三个独立的双槽存储：启动状态 0–255、下载状态 256–511、签名清单 512–767，每槽 128 字节。通过 `tp_upgrade_fram_init` 初始化，再分别用 `tp_upgrade_fram_store(&fram.boot)`、`tp_upgrade_fram_store(&fram.download)`、`tp_upgrade_fram_store(&fram.manifests)` 填入 `tp_secure_upgrade_config` 对应的三个存储接口。FRAM 对象和 I²C 上下文必须存活至升级与启动操作结束，调用方须串行化访问。擦除先清除该记录的提交标记，再填充 `0xff`；记录格式或提交标记位置发生变化时必须同步修改适配器。
+
+此布局占用一颗专用 MB85RC16 的前 768 字节。原配置与事件日志已占满另一颗 MB85RC16；两颗器件均占用地址 `0x50..0x57`，因此必须使用独立 I²C 总线或可隔离通道的总线复用器。板级总线、可信密钥和独立启动程序仍需装配。测试使用 I²C 内存替身及故障注入，实际供电和掉电行为尚未验证。

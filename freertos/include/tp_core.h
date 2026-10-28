@@ -85,6 +85,7 @@ void tp_stop(tp_controller *c);
  * other device checks belong to the service preflight callback. */
 tp_result tp_clear_fault(tp_controller *c);
 /* Returns NaN if intermediate arithmetic overflows. */
+/* Returns NaN for invalid inputs or arithmetic failure; callers must stop heating. */
 float tp_pid_update(tp_pid *pid, float target, float measured, float dt_seconds);
 tp_result tp_concentration(const tp_calibration *cal, float blank, float reacted,
                            float turbidity, float *result);

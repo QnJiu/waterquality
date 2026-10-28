@@ -8,7 +8,8 @@ float tp_pid_update(tp_pid *p, float target, float measured, float dt)
     if (!p || !isfinite(target) || !isfinite(measured) || !isfinite(dt) || dt <= 0.0f ||
         !isfinite(p->kp) || !isfinite(p->ki) || !isfinite(p->kd) ||
         !isfinite(p->deadband_c) || !isfinite(p->integral_max) || !isfinite(p->output_max) ||
-        p->deadband_c < 0 || p->integral_max < 0 || p->output_max < 0) return 0.0f;
+        p->kp < 0 || p->ki < 0 || p->kd < 0 || p->deadband_c < 0 ||
+        p->integral_max < 0 || p->output_max <= 0 || p->output_max > 1) return NAN;
     float error = target - measured;
     if (fabsf(error) <= p->deadband_c) error = 0;
     float derivative = p->initialized ? -(measured - p->previous_temp) / dt : 0;

@@ -86,6 +86,17 @@ int main(void) {
     assert(tp_start(&c3,overflow,2,0)==TP_OK);
     tp_tick(&c3,0);
     assert(c3.state==TP_FAILED && c3.fault==TP_FAULT_IO && h.safe==1 && h.heat_calls==0);
+    /* Invalid PID data must report a fault rather than silently output zero. */
+    fake bad={.interlock=true,.temperature=20};
+    tp_hal bad_hal={&bad,valves,pump,poll,temp,heat,adc,interlock,safe};
+    tp_pid bad_pid={.kp=NAN,.output_max=1,.integral_max=1}; tp_controller bad_controller;
+    tp_init(&bad_controller,&bad_hal,NULL,&bad_pid,100);
+    assert(tp_start(&bad_controller,overflow,2,0)==TP_OK); tp_tick(&bad_controller,0);
+    assert(bad_controller.state==TP_FAILED && bad_controller.fault==TP_FAULT_IO &&
+           bad.safe==1 && bad.heat_calls==0);
+    bad_pid.kp=-1; assert(isnan(tp_pid_update(&bad_pid,30,20,0.2f)));
+    bad_pid.kp=1; bad_pid.output_max=2; assert(isnan(tp_pid_update(&bad_pid,30,20,0.2f)));
+    assert(isnan(tp_pid_update(&pid,30,20,0)));
     /* Temperature remains a safety input during a non-heating wait. */
     fake j={.interlock=true,.temperature=20};
     tp_hal hal4={&j,valves,pump,poll,temp,heat,adc,interlock,safe};

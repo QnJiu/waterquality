@@ -111,6 +111,7 @@ static void task(void *arg) {
             rt->service->now_ms = (uint32_t)xTaskGetTickCount();
             process(rt, &f);
         }
+        if (rt->io.control_progress) rt->io.control_progress(rt->io.ctx);
         /* Notification also wakes the task when a stop arrives. */
         (void)ulTaskNotifyTake(pdTRUE, period);
     }

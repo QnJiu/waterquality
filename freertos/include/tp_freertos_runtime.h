@@ -29,6 +29,8 @@ typedef struct {
     void (*event)(void *ctx, const tp_event *event);
     /* Optional nonblocking query-completion poll; called by service owner. */
     bool (*poll_log)(void *ctx, tp_result *result, tp_event *event);
+    /* Optional; called after a complete control loop, must not block. */
+    void (*control_progress)(void *ctx);
 } tp_runtime_io;
 typedef struct {
     tp_service *service;

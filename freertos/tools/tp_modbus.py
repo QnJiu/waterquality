@@ -78,7 +78,7 @@ class Client:
         return self.exchange(struct.pack('>BHH', 3, address, count), count)
 
     def command(self, command):
-        if command not in range(1, 11):
+        if command not in range(1, 12):
             raise ValueError('invalid command')
         self.exchange(struct.pack('>BHH', 6, 0, command), 0)
 

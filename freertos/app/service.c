@@ -300,6 +300,11 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
         case 6: return start_auto_cal(s);
         case 7: return apply_auto_cal(s);
         case 9: return start_auto_standard(s);
+        case 10:
+            if (!s->preflight) return TP_INVALID;
+            if (s->maintenance || s->controller->state==TP_RUNNING ||
+                calibration_running(s) || standard_running(s)) return TP_BUSY;
+            return run_preflight(s);
         case 8:
             if (!s->recover_adc) return TP_INVALID;
             if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s)) return TP_BUSY;

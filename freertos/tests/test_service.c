@@ -123,6 +123,20 @@ int main(void) {
     assert(tp_service_read_holding(&s,102,3,check_result)==TP_OK && check_result[0]==0);
     assert(tp_service_write_holding(&s,0,1,&begin)==TP_OK);
     assert(tp_service_write_holding(&s,92,10,check)==TP_BUSY);
+    /* Standalone diagnostics never start or clear a fault. */
+    uint16_t diagnose=10;
+    tp_init(&c,&hal,NULL,NULL,100);
+    assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_INVALID);
+    assert(tp_service_attach_preflight(&s,NULL,preflight)==TP_OK);
+    check_faults=TP_PREFLIGHT_LEVEL;
+    assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_IO_ERROR);
+    assert(c.state==TP_IDLE && s.preflight_faults==TP_PREFLIGHT_LEVEL);
+    tp_stop(&c); check_faults=0;
+    assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_OK);
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_STOP && s.preflight_faults==0);
+    assert(tp_service_enter_maintenance(&s)==TP_OK);
+    assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_BUSY);
     puts("service checks passed"); return 0;
 }
 

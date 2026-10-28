@@ -78,7 +78,7 @@ class Client:
         return self.exchange(struct.pack('>BHH', 3, address, count), count)
 
     def command(self, command):
-        if command not in range(1, 10):
+        if command not in range(1, 11):
             raise ValueError('invalid command')
         self.exchange(struct.pack('>BHH', 6, 0, command), 0)
 
@@ -201,7 +201,7 @@ def main(argv=None):
     log = sub.add_parser('log')
     log.add_argument('--sequence', type=int, help='omit for latest event')
     cmd = sub.add_parser('command')
-    cmd.add_argument('name', choices=['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start'])
+    cmd.add_argument('name', choices=['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start', 'self-check'])
     schedule = sub.add_parser('schedule')
     schedule.add_argument('mode', choices=['controlled', 'periodic', 'daily'])
     schedule.add_argument('seconds', type=int)
@@ -213,7 +213,7 @@ def main(argv=None):
         with serial.Serial(args.port, args.baud, bytesize=8, parity='N', stopbits=1, timeout=0.1, write_timeout=args.timeout) as port:
             client = Client(port, args.address, args.timeout)
             if args.action == 'command':
-                client.command(['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start'].index(args.name) + 1)
+                client.command(['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start', 'self-check'].index(args.name) + 1)
                 print('Command accepted; check status for completion.')
             elif args.action == 'auto-standard-status':
                 print(json.dumps(client.auto_standard_status()))

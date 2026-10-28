@@ -29,7 +29,17 @@ extern uint32_t SystemCoreClock;
 #define configTIMER_TASK_STACK_DEPTH            256
 #define configUSE_TRACE_FACILITY                0
 #define configUSE_STATS_FORMATTING_FUNCTIONS    0
+#ifdef TP_F407_DIAGNOSTICS
+#define configGENERATE_RUN_TIME_STATS           1
+#define configRUN_TIME_COUNTER_TYPE             uint64_t
+#define INCLUDE_xTaskGetIdleTaskHandle          1
+/* TIM5 is started before the scheduler and shared with the UART timestamps. */
+uint64_t tp_f407_runtime_counter(void);
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS() ((void)0)
+#define portGET_RUN_TIME_COUNTER_VALUE() tp_f407_runtime_counter()
+#else
 #define configGENERATE_RUN_TIME_STATS           0
+#endif
 #define INCLUDE_vTaskDelay                      1
 #define INCLUDE_vTaskDelayUntil                 1
 #define INCLUDE_vTaskDelete                     1

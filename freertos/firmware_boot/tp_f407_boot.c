@@ -22,5 +22,11 @@ tp_result tp_f407_boot_prepare(tp_f407_boot *b,tp_boot_target *target) {
 
 tp_result tp_f407_boot_factory_provision(tp_f407_boot *b,const uint8_t *manifest,size_t size) {
     if (!b) return TP_INVALID;
+    tp_download_manifest m;
+    tp_result r=tp_signed_boot_authenticate(&b->signed_boot,manifest,size,&m);
+    if(r!=TP_OK) return r;
+    tp_boot_target target;
+    r=tp_boot_target_check_vector(&b->target,m.bank,m.size,&target);
+    if(r!=TP_OK) return r;
     return tp_factory_provision(&b->signed_boot,&b->target.metadata,manifest,size);
 }

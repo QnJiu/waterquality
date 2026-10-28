@@ -2,15 +2,19 @@
 #include <limits.h>
 typedef struct { const tp_boot_target_config *cfg; tp_boot_target target; } context;
 static uint32_t le32(const uint8_t *p) { return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24); }
-static tp_result verify(void *v,uint8_t bank,uint32_t version) {
-    context *c=v; const tp_boot_target_config *cfg=c->cfg; uint32_t size=0;
-    tp_result r=cfg->verify(cfg->verify_ctx,bank,version,&size); if(r!=TP_OK) return r;
-    if(bank>1 || size<8 || size>cfg->capacity[bank] || size>UINT32_MAX-cfg->base[bank]) return TP_INVALID;
-    uint8_t b[8]; r=cfg->read(cfg->read_ctx,bank,0,b,sizeof(b)); if(r!=TP_OK) return r;
+tp_result tp_boot_target_check_vector(const tp_boot_target_config *cfg,uint8_t bank,uint32_t size,tp_boot_target *out) {
+    if(!cfg || !out || !cfg->read || bank>1 || size<8 || size>cfg->capacity[bank] ||
+       size>UINT32_MAX-cfg->base[bank]) return TP_INVALID;
+    uint8_t b[8]; tp_result r=cfg->read(cfg->read_ctx,bank,0,b,sizeof(b)); if(r!=TP_OK) return r;
     uint32_t sp=le32(b), entry=le32(b+4), addr=entry&~1u; bool stack_ok=false;
     for(unsigned i=0;i<2;i++) if(cfg->ram_start[i]<cfg->ram_end[i] && sp>cfg->ram_start[i] && sp<=cfg->ram_end[i]) stack_ok=true;
     if(!stack_ok || (sp&7u) || !(entry&1u) || addr<cfg->base[bank] || addr-cfg->base[bank]>size-2u) return TP_INVALID;
-    c->target=(tp_boot_target){bank,cfg->base[bank],sp,entry}; return TP_OK;
+    *out=(tp_boot_target){bank,cfg->base[bank],sp,entry}; return TP_OK;
+}
+static tp_result verify(void *v,uint8_t bank,uint32_t version) {
+    context *c=v; const tp_boot_target_config *cfg=c->cfg; uint32_t size=0;
+    tp_result r=cfg->verify(cfg->verify_ctx,bank,version,&size); if(r!=TP_OK) return r;
+    return tp_boot_target_check_vector(cfg,bank,size,&c->target);
 }
 tp_result tp_boot_target_prepare(const tp_boot_target_config *cfg,tp_boot_target *out) {
     if(!cfg || !out || !cfg->verify || !cfg->read || !cfg->metadata.read || !cfg->metadata.write || !cfg->metadata.erase ||

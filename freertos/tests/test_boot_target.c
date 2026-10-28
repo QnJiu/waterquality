@@ -15,6 +15,11 @@ int main(void) {
     tp_store_io store={&f,rdmeta,erase,wrmeta}; tp_boot_io boot={store,&f,check_boot};
     tp_boot_target_config cfg={store,&f,&f,check,image,{0x08020000,0x08080000},{64,64},{0x20000000,0x10000000},{0x20020000,0x10010000},512};
     tp_boot_target t={.bank=9}; tp_boot_state state;
+    assert(tp_boot_target_check_vector(&cfg,0,64,&t)==TP_OK && t.bank==0);
+    t.bank=9;
+    assert(tp_boot_target_check_vector(&cfg,2,64,&t)==TP_INVALID && t.bank==9);
+    assert(tp_boot_target_check_vector(&cfg,0,7,&t)==TP_INVALID && t.bank==9);
+    f.fail=true; assert(tp_boot_target_check_vector(&cfg,0,64,&t)==TP_IO_ERROR && t.bank==9); f.fail=false;
     assert(tp_boot_provision(&boot,0,1)==TP_OK);
     assert(tp_boot_target_prepare(&cfg,&t)==TP_OK && t.bank==0 && t.stack==0x20020000 && t.entry==0x08020021);
     assert(tp_boot_stage(&boot,1,2)==TP_OK);

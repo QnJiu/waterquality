@@ -20,6 +20,7 @@ typedef struct {
 } tp_f407_boot;
 tp_result tp_f407_boot_init(tp_f407_boot *,const tp_f407_boot_options *);
 tp_result tp_f407_boot_prepare(tp_f407_boot *,tp_boot_target *);
-/* Trusted factory only: image is already programmed; exclusive access required. */
+/* Trusted factory only: image is already programmed; exclusive access required.
+ * Authenticates and checks vectors before any factory metadata writes. */
 tp_result tp_f407_boot_factory_provision(tp_f407_boot *,const uint8_t *manifest,size_t size);
 #endif

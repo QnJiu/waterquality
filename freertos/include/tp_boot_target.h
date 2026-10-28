@@ -15,6 +15,9 @@ typedef struct {
     uint32_t vector_alignment; /* power of two */
 } tp_boot_target_config;
 typedef struct { uint8_t bank; uint32_t vector, stack, entry; } tp_boot_target;
+/* Check vector bounds without authenticating the image; callers must separately
+ * authenticate it and keep it immutable until use. out is unchanged on error. */
+tp_result tp_boot_target_check_vector(const tp_boot_target_config *,uint8_t bank,uint32_t size,tp_boot_target *out);
 /* Verify, validate initial stack and Thumb entry, and persist trial before
  * returning a target. TP_INVALID candidates roll back via tp_boot_select.
  * Result is usable only while image contents remain immutable. */

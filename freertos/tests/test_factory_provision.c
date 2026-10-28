@@ -3,7 +3,7 @@
 #include "boot_signed_fixture.h"
 #include <assert.h>
 #include <string.h>
-typedef struct { uint8_t mem[2048],image[2][64]; unsigned writes,fail_write; } fake;
+typedef struct { uint8_t mem[2048],image[2][64]; unsigned writes,fail_write; bool fail_image; } fake;
 static tp_result w(void *v,uint8_t dev,const uint8_t *p,size_t n) {
     fake *f=v; assert(dev>=0x50 && dev<=0x57 && n>=2 && (size_t)p[0]+n-1<=256);
     f->writes++; size_t count=n-1;
@@ -15,7 +15,8 @@ static tp_result rd(void *v,uint8_t dev,const uint8_t *p,size_t tx,uint8_t *out,
     memcpy(out,f->mem+(dev-0x50)*256+p[0],n); return TP_OK;
 }
 static tp_result image(void *v,uint8_t bank,uint32_t off,void *p,size_t n) {
-    fake *f=v; if(bank>1 || off>64 || n>64-off) return TP_INVALID;
+    fake *f=v; if(f->fail_image) return TP_IO_ERROR;
+    if(bank>1 || off>64 || n>64-off) return TP_INVALID;
     memcpy(p,f->image[bank]+off,n); return TP_OK;
 }
 static void init(fake *f,tp_f407_boot *b) {
@@ -30,8 +31,18 @@ static tp_result provision(tp_f407_boot *b,const uint8_t *manifest) {
 int main(void) {
     fake f; tp_f407_boot b; tp_boot_target target; uint8_t bad[TP_SIGNED_MANIFEST_SIZE];
     assert(tp_f407_boot_factory_provision(NULL,test_manifest0,TP_SIGNED_MANIFEST_SIZE)==TP_INVALID);
-    init(&f,&b); memcpy(bad,test_manifest0,sizeof(bad)); bad[60]^=1;
+    init(&f,&b); f.fail_image=true;
+    assert(provision(&b,test_manifest0)==TP_IO_ERROR && f.writes==0);
+    f.fail_image=false; memcpy(bad,test_manifest0,sizeof(bad)); bad[60]^=1;
     assert(provision(&b,bad)==TP_INVALID && f.writes==0);
+    /* This manifest and digest match the invalid-vector image and verify
+     * cryptographically; reject before writing even when hashing would pass. */
+    memset(f.image[0],0,4);
+    tp_download_manifest signed_image;
+    assert(tp_signed_boot_authenticate(&b.signed_boot,test_bad_vector_manifest,sizeof(test_bad_vector_manifest),&signed_image)==TP_OK);
+    assert(tp_signed_manifest_verify_image(&b.signed_boot.signature,&signed_image)==TP_OK);
+    assert(provision(&b,test_bad_vector_manifest)==TP_INVALID && f.writes==0);
+    memcpy(f.image[0],test_image0,4);
     f.image[0][16]^=1; assert(provision(&b,test_manifest0)==TP_INVALID && f.writes==0); f.image[0][16]^=1;
     f.mem[0]=0; assert(provision(&b,test_manifest0)==TP_INVALID && f.writes==0); f.mem[0]=0xff;
     assert(provision(&b,test_manifest0)==TP_OK);

@@ -1,4 +1,5 @@
 #include "tp_f407_boot.h"
+#include "tp_trial_confirm.h"
 #include "boot_signed_fixture.h"
 #include <assert.h>
 #include <string.h>
@@ -39,7 +40,16 @@ int main(void) {
     assert(tp_f407_boot_prepare(&b,&target)==TP_OK && target.bank==0); /* candidate hash failure */
     f.image[0][15]^=1; target.bank=9;
     assert(tp_f407_boot_prepare(&b,&target)==TP_INVALID && target.bank==9);
-    f.image[0][15]^=1; f.bus_error=true;
+    f.image[0][15]^=1; f.image[1][15]^=1;
+    assert(tp_boot_stage(&boot,1,2)==TP_OK);
+    assert(tp_f407_boot_prepare(&b,&target)==TP_OK && target.bank==1);
+    tp_trial_confirm gate;
+    assert(tp_trial_confirm_init(&gate,&boot,1,100,50)==TP_OK);
+    assert(tp_trial_confirm_poll(&gate,0,true)==TP_BUSY);
+    assert(tp_trial_confirm_poll(&gate,50,true)==TP_BUSY);
+    assert(tp_trial_confirm_poll(&gate,100,true)==TP_OK);
+    assert(tp_f407_boot_prepare(&b,&target)==TP_OK && target.bank==1);
+    f.bus_error=true;
     assert(tp_f407_boot_prepare(&b,&target)==TP_IO_ERROR); f.bus_error=false; f.image_error=true;
     assert(tp_f407_boot_prepare(&b,&target)==TP_IO_ERROR);
     o.product_id=0; assert(tp_f407_boot_init(&b,&o)==TP_INVALID);

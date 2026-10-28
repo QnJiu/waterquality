@@ -102,6 +102,45 @@ class Tests(unittest.TestCase):
         with self.assertRaises(u.ProtocolError):
             u.cancel(client, manifest, manifest_id)
 
+    def test_cancel_cli_round_trip(self):
+        image = b"firmware"
+        body = struct.pack("<4sIIIB3x32s", b"TPU1", 1, 2, len(image), 1,
+                           hashlib.sha256(image).digest())
+        manifest = body + bytes(64)
+        manifest_id = hashlib.sha256(body).digest()
+
+        class Transport:
+            def __init__(self):
+                self.requests = []
+                self.response = b""
+                self.closed = False
+
+            def write(self, frame):
+                decoder = u.Decoder()
+                frames = [value for byte in frame if (value := decoder.feed(byte)) is not None]
+                self.requests.extend(frames)
+                cmd, seq, payload = frames[0]
+                reply = (bytes([u.OK, 1]) + struct.pack("<BBIII", 4, 1, 2, len(image), 0)
+                         + manifest_id)
+                self.response = u.encode(cmd | 0x80, seq, reply)
+
+            def read(self, timeout):
+                response, self.response = self.response, b""
+                return response
+
+            def close(self):
+                self.closed = True
+
+        transport = Transport()
+        argv = ["upgrade_client", "--tcp", "host:1234", "--manifest-url",
+                "https://example.com/manifest", "--cancel"]
+        with patch.object(sys, "argv", argv), patch.object(u, "download", return_value=manifest), \
+             patch.object(u, "TcpTransport", return_value=transport), \
+             patch.object(sys, "stdout", new_callable=io.StringIO):
+            self.assertEqual(u.main(), 0)
+        self.assertEqual(transport.requests, [(u.CANCEL, 0, manifest)])
+        self.assertTrue(transport.closed)
+
     def test_remote_files_checked_before_device_connection(self):
         image = b"firmware"
         body = struct.pack("<4sIIIB3x32s", b"TPU1", 1, 2, len(image), 1,

@@ -42,6 +42,7 @@ typedef struct {
     TaskHandle_t storage_task;
     TaskHandle_t owner;
     uint32_t tick_ms;
+    uint8_t maintenance_state; /* protected by FreeRTOS critical sections */
 } tp_freertos_runtime;
 /* Call before scheduler starts. Queues are owned by the runtime. The task stack,
  * FreeRTOS heap and priority are application configuration responsibilities. */
@@ -55,6 +56,10 @@ tp_result tp_runtime_attach_storage(tp_freertos_runtime *rt, const tp_store_io *
 tp_result tp_runtime_bootstrap_storage(tp_freertos_runtime *rt, const tp_store_io *store,
     const tp_config *defaults, uint32_t *sequence, tp_config_source *source);
 tp_result tp_runtime_start(tp_freertos_runtime *rt, uint16_t stack_words, UBaseType_t priority);
+/* Task context only; requests latched maintenance and wakes the control owner.
+ * Returns TP_LOCK_BUSY until safe outputs have been applied, TP_OK afterward.
+ * A failed request returns TP_INVALID; state is latched until reset. */
+tp_result tp_runtime_request_maintenance(tp_freertos_runtime *rt);
 /* Bind one RTU framer to an existing runtime port. The caller owns the port
  * for its lifetime; invoke byte/error/poll from that UART's task only. */
 tp_result tp_runtime_rtu_port_init(tp_freertos_runtime *rt, tp_rtu_port *port,

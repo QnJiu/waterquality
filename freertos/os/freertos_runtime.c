@@ -77,11 +77,35 @@ tp_result tp_runtime_bootstrap_storage(tp_freertos_runtime *rt, const tp_store_i
     if (r == TP_OK) { *sequence = seq; *source = origin; }
     return r;
 }
+enum { MAINTENANCE_NONE, MAINTENANCE_REQUESTED, MAINTENANCE_READY, MAINTENANCE_FAILED };
+tp_result tp_runtime_request_maintenance(tp_freertos_runtime *rt) {
+    if (!rt || !rt->owner || xTaskGetSchedulerState()!=taskSCHEDULER_RUNNING) return TP_INVALID;
+    taskENTER_CRITICAL();
+    if (rt->maintenance_state==MAINTENANCE_NONE) rt->maintenance_state=MAINTENANCE_REQUESTED;
+    uint8_t state=rt->maintenance_state;
+    taskEXIT_CRITICAL();
+    if (state==MAINTENANCE_REQUESTED) xTaskNotifyGive(rt->owner);
+    return state==MAINTENANCE_READY ? TP_OK : state==MAINTENANCE_FAILED ? TP_INVALID : TP_LOCK_BUSY;
+}
+/* Only the controller task calls this; never invoke hardware in a critical section. */
+static void process_maintenance(tp_freertos_runtime *rt) {
+    taskENTER_CRITICAL();
+    bool requested=rt->maintenance_state==MAINTENANCE_REQUESTED;
+    taskEXIT_CRITICAL();
+    if (!requested) return;
+    tp_run_state before=rt->service && rt->service->controller ? rt->service->controller->state : TP_IDLE;
+    tp_result result=tp_service_enter_maintenance(rt->service);
+    if (result==TP_OK) emit_transition(rt,before);
+    taskENTER_CRITICAL();
+    rt->maintenance_state=result==TP_OK ? MAINTENANCE_READY : MAINTENANCE_FAILED;
+    taskEXIT_CRITICAL();
+}
 static void task(void *arg) {
     tp_freertos_runtime *rt = arg;
     const TickType_t period = pdMS_TO_TICKS(rt->tick_ms) ? pdMS_TO_TICKS(rt->tick_ms) : 1;
     for (;;) {
         tp_runtime_frame f; unsigned budget = TP_RUNTIME_QUEUE_DEPTH;
+        process_maintenance(rt);
         /* A stop overtakes pending traffic. Discard earlier pending requests so a
          * queued start cannot restart the instrument immediately after the stop. */
         while (xQueueReceive(rt->stops, &f, 0) == pdPASS) {
@@ -103,6 +127,7 @@ static void task(void *arg) {
         tp_service_tick(rt->service, (uint32_t)xTaskGetTickCount(), valid, utc);
         emit_transition(rt,before);
         while (budget-- && xQueueReceive(rt->requests, &f, 0) == pdPASS) {
+            process_maintenance(rt);
             /* Check again between requests to bound stop latency. */
             if (uxQueueMessagesWaiting(rt->stops)) {
                 (void)xQueueReset(rt->requests);

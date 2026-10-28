@@ -98,6 +98,12 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     tp_runtime_io io={a,send,now,comm_error,record_event,poll_log,control_progress};
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));
     INIT(tp_runtime_attach_storage(&a->runtime,&a->store,&a->config));
+    if (o->auto_calibration) {
+        const tp_f407_auto_cal_options *cal=o->auto_calibration;
+        INIT(tp_service_attach_auto_calibration(&a->service,
+            cal->low_recipe,cal->low_recipe_len,cal->high_recipe,cal->high_recipe_len,
+            cal->low_concentration,cal->high_concentration,cal->min_absorbance_delta));
+    }
     INIT(tp_f407_temperature_start(&a->temperature,500,256,tskIDLE_PRIORITY+1));
     INIT(tp_freertos_clock_start(&a->clock,&a->rtc,1000,3000,256,tskIDLE_PRIORITY+1));
     INIT(tp_f407_usart3_rtu_init(&a->uart,&a->runtime,0,512,tskIDLE_PRIORITY+2));

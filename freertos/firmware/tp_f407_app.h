@@ -22,6 +22,11 @@ typedef struct tp_f407_eeprom_options {
     tp_result (*wait_ready)(void *, uint8_t);
 } tp_f407_eeprom_options;
 typedef struct {
+    const tp_step *low_recipe; size_t low_recipe_len;
+    const tp_step *high_recipe; size_t high_recipe_len;
+    float low_concentration, high_concentration, min_absorbance_delta;
+} tp_f407_auto_cal_options;
+typedef struct {
     const tp_step *recipe; size_t recipe_len;
     const tp_valve_policy *valves;
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
@@ -33,6 +38,9 @@ typedef struct {
      * EEPROM uses an independent or isolated I2C bus: MB85RC16 occupies
      * all addresses 0x50..0x57. The bus and wait context must remain valid. */
     const struct tp_f407_eeprom_options *config_eeprom;
+    /* Optional; recipes must remain valid and immutable for the application lifetime.
+     * Board configuration supplies the standard-selection and sampling steps. */
+    const tp_f407_auto_cal_options *auto_calibration;
     /* Optional initialized master; UART task owns its link. */
     tp_freertos_subordinate *subordinate;
     /* Optional pre-scheduler board services, after app initialization and

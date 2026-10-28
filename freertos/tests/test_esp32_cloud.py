@@ -49,6 +49,18 @@ class StatusTest(unittest.TestCase):
         self.assertTrue(status['result_valid'])
         self.assertAlmostEqual(status['concentration_mg_l'], 0.301, places=5)
 
+    def test_confirmed_version_is_read_from_separate_registers(self):
+        payload = struct.pack('>BBBHHH', 1, 3, 6, 1, 0x1234, 0x5678)
+        uart, direction = UART(response(payload)), Direction()
+        self.assertEqual(mod.read_confirmed_version(uart, direction, 1, Clock()), 0x12345678)
+        self.assertEqual(uart.written, mod.request(1, 119, 3))
+        self.assertEqual(direction.levels, [1, 0])
+        self.assertIsNone(mod.parse_confirmed_version(response(struct.pack('>BBBHHH', 1, 3, 6, 0, 0, 0)), 1))
+        with self.assertRaisesRegex(ValueError, 'snapshot'):
+            mod.parse_confirmed_version(response(struct.pack('>BBBHHH', 1, 3, 6, 0, 0, 1)), 1)
+        with self.assertRaisesRegex(ValueError, 'CRC'):
+            mod.parse_confirmed_version(b'\x01\x03\x06' + bytes(8), 1)
+
     def test_invalid_result_is_not_reported(self):
         payload = struct.pack('>BBBHHHHfH', 1, 3, 14, 3, 2, 0, 0, 12.0, 0)
         self.assertIsNone(mod.parse_status(response(payload), 1)['concentration_mg_l'])

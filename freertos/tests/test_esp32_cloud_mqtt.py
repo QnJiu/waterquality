@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import pathlib
+import struct
 import sys
 import types
 import unittest
@@ -45,6 +46,17 @@ class CloudTest(unittest.TestCase):
         self.status['concentration_mg_l'] = float('nan')
         with self.assertRaises(ValueError): cloud.property_message(self.status, 1)
 
+    def test_confirmed_version_message(self):
+        class Client:
+            def publish(self, topic, payload, qos):
+                self.topic, self.message, self.qos = topic, json.loads(payload), qos
+        client = Client()
+        cloud.publish_version(client, '/ota/device/inform/p/d', 123, 8)
+        self.assertEqual(client.topic, b'/ota/device/inform/p/d')
+        self.assertEqual(client.message['params']['version'], '123')
+        self.assertEqual(client.qos, 0)
+        with self.assertRaises(ValueError): cloud.publish_version(client, 'topic', 0, 8)
+
     def test_ota_notice_and_stage(self):
         import tempfile
         import os
@@ -62,7 +74,7 @@ class CloudTest(unittest.TestCase):
         class UART:
             def __init__(self, *args, **kwargs): calls.append(('uart', args, kwargs))
             def deinit(self): calls.append('deinit')
-        https = types.SimpleNamespace(download=lambda url, target, limit, ca: (calls.append((url, limit, ca)), target.write(b'package')))
+        https = types.SimpleNamespace(download=lambda url, target, limit, ca: (calls.append((url, limit, ca)), target.write(b'TPU1' + struct.pack('<II', 42, 2) + b'package')))
         ota = types.SimpleNamespace(Client=lambda uart, clock: uart, MAX_IMAGE_SIZE=100,
                                     upload_bundle=lambda client, source: {'bank': 1, 'version': 2, 'written': len(source.read())})
         config = types.SimpleNamespace(OTA_CA_FILE='ca.pem', OTA_UART_ID=1, OTA_UART_TX=25, OTA_UART_RX=26)
@@ -70,16 +82,67 @@ class CloudTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {'ota_https': https, 'ota_client': ota}):
             try:
                 os.chdir(tmp)
-                result = notice_module.stage_bundle(notice.pending[0], config, UART, lambda pin: pin, None)
+                result = notice_module.stage_bundle(notice.pending[0], notice.pending[1], config, UART, lambda pin: pin, None)
             finally:
                 os.chdir(old)
-        self.assertEqual(result['written'], 7)
+        self.assertEqual(result['written'], 19)
         self.assertEqual(calls[0], ('https://example.com/app.tpb', 216, 'ca.pem'))
         self.assertEqual(calls[-1], 'deinit')
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {'ota_https': https, 'ota_client': ota}):
+            try:
+                os.chdir(tmp)
+                with self.assertRaisesRegex(ValueError, 'version does not match'):
+                    notice_module.stage_bundle('https://example.com/app.tpb', '3', config, UART, lambda pin: pin, None)
+            finally:
+                os.chdir(old)
         notice.pending = None
+        notice.callback(topic, json.dumps({'data': {'url': 'https://example.com/app.tpb', 'version': '2.0'}}).encode())
+        self.assertIsNone(notice.pending)
         notice.completed_version = '2'
         notice.callback(topic, payload)
         self.assertIsNone(notice.pending)
+
+    def test_main_reports_only_confirmed_version(self):
+        class Pin:
+            OUT = 1
+            def __init__(self, *args, **kwargs): pass
+        class Clock:
+            now = 0
+            def ticks_ms(self): return self.now
+            def ticks_add(self, a, b): return a + b
+            def ticks_diff(self, a, b): return a - b
+            def sleep_ms(self, ms):
+                self.now += ms
+                if self.now >= 3000: raise KeyboardInterrupt()
+        class Client:
+            sock = types.SimpleNamespace(close=lambda: None)
+            def __init__(self): self.sent = []
+            def set_callback(self, callback): self.callback = callback
+            def subscribe(self, topic, qos): pass
+            def check_msg(self): pass
+            def publish(self, topic, payload, qos): self.sent.append((topic, json.loads(payload)))
+        mqtt = types.ModuleType('umqtt.simple')
+        mqtt.MQTTClient, mqtt.MQTTException = object, type('MQTTException', (Exception,), {})
+        cfg = types.SimpleNamespace(PUBLISH_INTERVAL_S=1, UART_ID=2, UART_TX=17,
+                                    UART_RX=16, RS485_DE=4, OTA_ENABLED=True,
+                                    OTA_TOPIC='/ota/device/upgrade/p/d', OTA_INFORM_TOPIC='/ota/device/inform/p/d',
+                                    MQTT_TOPIC='/sys/p/d/thing/event/property/post', MODBUS_ADDRESS=1)
+        modules = {'network': types.ModuleType('network'), 'ntptime': types.ModuleType('ntptime'),
+                   'machine': types.SimpleNamespace(UART=lambda *a, **kw: object(), Pin=Pin),
+                   'umqtt': types.ModuleType('umqtt'), 'umqtt.simple': mqtt, 'config': cfg,
+                   'modbus_status': load('modbus_status', 'modbus_status.py'), 'cloud': cloud,
+                   'ota_notice': load('ota_notice', 'ota_notice.py')}
+        with patch.dict(sys.modules, modules):
+            main = load('esp32_cloud_main_run', 'main.py')
+            client, versions = Client(), iter([None, 12, 12])
+            main.time = Clock()
+            main.connect_wifi = lambda: types.SimpleNamespace(isconnected=lambda: True)
+            main.connect_mqtt = lambda: client
+            main.read_status = lambda *a: self.status
+            main.read_confirmed_version = lambda *a: next(versions)
+            with self.assertRaises(KeyboardInterrupt): main.main()
+        reports = [message for topic, message in client.sent if topic == b'/ota/device/inform/p/d']
+        self.assertEqual([m['params']['version'] for m in reports], ['12'])
 
     def test_tls_setup_and_failed_connection_close(self):
         calls = []

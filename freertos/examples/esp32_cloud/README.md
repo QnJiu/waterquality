@@ -12,8 +12,8 @@ ESP32 使用 MicroPython 经 RS485 读取 F407 Modbus 地址 10–16，然后通
 
 ## 可选的云端升级通知
 
-将 `ota_notice.py` 以及 `examples/esp32_gateway` 中的 `ota_client.py`、`ota_https.py` 一并复制到 ESP32。将 `OTA_ENABLED` 设为 `True`，配置产品和设备对应的 `OTA_TOPIC`、下载服务器的 CA，以及第二路串口 `OTA_UART_ID/TX/RX`。第一路 UART 继续用于 RS485 Modbus；第二路 UART 以 3.3 V TTL 接 F407 USART6，TX/RX 交叉并共地。选择适用于具体 ESP32 的两个串口和引脚。
+将 `ota_notice.py` 以及 `examples/esp32_gateway` 中的 `ota_client.py`、`ota_https.py` 一并复制到 ESP32。将 `OTA_ENABLED` 设为 `True`，配置产品和设备对应的 `OTA_TOPIC`、`OTA_INFORM_TOPIC`、下载服务器的 CA，以及第二路串口 `OTA_UART_ID/TX/RX`。第一路 UART 继续用于 RS485 Modbus；第二路 UART 以 3.3 V TTL 接 F407 USART6，TX/RX 交叉并共地。选择适用于具体 ESP32 的两个串口和引脚。
 
-云端固件文件需使用 `tools/pack_ota_bundle.py` 生成 `.tpb`，通知中的 `data.url` 必须是该文件的 HTTPS 地址，`data.version` 为非空字符串。下载限制与网关 HTTPS 示例相同，ESP32 文件系统需要容纳完整升级包。MQTT 在处理下载和串口传输之前断开，完成后重新连接；同一次运行中已暂存的版本不会重复执行。F407 负责验证签名及镜像。
+云端固件文件需使用 `tools/pack_ota_bundle.py` 生成 `.tpb`，通知中的 `data.url` 必须是该文件的 HTTPS 地址，`data.version` 必须为签名清单中固件版本的十进制字符串（例如 `12`，范围 1–4294967295，不带前导零）；创建云端固件时也使用相同的版本号。下载后会比对清单版本，不一致则拒绝暂存。下载限制与网关 HTTPS 示例相同，ESP32 文件系统需要容纳完整升级包。MQTT 在处理下载和串口传输之前断开，完成后重新连接；同一次运行中已暂存的版本不会重复执行。F407 负责验证签名及镜像。
 
-打印 `Staged` 只表示暂存成功；复制、重启、试运行和确认仍由 F407 处理。本示例尚未上报当前运行版本、升级进度或最终结果，重启后也不保存去重状态，不能据此认定云端升级成功。需要先完成 F407 启动器及存储装配；通知和下载仍需实际阿里云与硬件联调。
+打印 `Staged` 只表示暂存成功；复制、重启、试运行和确认仍由 F407 处理。ESP32 读取 F407 Modbus 119–121，仅在有效标记为 1 时将已确认版本上报到 `OTA_INFORM_TOPIC`，每次 MQTT 重连和版本变化后重新上报。版本必须与云端的版本字符串完全一致，平台是否收到及判定成功需在云端查看；QoS 0 不保证送达。本示例尚未上报升级进度，重启后也不保存去重状态。需要先完成 F407 启动器及存储装配；通知和下载仍需实际阿里云与硬件联调。

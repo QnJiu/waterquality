@@ -24,3 +24,10 @@ def property_message(status, message_id):
 def publish_status(client, topic, status, message_id):
     payload = property_message(status, message_id)
     client.publish(topic.encode(), payload.encode(), qos=0)
+
+
+def publish_version(client, topic, version, message_id):
+    if not isinstance(version, int) or not 1 <= version <= 0xffffffff:
+        raise ValueError("invalid confirmed version")
+    payload = json.dumps({"id": str(message_id), "params": {"version": str(version)}})
+    client.publish(topic.encode(), payload.encode(), qos=0)

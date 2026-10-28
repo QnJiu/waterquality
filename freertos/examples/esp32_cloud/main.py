@@ -6,8 +6,8 @@ import ssl
 from machine import UART, Pin
 from umqtt.simple import MQTTClient, MQTTException
 import config
-from modbus_status import read_status
-from cloud import publish_status
+from modbus_status import read_status, read_confirmed_version
+from cloud import publish_status, publish_version
 from ota_notice import UpgradeNotice
 
 
@@ -60,6 +60,7 @@ def main():
             if notice:
                 client.set_callback(notice.callback)
                 client.subscribe(config.OTA_TOPIC.encode(), qos=0)
+            last_version = None
             next_publish = time.ticks_ms()
             while wlan.isconnected():
                 if notice:
@@ -70,6 +71,14 @@ def main():
                     status = read_status(uart, direction, config.MODBUS_ADDRESS, time)
                     message_id += 1
                     publish_status(client, config.MQTT_TOPIC, status, message_id)
+                    if notice:
+                        version = read_confirmed_version(uart, direction, config.MODBUS_ADDRESS, time)
+                        if version is None:
+                            last_version = None
+                        elif version != last_version:
+                            message_id += 1
+                            publish_version(client, config.OTA_INFORM_TOPIC, version, message_id)
+                            last_version = version
                     next_publish = time.ticks_add(time.ticks_ms(), config.PUBLISH_INTERVAL_S * 1000)
                 time.sleep_ms(1000)
         except (OSError, ValueError, MQTTException) as exc:
@@ -83,7 +92,7 @@ def main():
             url, version = notice.pending
             notice.pending = None
             try:
-                result = stage_bundle(url, config, UART, Pin, time)
+                result = stage_bundle(url, version, config, UART, Pin, time)
                 notice.completed_version = version
                 print("Staged bank %d, firmware version %d; restart and confirmation pending" %
                       (result["bank"], result["version"]))

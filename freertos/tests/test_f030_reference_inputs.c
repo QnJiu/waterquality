@@ -7,6 +7,8 @@ GPIO_TypeDef fake_gpio, fake_gpio_b;
 SYSCFG_TypeDef fake_syscfg;
 EXTI_TypeDef fake_exti;
 static unsigned notifications, droplets;
+static BaseType_t scheduler=taskSCHEDULER_RUNNING;
+BaseType_t xTaskGetSchedulerState(void) { return scheduler; }
 void vTaskNotifyGiveFromISR(TaskHandle_t task,BaseType_t *wake) {
     assert(task && wake); notifications++;
 }
@@ -18,6 +20,7 @@ void EXTI2_3_IRQHandler(void);
 int main(void) {
     tp_sub_inputs inputs; tp_f030_subordinate subordinate={0};
     assert(tp_f030_board_inputs(NULL,&inputs)==TP_INVALID);
+    assert(tp_f030_reference_inputs_acknowledge_leak()==TP_INVALID);
     subordinate.task=&subordinate;
     tp_f030_reference_inputs_start(&subordinate);
     assert((fake_exti.IMR & 15u)==15u && (fake_exti.RTSR & 15u)==11u && (fake_exti.FTSR & 15u)==7u);
@@ -33,5 +36,18 @@ int main(void) {
     fake_exti.PR=0; EXTI2_3_IRQHandler(); assert(droplets==1);
     fake_exti.PR=8; EXTI2_3_IRQHandler(); assert(notifications==2 && fake_exti.PR==8);
     fake_gpio.IDR=0; assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && inputs.leak_fault);
+    scheduler=taskSCHEDULER_NOT_STARTED;
+    assert(tp_f030_reference_inputs_acknowledge_leak()==TP_INVALID);
+    scheduler=taskSCHEDULER_RUNNING;
+    fake_gpio.IDR=8; fake_exti.PR=0;
+    assert(tp_f030_reference_inputs_acknowledge_leak()==TP_BUSY);
+    fake_gpio.IDR=0; fake_exti.PR=8;
+    assert(tp_f030_reference_inputs_acknowledge_leak()==TP_BUSY);
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && inputs.leak_fault);
+    fake_exti.PR=0;
+    assert(tp_f030_reference_inputs_acknowledge_leak()==TP_OK);
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && !inputs.leak_fault);
+    fake_exti.PR=8; EXTI2_3_IRQHandler(); fake_exti.PR=0;
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && inputs.leak_fault);
     return 0;
 }

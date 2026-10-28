@@ -31,6 +31,16 @@ void tp_f030_reference_inputs_start(tp_f030_subordinate *s) {
     EXTI->IMR |= INPUT_LINES;
     NVIC_EnableIRQ(EXTI0_1_IRQn); NVIC_EnableIRQ(EXTI2_3_IRQn);
 }
+tp_result tp_f030_reference_inputs_acknowledge_leak(void) {
+    if(!owner || xTaskGetSchedulerState()!=taskSCHEDULER_RUNNING) return TP_INVALID;
+    taskENTER_CRITICAL();
+    if((GPIOA->IDR & LEAK) || (EXTI->PR & LEAK)) {
+        taskEXIT_CRITICAL(); return TP_BUSY;
+    }
+    leak_latched=false;
+    taskEXIT_CRITICAL();
+    return TP_OK;
+}
 tp_result tp_f030_board_inputs(void *ctx,tp_sub_inputs *out) {
     (void)ctx;
     if(!owner || !out) return TP_INVALID;

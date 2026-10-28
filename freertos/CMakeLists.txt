@@ -3,7 +3,7 @@ project(tp_core C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 add_library(tp_core STATIC app/controller.c app/preflight.c app/health.c app/event_transition.c app/clock_cache.c app/valve_policy.c app/pulse_counter.c app/heater_duty.c app/measurement.c app/schedule.c app/service.c
-    drivers/ads1220.c drivers/adc_reader.c drivers/mb85rc16.c drivers/ds3231.c drivers/ntc.c protocol/modbus_rtu.c protocol/rtu_receiver.c protocol/rtu_port.c
+    drivers/ads1220.c drivers/adc_reader.c drivers/mb85rc16.c drivers/ds3231.c drivers/ntc.c protocol/modbus_rtu.c protocol/rtu_receiver.c protocol/rtu_port.c protocol/subordinate.c
     storage/config_store.c storage/event_log.c bootloader/boot.c bootloader/download.c bootloader/upgrade.c)
 target_include_directories(tp_core PUBLIC include)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
@@ -20,7 +20,7 @@ if(TP_BUILD_HOST_TESTS)
     add_test(NAME simulator_normal COMMAND tp_simulator)
     add_test(NAME simulator_interlock COMMAND tp_simulator interlock)
     add_test(NAME simulator_sensor COMMAND tp_simulator sensor)
-    foreach(name upgrade download boot preflight health log_service event_transition event_log integration ads_schedule service rtu_receiver fram settings controlled rtu_port ds3231 clock_cache valves pulse_counter heater_duty ntc)
+    foreach(name subordinate upgrade download boot preflight health log_service event_transition event_log integration ads_schedule service rtu_receiver fram settings controlled rtu_port ds3231 clock_cache valves pulse_counter heater_duty ntc)
         add_executable(test_${name} tests/test_${name}.c)
         target_link_libraries(test_${name} PRIVATE tp_core)
         add_test(NAME ${name} COMMAND test_${name})

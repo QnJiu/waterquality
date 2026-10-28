@@ -1,6 +1,7 @@
 #ifndef TP_SERVICE_H
 #define TP_SERVICE_H
 #include "tp_core.h"
+#include "tp_auto_calibration.h"
 #include "tp_schedule.h"
 #include "tp_store.h"
 #include "tp_event_log.h"
@@ -10,6 +11,11 @@
  * invoke callbacks concurrently with tick. Give stop requests priority. */
 typedef struct {
     tp_controller *controller;
+    tp_auto_calibration auto_cal;
+    const tp_step *cal_recipes[2];
+    size_t cal_lengths[2];
+    float cal_concentrations[2], cal_min_delta;
+    bool cal_attached;
     bool maintenance; /* latched until service reinitialization */
     const tp_step *recipe;
     size_t recipe_len;
@@ -35,6 +41,11 @@ tp_result tp_service_init(tp_service *s, tp_controller *controller,
 tp_result tp_service_attach_config(tp_service *s, const tp_config *cfg,
     void *ctx, tp_result (*request_save)(void *, const tp_config *));
 void tp_service_save_complete(tp_service *s, tp_result result);
+/* Attach immutable recipes and reference values before starting calibration.
+ * Recipes must remain valid until service reinitialization. Owner task only. */
+tp_result tp_service_attach_auto_calibration(tp_service *s,
+    const tp_step *low, size_t low_len, const tp_step *high, size_t high_len,
+    float low_concentration, float high_concentration, float min_delta);
 /* Optional nonblocking startup check; invoked for every actual start request. */
 tp_result tp_service_attach_preflight(tp_service *,void *,tp_result (*)(void *,uint16_t *));
 /* One asynchronous query at a time; callback copies the request without waiting.

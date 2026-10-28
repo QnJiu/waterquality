@@ -2,21 +2,31 @@
 #include <string.h>
 /* Holding register addresses are zero-based. See docs/MODBUS.md. */
 static uint32_t join(uint16_t hi, uint16_t lo) { return ((uint32_t)hi << 16) | lo; }
-static tp_result start(tp_service *s) {
-    if (s->maintenance) { s->last_start_result = TP_BUSY; return TP_BUSY; }
-    if (s->save_status == 2) { s->last_start_result = TP_BUSY; return TP_BUSY; }
-    if (s->preflight && s->controller->state != TP_RUNNING && s->controller->state != TP_FAILED) {
-        uint16_t faults=TP_PREFLIGHT_NOT_RUN;
-        tp_result check=s->preflight(s->preflight_ctx,&faults);
-        s->preflight_faults=faults;
-        if(check!=TP_OK || faults) {
-            if (!faults) s->preflight_faults=TP_PREFLIGHT_NOT_RUN;
-            s->controller->hal.safe_outputs(s->controller->hal.ctx);
-            s->last_start_result=TP_IO_ERROR; return TP_IO_ERROR;
-        }
+static bool calibration_running(const tp_service *s) {
+    return s->cal_attached && (s->auto_cal.state==TP_AUTO_CAL_LOW || s->auto_cal.state==TP_AUTO_CAL_HIGH);
+}
+static tp_result run_preflight(void *ctx) {
+    tp_service *s=ctx;
+    if (!s->preflight) return TP_OK;
+    uint16_t faults=TP_PREFLIGHT_NOT_RUN;
+    tp_result r=s->preflight(s->preflight_ctx,&faults);
+    s->preflight_faults=faults;
+    if(r!=TP_OK || faults) {
+        if(!faults) s->preflight_faults=TP_PREFLIGHT_NOT_RUN;
+        s->controller->hal.safe_outputs(s->controller->hal.ctx);
+        return TP_IO_ERROR;
     }
-    s->last_start_result = tp_start(s->controller, s->recipe, s->recipe_len, s->now_ms);
-    if (s->last_start_result == TP_OK) s->controller->single_step = s->schedule.mode == TP_MODE_CONTROLLED;
+    return TP_OK;
+}
+static tp_result start(tp_service *s) {
+    if (s->maintenance || s->save_status==2 || calibration_running(s)) {
+        s->last_start_result=TP_BUSY; return TP_BUSY;
+    }
+    if (s->controller->state!=TP_RUNNING && s->controller->state!=TP_FAILED && run_preflight(s)!=TP_OK) {
+        s->last_start_result=TP_IO_ERROR; return TP_IO_ERROR;
+    }
+    s->last_start_result=tp_start(s->controller,s->recipe,s->recipe_len,s->now_ms);
+    if (s->last_start_result==TP_OK) s->controller->single_step=s->schedule.mode==TP_MODE_CONTROLLED;
     return s->last_start_result;
 }
 tp_result tp_service_init(tp_service *s, tp_controller *controller,
@@ -25,6 +35,33 @@ tp_result tp_service_init(tp_service *s, tp_controller *controller,
     memset(s, 0, sizeof(*s)); s->controller = controller; s->recipe = recipe; s->recipe_len = len;
     s->now_ms = now; s->last_start_result = TP_OK; s->preflight_faults=TP_PREFLIGHT_NOT_RUN;
     return tp_schedule_configure(&s->schedule, TP_MODE_CONTROLLED, 0, 0, 0, now, false);
+}
+tp_result tp_service_attach_auto_calibration(tp_service *s,
+    const tp_step *low, size_t low_len, const tp_step *high, size_t high_len,
+    float low_concentration, float high_concentration, float min_delta) {
+    if (!s || !s->controller || s->cal_attached || s->controller->state==TP_RUNNING) return TP_INVALID;
+    tp_auto_calibration candidate;
+    tp_result r=tp_auto_cal_init(&candidate,s->controller,low,low_len,high,high_len,
+                                 low_concentration,high_concentration,min_delta,s,run_preflight);
+    if (r!=TP_OK) return r;
+    s->auto_cal=candidate; s->cal_recipes[0]=low; s->cal_recipes[1]=high;
+    s->cal_lengths[0]=low_len; s->cal_lengths[1]=high_len;
+    s->cal_concentrations[0]=low_concentration; s->cal_concentrations[1]=high_concentration;
+    s->cal_min_delta=min_delta; s->cal_attached=true; return TP_OK;
+}
+static tp_result start_auto_cal(tp_service *s) {
+    if (!s->cal_attached || !s->request_save) return TP_INVALID;
+    if (s->maintenance || s->save_status==2 || calibration_running(s) ||
+        s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED) return TP_BUSY;
+    tp_auto_calibration candidate;
+    tp_result r=tp_auto_cal_init(&candidate,s->controller,s->cal_recipes[0],s->cal_lengths[0],
+        s->cal_recipes[1],s->cal_lengths[1],s->cal_concentrations[0],s->cal_concentrations[1],
+        s->cal_min_delta,s,run_preflight);
+    if (r!=TP_OK) return r;
+    r=tp_auto_cal_start(&candidate,s->now_ms);
+    if (r!=TP_OK) { candidate.state=TP_AUTO_CAL_FAILED; candidate.error=r; }
+    s->auto_cal=candidate;
+    return r;
 }
 tp_result tp_service_attach_preflight(tp_service *s,void *ctx,tp_result (*check)(void *,uint16_t *)) {
     if(!s || !s->controller || !s->controller->hal.safe_outputs || !check || s->preflight ||
@@ -40,6 +77,8 @@ static void apply_config(tp_service *s, const tp_config *cfg) {
             cfg->period_seconds * 1000u, cfg->daily_minute,
             cfg->utc_offset_minutes, s->now_ms, false);
     }
+    if (s->cal_attached && s->auto_cal.state==TP_AUTO_CAL_COMPLETE)
+        s->auto_cal.state=TP_AUTO_CAL_IDLE; /* configuration changed; discard stale fit */
     s->config = *cfg; s->controller->calibration = cfg->calibration;
     s->controller->pid.kp = cfg->kp; s->controller->pid.ki = cfg->ki;
     s->controller->pid.kd = cfg->kd; s->controller->pid.deadband_c = cfg->deadband_c;
@@ -110,11 +149,20 @@ static tp_result calibrate_words(tp_service *s, const uint16_t *v) {
         return TP_INVALID;
     apply_config(s,&candidate); s->save_status=1; return TP_OK;
 }
+static tp_result apply_auto_cal(tp_service *s) {
+    if (!s->cal_attached || !s->request_save || s->maintenance || s->save_status==2 ||
+        s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED) return TP_BUSY;
+    tp_config candidate=s->config;
+    if (tp_auto_cal_result(&s->auto_cal,&candidate.calibration)!=TP_OK ||
+        tp_config_validate(&candidate)!=TP_OK) return TP_INVALID;
+    apply_config(s,&candidate); s->save_status=1; return TP_OK;
+}
 tp_result tp_service_enter_maintenance(tp_service *s) {
     if (!s || !s->controller || !s->controller->hal.safe_outputs) return TP_INVALID;
     if (s->maintenance) return TP_OK;
     s->maintenance = true;
-    if (s->controller->state == TP_RUNNING) tp_stop(s->controller);
+    if (calibration_running(s)) tp_auto_cal_cancel(&s->auto_cal);
+    else if (s->controller->state == TP_RUNNING) tp_stop(s->controller);
     else s->controller->hal.safe_outputs(s->controller->hal.ctx);
     return TP_OK;
 }
@@ -123,7 +171,8 @@ void tp_service_tick(tp_service *s, uint32_t now, bool rtc_valid, int64_t utc) {
     s->now_ms = now;
     bool busy = s->maintenance || s->controller->state == TP_RUNNING || s->controller->state == TP_FAILED;
     if (tp_schedule_poll(&s->schedule, now, rtc_valid, utc, busy)) (void)start(s);
-    tp_tick(s->controller, now);
+    if (calibration_running(s)) tp_auto_cal_tick(&s->auto_cal,now);
+    else tp_tick(s->controller,now);
 }
 static uint16_t read_one(const tp_service *s, uint16_t a) {
     uint32_t bits = 0;
@@ -150,6 +199,14 @@ static uint16_t read_one(const tp_service *s, uint16_t a) {
 }
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values) {
     tp_service *s = ctx;
+    if (s && s->controller && values && count && address>=90 && (uint32_t)address+count<=92) {
+        for (uint16_t i=0;i<count;i++) {
+            uint16_t a=(uint16_t)(address+i);
+            values[i]=a==90 ? (s->cal_attached ? (uint16_t)(s->auto_cal.state+1) : 0) :
+                (s->cal_attached ? (uint16_t)s->auto_cal.error : 0);
+        }
+        return TP_OK;
+    }
     if (s && s->controller && values && s->request_save && address>=20 &&
         (uint32_t)address+count<=47 && count) {
         uint16_t words[27]; config_words(&s->config,words);
@@ -172,9 +229,14 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
     if (address == 0 && count == 1) {
         switch (v[0]) {
         case 1: return start(s);
-        case 2: tp_stop(s->controller); return TP_OK;
+        case 2:
+            if (calibration_running(s)) tp_auto_cal_cancel(&s->auto_cal);
+            else tp_stop(s->controller);
+            return TP_OK;
         case 3: return tp_clear_fault(s->controller);
         case 5: return s->maintenance ? TP_BUSY : tp_advance(s->controller, s->now_ms);
+        case 6: return start_auto_cal(s);
+        case 7: return apply_auto_cal(s);
         case 4:
             if (!s->request_save || s->save_status==2 || s->controller->state==TP_RUNNING) return TP_BUSY;
             if (s->request_save(s->save_ctx,&s->config)!=TP_OK) { s->save_status=4; return TP_IO_ERROR; }

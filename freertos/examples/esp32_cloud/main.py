@@ -8,6 +8,7 @@ from umqtt.simple import MQTTClient, MQTTException
 import config
 from modbus_status import read_status
 from cloud import publish_status
+from ota_notice import UpgradeNotice
 
 
 def connect_wifi():
@@ -49,22 +50,45 @@ def main():
                 rx=Pin(config.UART_RX), timeout=0)
     direction = Pin(config.RS485_DE, Pin.OUT, value=0)
     message_id = 0
+    notice = UpgradeNotice(config.OTA_TOPIC) if config.OTA_ENABLED else None
     while True:
         client = None
         try:
             wlan = connect_wifi()
             client = connect_mqtt()
             print("MQTT connected")
+            if notice:
+                client.set_callback(notice.callback)
+                client.subscribe(config.OTA_TOPIC.encode(), qos=0)
+            next_publish = time.ticks_ms()
             while wlan.isconnected():
-                status = read_status(uart, direction, config.MODBUS_ADDRESS, time)
-                message_id += 1
-                publish_status(client, config.MQTT_TOPIC, status, message_id)
-                time.sleep_ms(config.PUBLISH_INTERVAL_S * 1000)
+                if notice:
+                    client.check_msg()
+                    if notice.pending:
+                        break
+                if time.ticks_diff(time.ticks_ms(), next_publish) >= 0:
+                    status = read_status(uart, direction, config.MODBUS_ADDRESS, time)
+                    message_id += 1
+                    publish_status(client, config.MQTT_TOPIC, status, message_id)
+                    next_publish = time.ticks_add(time.ticks_ms(), config.PUBLISH_INTERVAL_S * 1000)
+                time.sleep_ms(1000)
         except (OSError, ValueError, MQTTException) as exc:
             print("Cloud or Modbus error:", exc)
         finally:
             if client and client.sock:
                 client.sock.close()
+        if notice and notice.pending:
+            from ota_notice import stage_bundle
+            from ota_client import ProtocolError
+            url, version = notice.pending
+            notice.pending = None
+            try:
+                result = stage_bundle(url, config, UART, Pin, time)
+                notice.completed_version = version
+                print("Staged bank %d, firmware version %d; restart and confirmation pending" %
+                      (result["bank"], result["version"]))
+            except (OSError, ValueError, ProtocolError) as exc:
+                print("OTA staging failed:", exc)
         time.sleep_ms(5000)
 
 

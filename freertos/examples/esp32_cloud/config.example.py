@@ -15,3 +15,11 @@ MQTT_PASSWORD = "your-device-password"
 MQTT_TOPIC = "/sys/your-product-key/your-device-name/thing/event/property/post"
 CA_FILE = "ca.pem"
 PUBLISH_INTERVAL_S = 10
+
+# Optional OTA: use a second UART for F407 USART6, separate from Modbus.
+OTA_ENABLED = False
+OTA_TOPIC = "/ota/device/upgrade/your-product-key/your-device-name"
+OTA_UART_ID = 1
+OTA_UART_TX = 25
+OTA_UART_RX = 26
+OTA_CA_FILE = "ota-ca.pem"

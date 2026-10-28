@@ -45,6 +45,42 @@ class CloudTest(unittest.TestCase):
         self.status['concentration_mg_l'] = float('nan')
         with self.assertRaises(ValueError): cloud.property_message(self.status, 1)
 
+    def test_ota_notice_and_stage(self):
+        import tempfile
+        import os
+        notice_module = load('ota_notice', 'ota_notice.py')
+        notice = notice_module.UpgradeNotice('/ota/device/upgrade/p/d')
+        topic = b'/ota/device/upgrade/p/d'
+        payload = json.dumps({'data': {'url': 'https://example.com/app.tpb', 'version': '2'}}).encode()
+        notice.callback(b'other', payload)
+        notice.callback(topic, b'invalid json')
+        notice.callback(topic, json.dumps({'data': {'url': 'http://bad', 'version': '2'}}).encode())
+        self.assertIsNone(notice.pending)
+        notice.callback(topic, payload)
+        self.assertEqual(notice.pending, ('https://example.com/app.tpb', '2'))
+        calls = []
+        class UART:
+            def __init__(self, *args, **kwargs): calls.append(('uart', args, kwargs))
+            def deinit(self): calls.append('deinit')
+        https = types.SimpleNamespace(download=lambda url, target, limit, ca: (calls.append((url, limit, ca)), target.write(b'package')))
+        ota = types.SimpleNamespace(Client=lambda uart, clock: uart, MAX_IMAGE_SIZE=100,
+                                    upload_bundle=lambda client, source: {'bank': 1, 'version': 2, 'written': len(source.read())})
+        config = types.SimpleNamespace(OTA_CA_FILE='ca.pem', OTA_UART_ID=1, OTA_UART_TX=25, OTA_UART_RX=26)
+        old = os.getcwd()
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {'ota_https': https, 'ota_client': ota}):
+            try:
+                os.chdir(tmp)
+                result = notice_module.stage_bundle(notice.pending[0], config, UART, lambda pin: pin, None)
+            finally:
+                os.chdir(old)
+        self.assertEqual(result['written'], 7)
+        self.assertEqual(calls[0], ('https://example.com/app.tpb', 216, 'ca.pem'))
+        self.assertEqual(calls[-1], 'deinit')
+        notice.pending = None
+        notice.completed_version = '2'
+        notice.callback(topic, payload)
+        self.assertIsNone(notice.pending)
+
     def test_tls_setup_and_failed_connection_close(self):
         calls = []
         class Socket:
@@ -69,7 +105,7 @@ class CloudTest(unittest.TestCase):
                    'ssl': ssl, 'machine': types.SimpleNamespace(UART=object, Pin=object),
                    'umqtt': types.ModuleType('umqtt'), 'umqtt.simple': mqtt,
                    'config': cfg, 'modbus_status': load('modbus_status', 'modbus_status.py'),
-                   'cloud': cloud}
+                   'cloud': cloud, 'ota_notice': load('ota_notice', 'ota_notice.py')}
         with patch.dict(sys.modules, modules):
             main = load('esp32_cloud_main', 'main.py')
             with self.assertRaises(OSError): main.connect_mqtt()

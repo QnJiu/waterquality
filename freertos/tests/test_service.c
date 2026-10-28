@@ -157,6 +157,23 @@ int main(void) {
     tp_config cfg={.calibration={1,0,0,0.01f,10},.kp=1,.output_max=1,.integral_max=10,
                    .max_temperature_c=100,.period_seconds=3600,.slave_address=1};
     assert(tp_service_attach_config(&s,&cfg,NULL,save_config)==TP_OK);
+    /* Only a change to calibration invalidates the last concentration. */
+    uint16_t config_words[27], result_valid;
+    c.state=TP_COMPLETE; c.result_valid=true; c.valid_readings=7;
+    assert(tp_service_read_holding(&s,20,27,config_words)==TP_OK);
+    put_float(config_words+10,2); /* PID change preserves the measured result. */
+    assert(tp_service_write_holding(&s,20,27,config_words)==TP_OK);
+    assert(tp_service_read_holding(&s,16,1,&result_valid)==TP_OK && result_valid==1);
+    put_float(config_words+6,0); /* Invalid calibration leaves the result untouched. */
+    assert(tp_service_write_holding(&s,20,27,config_words)==TP_INVALID);
+    assert(tp_service_read_holding(&s,16,1,&result_valid)==TP_OK && result_valid==1);
+    put_float(config_words+6,0.01f); put_float(config_words,2);
+    assert(tp_service_write_holding(&s,20,27,config_words)==TP_OK);
+    assert(tp_service_read_holding(&s,16,1,&result_valid)==TP_OK && result_valid==0);
+    assert(c.valid_readings==7); /* Signals remain useful for inspection. */
+    tp_init(&c,&hal,NULL,NULL,100);
+    assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    assert(tp_service_attach_config(&s,&cfg,NULL,save_config)==TP_OK);
     uint16_t persisted[]={TP_MODE_DAILY,0,120,60,(uint16_t)-300};
     assert(tp_service_write_holding(&s,1,5,persisted)==TP_OK);
     uint16_t save=4; assert(tp_service_write_holding(&s,0,1,&save)==TP_OK);

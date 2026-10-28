@@ -111,6 +111,11 @@ tp_result tp_service_attach_adc_recovery(tp_service *s,void *ctx,tp_result (*rec
     s->recover_ctx=ctx; s->recover_adc=recover; return TP_OK;
 }
 static void apply_config(tp_service *s, const tp_config *cfg) {
+    const tp_calibration *old=&s->controller->calibration, *next=&cfg->calibration;
+    if (old->slope!=next->slope || old->intercept!=next->intercept ||
+        old->turbidity_factor!=next->turbidity_factor || old->min_signal!=next->min_signal ||
+        old->max_concentration!=next->max_concentration)
+        s->controller->result_valid=false;
     s->standard_check_status=0; s->standard_check_actual=0;
     if (s->standard_attached && s->auto_standard.state==TP_STANDARD_COMPLETE)
         s->auto_standard.state=TP_STANDARD_IDLE;

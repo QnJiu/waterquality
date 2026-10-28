@@ -1,0 +1,44 @@
+#include "tp_modbus.h"
+#include "tp_service.h"
+#include <assert.h>
+#include <stdio.h>
+typedef struct { unsigned valve_calls,pump_calls,safe_calls; bool interlock; } fake;
+static tp_result valve(void *p,uint32_t mask) { fake *f=p; assert(mask==1); f->valve_calls++; return TP_OK; }
+static tp_result pump(void *p,int32_t steps,uint32_t hz) { fake *f=p; assert(steps==10 && hz==100); f->pump_calls++; return TP_OK; }
+static tp_result poll(void *p,bool *done) { (void)p; *done=true; return TP_OK; }
+static tp_result temp(void *p,float *c) { (void)p; *c=20; return TP_OK; }
+static tp_result heater(void *p,float f) { (void)p; (void)f; return TP_OK; }
+static tp_result adc(void *p,uint8_t ch,float *v) { (void)p; (void)ch; *v=1; return TP_OK; }
+static bool interlock(void *p) { return ((fake *)p)->interlock; }
+static void safe(void *p) { ((fake *)p)->safe_calls++; }
+static uint16_t crc(const uint8_t *p,size_t n) {
+    uint16_t c=0xffff; while(n--) { c^=*p++; for(unsigned i=0;i<8;i++) c=(uint16_t)((c>>1)^((c&1)?0xa001:0)); } return c;
+}
+static void exchange(tp_modbus *m,uint8_t fn,uint16_t address,uint16_t value,uint8_t *out) {
+    uint8_t q[8]={1,fn,(uint8_t)(address>>8),(uint8_t)address,(uint8_t)(value>>8),(uint8_t)value};
+    uint16_t c=crc(q,6); q[6]=(uint8_t)c; q[7]=(uint8_t)(c>>8); size_t n=0;
+    assert(tp_modbus_frame(m,q,sizeof(q),out,32,&n)==TP_OK && n>=5 && out[1]==fn);
+    assert(crc(out,n-2)==(uint16_t)(out[n-2]|((uint16_t)out[n-1]<<8)));
+}
+int main(void) {
+    fake f={.interlock=true}; tp_hal hal={&f,valve,pump,poll,temp,heater,adc,interlock,safe};
+    tp_controller c; tp_init(&c,&hal,NULL,NULL,100);
+    const tp_step recipe[]={ {.kind=TP_STEP_VALVES,.arg.valves={1}},
+        {.kind=TP_STEP_PUMP,.timeout_ms=1000,.arg.pump={10,100}}, {.kind=TP_STEP_END} };
+    tp_service s; assert(tp_service_init(&s,&c,recipe,3,0)==TP_OK);
+    tp_modbus m={&s,1,tp_service_read_holding,tp_service_write_holding}; uint8_t response[32];
+    exchange(&m,6,0,1,response); tp_service_tick(&s,0,false,0);
+    assert(f.valve_calls==1 && c.awaiting_advance);
+    exchange(&m,6,0,5,response); tp_service_tick(&s,1,false,0);
+    assert(f.pump_calls==1 && c.awaiting_advance);
+    exchange(&m,6,0,5,response); tp_service_tick(&s,2,false,0);
+    exchange(&m,3,10,2,response);
+    assert(response[3]==0 && response[4]==TP_COMPLETE && response[5]==0 && response[6]==TP_FAULT_NONE);
+    assert(f.safe_calls==1);
+    exchange(&m,6,0,1,response); tp_service_tick(&s,3,false,0);
+    f.interlock=false; tp_service_tick(&s,4,false,0);
+    exchange(&m,3,10,2,response);
+    assert(response[4]==TP_FAILED && response[6]==TP_FAULT_INTERLOCK && f.safe_calls==2);
+    puts("protocol-to-controller checks passed");
+    return 0;
+}

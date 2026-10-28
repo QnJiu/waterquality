@@ -73,3 +73,53 @@ tp_result tp_auto_cal_result(const tp_auto_calibration *a, tp_calibration *out) 
     if (!a || !out || a->state!=TP_AUTO_CAL_COMPLETE) return TP_INVALID;
     *out=a->fitted; return TP_OK;
 }
+
+/* Automatic standard verification shares the same recipe and safety rules as
+ * calibration, but never changes the controller's calibration parameters. */
+tp_result tp_auto_standard_init(tp_auto_standard *a, tp_controller *c,
+    const tp_step *recipe, size_t length, float concentration, float tolerance,
+    void *check_ctx, tp_result (*check)(void *)) {
+    if (!a || !c || tp_validate_recipe(c,recipe,length)!=TP_OK ||
+        !recipe_has_readings(recipe,length) || !isfinite(concentration) || concentration<0 ||
+        !isfinite(tolerance) || tolerance<0 || !isfinite(c->calibration.max_concentration) ||
+        c->calibration.max_concentration<=0 || concentration>c->calibration.max_concentration ||
+        !isfinite(c->calibration.slope) || !isfinite(c->calibration.intercept) ||
+        !isfinite(c->calibration.turbidity_factor) || !isfinite(c->calibration.min_signal) ||
+        c->calibration.min_signal<=0) return TP_INVALID;
+    memset(a,0,sizeof(*a));
+    a->controller=c; a->recipe=recipe; a->length=length; a->calibration=c->calibration;
+    a->concentration=concentration; a->tolerance=tolerance; a->check_ctx=check_ctx; a->check=check;
+    return TP_OK;
+}
+tp_result tp_auto_standard_start(tp_auto_standard *a, uint32_t now) {
+    if (!a || !a->controller || a->state!=TP_STANDARD_IDLE) return TP_INVALID;
+    if (a->check) { tp_result r=a->check(a->check_ctx); if (r!=TP_OK) return r; }
+    tp_result r=tp_start(a->controller,a->recipe,a->length,now);
+    if (r==TP_OK) a->state=TP_STANDARD_RUNNING;
+    return r;
+}
+void tp_auto_standard_tick(tp_auto_standard *a, uint32_t now) {
+    if (!a || a->state!=TP_STANDARD_RUNNING) return;
+    tp_controller *c=a->controller; tp_tick(c,now);
+    if (c->state==TP_FAILED) { a->error=TP_IO_ERROR; a->state=TP_STANDARD_FAILED; return; }
+    if (c->state!=TP_COMPLETE) {
+        if (c->state!=TP_RUNNING) { a->error=TP_INVALID; a->state=TP_STANDARD_FAILED; }
+        return;
+    }
+    if (c->valid_readings != (1u << TP_READ_COUNT)-1u) {
+        a->error=TP_INVALID; a->state=TP_STANDARD_FAILED; return;
+    }
+    tp_calibration_point point={c->readings[TP_READ_BLANK],c->readings[TP_READ_REACTED],
+                                c->readings[TP_READ_TURBIDITY],a->concentration};
+    a->error=tp_calibration_check(&a->calibration,&point,a->tolerance,&a->actual,&a->passed);
+    a->state=a->error==TP_OK ? TP_STANDARD_COMPLETE : TP_STANDARD_FAILED;
+}
+void tp_auto_standard_cancel(tp_auto_standard *a) {
+    if (!a || a->state!=TP_STANDARD_RUNNING) return;
+    if (a->controller->state==TP_RUNNING) tp_stop(a->controller);
+    a->state=TP_STANDARD_CANCELLED;
+}
+tp_result tp_auto_standard_result(const tp_auto_standard *a,float *actual,bool *passed) {
+    if (!a || !actual || !passed || a->state!=TP_STANDARD_COMPLETE) return TP_INVALID;
+    *actual=a->actual; *passed=a->passed; return TP_OK;
+}

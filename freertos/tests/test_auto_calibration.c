@@ -52,5 +52,33 @@ int main(void) {
     tp_auto_cal_tick(&a,1200); assert(a.state==TP_AUTO_CAL_FAILED && c.fault==TP_FAULT_SENSOR);
     tp_calibration before=out; assert(tp_auto_cal_result(&a,&out)==TP_INVALID && out.slope==before.slope);
     assert(tp_auto_cal_init(&a,&c,recipe,3,recipe,4,0,5,0.01f,NULL,NULL)==TP_INVALID);
+    /* Automatic standard check uses the acquired samples, does not change
+     * calibration, and distinguishes a failed tolerance from a process fault. */
+    f.bad_sample=false; f.reads=0; f.checks=0;
+    tp_init(&c,&hal,&base,NULL,100);
+    tp_auto_standard standard; float actual=-1; bool passed=false;
+    assert(tp_auto_standard_init(&standard,&c,recipe,4,0,0.01f,&f,check)==TP_OK);
+    assert(tp_auto_standard_result(&standard,&actual,&passed)==TP_INVALID && actual==-1);
+    assert(tp_auto_standard_start(&standard,2000)==TP_OK);
+    for(unsigned t=0;t<4;t++) tp_auto_standard_tick(&standard,2000+t*50);
+    assert(standard.state==TP_STANDARD_COMPLETE && f.checks==1);
+    assert(tp_auto_standard_result(&standard,&actual,&passed)==TP_OK && passed && fabsf(actual)<1e-5f);
+    assert(c.calibration.slope==base.slope);
+    f.reads=0; assert(tp_auto_standard_init(&standard,&c,recipe,4,1,0.01f,&f,check)==TP_OK);
+    assert(tp_auto_standard_start(&standard,3000)==TP_OK);
+    for(unsigned t=0;t<4;t++) tp_auto_standard_tick(&standard,3000+t*50);
+    assert(tp_auto_standard_result(&standard,&actual,&passed)==TP_OK && !passed);
+    f.reads=0; assert(tp_auto_standard_init(&standard,&c,recipe,4,0,0.01f,&f,check)==TP_OK);
+    f.fail_check=true; assert(tp_auto_standard_start(&standard,4000)==TP_IO_ERROR && c.state==TP_COMPLETE);
+    f.fail_check=false; assert(tp_auto_standard_start(&standard,4000)==TP_OK);
+    tp_auto_standard_cancel(&standard);
+    assert(standard.state==TP_STANDARD_CANCELLED && c.fault==TP_FAULT_STOP);
+    assert(tp_clear_fault(&c)==TP_OK);
+    f.bad_sample=true; assert(tp_auto_standard_init(&standard,&c,recipe,4,0,0.01f,&f,check)==TP_OK);
+    assert(tp_auto_standard_start(&standard,5000)==TP_OK);
+    tp_auto_standard_tick(&standard,5000);
+    assert(standard.state==TP_STANDARD_FAILED && c.fault==TP_FAULT_SENSOR);
+    assert(tp_auto_standard_init(&standard,&c,recipe,3,0,0.01f,NULL,NULL)==TP_INVALID);
+    assert(tp_auto_standard_init(&standard,&c,recipe,4,0,-1,NULL,NULL)==TP_INVALID);
     puts("automatic calibration checks passed"); return 0;
 }

@@ -36,4 +36,33 @@ void tp_auto_cal_cancel(tp_auto_calibration *a);
 /* Result is available only after both runs and fitting succeed. Applying and
  * persisting it are explicit owner actions. Output remains unchanged on error. */
 tp_result tp_auto_cal_result(const tp_auto_calibration *a, tp_calibration *out);
+/* One standard recipe prepares the liquid, reads all three optical slots and
+ * ends safely. The owner must exclusively drive the controller for the run. */
+typedef enum {
+    TP_STANDARD_IDLE, TP_STANDARD_RUNNING, TP_STANDARD_COMPLETE,
+    TP_STANDARD_FAILED, TP_STANDARD_CANCELLED
+} tp_standard_state;
+typedef struct {
+    tp_controller *controller;
+    const tp_step *recipe;
+    size_t length;
+    tp_calibration calibration;
+    float concentration, tolerance, actual;
+    bool passed;
+    tp_standard_state state;
+    tp_result error;
+    void *check_ctx;
+    tp_result (*check)(void *ctx);
+} tp_auto_standard;
+/* Recipes must remain valid and unchanged throughout the run. Calibration is
+ * copied at initialization; reinitialize after changing it. */
+tp_result tp_auto_standard_init(tp_auto_standard *, tp_controller *,
+    const tp_step *, size_t, float concentration, float tolerance,
+    void *check_ctx, tp_result (*check)(void *));
+tp_result tp_auto_standard_start(tp_auto_standard *, uint32_t now);
+/* Drives the controller; do not also tick it elsewhere. */
+void tp_auto_standard_tick(tp_auto_standard *, uint32_t now);
+void tp_auto_standard_cancel(tp_auto_standard *);
+/* Outputs remain unchanged unless the check completed successfully. */
+tp_result tp_auto_standard_result(const tp_auto_standard *, float *actual, bool *passed);
 #endif

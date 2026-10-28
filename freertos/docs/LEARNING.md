@@ -38,6 +38,8 @@ ctest --test-dir build --output-on-failure
 
 截图中的 40 分钟、0–10 mg/L、±2% 和标准符合性均需要真实仪器及方法验证，当前模拟结果不能证明这些指标。更详细的软件状态见 `docs/STATUS.md`。
 
+器件型号和对应代码可查 [教学参考器件清单](COMPONENTS.md)。
+
 ## Windows 交叉编译路径
 
 某些 Windows 版 `arm-none-eabi-gcc` 在项目路径含中文时无法链接。可在 PowerShell 中为项目目录临时映射一个空闲盘符，并通过该盘符配置和编译；例如 W 盘未使用时：

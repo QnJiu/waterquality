@@ -1,5 +1,6 @@
 /* Exercise the real control task with simulated outputs and Modbus requests. */
 #include "tp_freertos_runtime.h"
+#include "tp_freertos_event_log.h"
 #include <math.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -12,6 +13,25 @@ static tp_service service;
 static QueueHandle_t responses;
 static uint32_t valve_mask;
 static uint8_t slots[2][128];
+static uint8_t log_bytes[256];
+static tp_freertos_event_log events;
+static tp_result log_read(void *ctx,uint32_t offset,void *data,size_t len) {
+    (void)ctx; if(offset>sizeof(log_bytes) || len>sizeof(log_bytes)-offset) return TP_INVALID;
+    memcpy(data,log_bytes+offset,len); return TP_OK;
+}
+static tp_result log_write(void *ctx,uint32_t offset,const void *data,size_t len) {
+    (void)ctx; if(offset>sizeof(log_bytes) || len>sizeof(log_bytes)-offset) return TP_INVALID;
+    memcpy(log_bytes+offset,data,len); return TP_OK;
+}
+static void record_event(void *ctx,const tp_event *event) {
+    (void)ctx; (void)tp_freertos_event_log_submit(&events,event);
+}
+static tp_result request_log(void *ctx,bool latest,uint32_t sequence) {
+    (void)ctx; return tp_freertos_event_log_query(&events,latest,sequence);
+}
+static bool poll_log(void *ctx,tp_result *result,tp_event *event) {
+    (void)ctx; return tp_freertos_event_log_poll(&events,result,event);
+}
 static atomic_bool fail_erase;
 static tp_result store_read(void *ctx,unsigned slot,uint32_t offset,void *data,size_t len) {
     (void)ctx; if (slot>=2 || offset>128 || len>128-offset) return TP_INVALID;
@@ -110,6 +130,26 @@ static int wait_save(uint16_t expected) {
     }
     return 0;
 }
+static int query_last_result(float expected) {
+    uint8_t request[15]={1,16,0,50,0,3,6,0,0,0,0,0,0,0,0}; response reply;
+    if (!exchange(request,sizeof(request),&reply) || reply.length!=8 || reply.bytes[1]!=16) return 0;
+    for(unsigned i=0;i<100;i++) {
+        uint8_t read[8]={1,3,0,53,0,12,0,0};
+        if (!exchange(read,sizeof(read),&reply) || reply.length!=29 || reply.bytes[1]!=3) return 0;
+        uint16_t status=(uint16_t)((uint16_t)reply.bytes[3]<<8 | reply.bytes[4]);
+        if(status==3) {
+            uint16_t type=(uint16_t)((uint16_t)reply.bytes[9]<<8 | reply.bytes[10]);
+            uint16_t detail=(uint16_t)((uint16_t)reply.bytes[11]<<8 | reply.bytes[12]);
+            uint32_t bits=(uint32_t)reply.bytes[23]<<24 | (uint32_t)reply.bytes[24]<<16 |
+                          (uint32_t)reply.bytes[25]<<8 | reply.bytes[26];
+            float value; memcpy(&value,&bits,sizeof(value));
+            return type==TP_EVENT_COMPLETED && (detail&1u) && fabsf(value-expected)<0.0001f;
+        }
+        if(status!=2) return 0;
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    return 0;
+}
 static void check(void *arg) {
     (void)arg; uint16_t values[9];
     if (!command(1)) goto failed;
@@ -120,7 +160,7 @@ static void check(void *arg) {
     if (!wait_for(TP_COMPLETE,5,false,values) || values[1] || values[6]!=1 || get_valves()!=0) goto failed;
     uint32_t bits=(uint32_t)values[4]<<16 | values[5]; float result;
     memcpy(&result,&bits,sizeof(result));
-    if (fabsf(result-0.30103f)>0.0001f) goto failed;
+    if (fabsf(result-0.30103f)>0.0001f || !query_last_result(result)) goto failed;
     /* A second run is stopped while awaiting the next controlled step. */
     if (!command(1) || !wait_for(TP_RUNNING,1,true,values) || get_valves()!=1 ||
         !command(2) || !status(values) || values[0]!=TP_FAILED ||
@@ -149,10 +189,14 @@ int main(void) {
     const tp_config config={.calibration={1,0,0,0.01f,10},.output_max=1,
         .integral_max=20,.max_temperature_c=80,.period_seconds=3600,.slave_address=1};
     memset(slots,0xff,sizeof(slots));
-    tp_runtime_io io={.send=send_response};
+    memset(log_bytes,0xff,sizeof(log_bytes));
+    tp_event_log_io log_io={NULL,log_read,log_write,sizeof(log_bytes)};
+    tp_runtime_io io={.send=send_response,.event=record_event,.poll_log=poll_log};
     tp_init(&controller,&hal,&calibration,&pid,80);
     responses=xQueueCreate(4,sizeof(response));
     if (!responses || tp_service_init(&service,&controller,recipe,sizeof(recipe)/sizeof(recipe[0]),0)!=TP_OK ||
+        tp_service_attach_log(&service,NULL,request_log)!=TP_OK ||
+        tp_freertos_event_log_start(&events,&log_io,4096,1)!=TP_OK ||
         tp_runtime_init(&runtime,&service,&io,&address,1,10)!=TP_OK ||
         tp_runtime_attach_storage(&runtime,&store,&config)!=TP_OK ||
         tp_runtime_start(&runtime,4096,2)!=TP_OK ||

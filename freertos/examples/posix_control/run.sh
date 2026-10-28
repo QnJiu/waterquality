@@ -9,7 +9,7 @@ cc -std=gnu11 -pthread -I"$root/examples/posix_slice" -I"$root/include" \
   -I"$kernel/include" -I"$port" "$root/examples/posix_control/main.c" \
   "$kernel/tasks.c" "$kernel/queue.c" "$kernel/list.c" \
   "$kernel/portable/MemMang/heap_4.c" "$port/port.c" "$port/utils/wait_for_event.c" \
-  "$root/os/freertos_runtime.c" "$root/app/controller.c" "$root/app/measurement.c" \
+  "$root/os/freertos_runtime.c" "$root/os/freertos_event_log.c" "$root/app/controller.c" "$root/app/measurement.c" \
   "$root/app/auto_calibration.c" "$root/app/schedule.c" "$root/app/service.c" \
   "$root/app/preflight.c" "$root/app/event_transition.c" "$root/protocol/modbus_rtu.c" \
   "$root/protocol/rtu_port.c" "$root/protocol/rtu_receiver.c" \

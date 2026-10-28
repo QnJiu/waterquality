@@ -21,6 +21,18 @@ int main(void) {
     words[24]=0; words[25]=7200; assert(tp_service_write_holding(&s,20,27,words)==TP_OK);
     words[26]=0; assert(tp_service_write_holding(&s,20,27,words)==TP_INVALID);
     assert(s.config.slave_address==1 && s.config.period_seconds==7200);
+    /* A full register must be checked before converting the address to uint8_t. */
+    words[25]=3600;
+    const uint16_t invalid_addresses[]={248,257,503,65535};
+    for (unsigned i=0;i<sizeof(invalid_addresses)/sizeof(invalid_addresses[0]);i++) {
+        words[26]=invalid_addresses[i];
+        assert(tp_service_write_holding(&s,20,27,words)==TP_INVALID);
+        assert(s.config.slave_address==1 && s.config.period_seconds==7200);
+    }
+    words[25]=7200; words[26]=247;
+    assert(tp_service_write_holding(&s,20,27,words)==TP_OK && s.config.slave_address==247);
+    words[26]=1;
+    assert(tp_service_write_holding(&s,20,27,words)==TP_OK);
     uint16_t schedule[5]={1,0,10,0,0};
     assert(tp_service_write_holding(&s,1,5,schedule)==TP_OK);
     assert(s.config.period_seconds==10 && s.schedule.period_ms==10000);

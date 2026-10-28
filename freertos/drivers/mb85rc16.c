@@ -49,3 +49,30 @@ tp_result tp_mb85rc16_init(tp_mb85rc16 *d, const tp_i2c_io *io, uint16_t base) {
 tp_store_io tp_mb85rc16_store(tp_mb85rc16 *d) {
     tp_store_io io = {d, read_slot, erase_slot, write_slot}; return io;
 }
+
+static tp_result log_access(tp_mb85rc16_log_region *region,uint32_t offset,
+                            void *buffer,size_t size,bool write) {
+    if(!region || !region->dev || offset>region->size || size>region->size-offset || (!buffer && size)) return TP_INVALID;
+    tp_mb85rc16 *dev=region->dev; uint32_t address=region->start+offset; uint8_t *p=buffer;
+    while(size) {
+        size_t n=256u-(address&255u); if(n>size) n=size; if(n>WRITE_CHUNK) n=WRITE_CHUNK;
+        uint8_t tx[WRITE_CHUNK+1]; tx[0]=(uint8_t)address; uint8_t unit=(uint8_t)(0x50u|(address>>8));
+        tp_result r;
+        if(write) { memcpy(tx+1,p,n); r=dev->io.write(dev->io.ctx,unit,tx,n+1); }
+        else r=dev->io.write_read(dev->io.ctx,unit,tx,1,p,n);
+        if(r!=TP_OK) return TP_IO_ERROR;
+        p+=n; address+=(uint32_t)n; size-=n;
+    }
+    return TP_OK;
+}
+static tp_result log_read(void *ctx,uint32_t off,void *buf,size_t n) { return log_access(ctx,off,buf,n,false); }
+static tp_result log_write(void *ctx,uint32_t off,const void *buf,size_t n) { return log_access(ctx,off,(void *)buf,n,true); }
+tp_result tp_mb85rc16_log_init(tp_mb85rc16_log_region *region,tp_mb85rc16 *dev,uint16_t start,uint16_t size) {
+    if(!region || !dev || !dev->io.write || !dev->io.write_read || start%32 || size<64 || size%32 ||
+       (uint32_t)start+size>MEMORY_SIZE ||
+       ((uint32_t)start<(uint32_t)dev->base+2u*SLOT_SIZE && (uint32_t)start+size>dev->base)) return TP_INVALID;
+    region->dev=dev; region->start=start; region->size=size; return TP_OK;
+}
+tp_event_log_io tp_mb85rc16_log_io(tp_mb85rc16_log_region *region) {
+    tp_event_log_io io={region,log_read,log_write,region ? region->size : 0}; return io;
+}

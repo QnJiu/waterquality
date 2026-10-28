@@ -16,6 +16,17 @@ int main(void) {
     fake f; memset(&f,0xff,sizeof(f)); f.fail_after=-1; f.writes=0; f.read_error=false;
     tp_i2c_io bus={&f,write_i2c,read_i2c}; tp_mb85rc16 chip;
     assert(tp_mb85rc16_init(&chip,&bus,1792)==TP_OK);
+    tp_mb85rc16_log_region region;
+    assert(tp_mb85rc16_log_init(&region,&chip,1760,64)==TP_INVALID); /* overlaps config */
+    assert(tp_mb85rc16_log_init(&region,&chip,0,1792)==TP_OK);
+    tp_event_log_io log_io=tp_mb85rc16_log_io(&region); tp_event_log log;
+    assert(tp_event_log_open(&log,&log_io)==TP_OK && !log.has_records);
+    tp_event event={.type=1,.value=42};
+    assert(tp_event_log_append(&log,&event)==TP_OK && event.sequence==1);
+    tp_event loaded; assert(tp_event_log_read(&log,1,&loaded)==TP_OK && loaded.value==42);
+    for (unsigned i=2;i<=10;i++) { event.value=i; assert(tp_event_log_append(&log,&event)==TP_OK); }
+    assert(tp_event_log_open(&log,&log_io)==TP_OK && log.latest_sequence==10);
+    assert(tp_event_log_read(&log,9,&loaded)==TP_OK && loaded.value==9);
     tp_store_io io=tp_mb85rc16_store(&chip);
     tp_config cfg={.calibration={1,0,0,0.01f,10},.kp=1,.ki=0,.kd=0,.deadband_c=0,
         .output_max=1,.integral_max=10,.max_temperature_c=100,.period_seconds=3600,.slave_address=1};

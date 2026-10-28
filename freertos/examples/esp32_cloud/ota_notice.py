@@ -5,7 +5,7 @@ import struct
 
 
 def valid_version(version):
-    return (isinstance(version, str) and version.isdigit() and len(version) <= 10
+    return (isinstance(version, str) and version and all('0' <= digit <= '9' for digit in version) and len(version) <= 10
             and not version.startswith("0") and int(version) <= 0xffffffff)
 
 
@@ -14,6 +14,9 @@ def load_pending(path):
         with open(path, "r") as source:
             version = source.read(11)
     except OSError:
+        return None
+    except UnicodeError:
+        print("Invalid saved OTA version; wait for a new notice")
         return None
     if not valid_version(version):
         print("Invalid saved OTA version; wait for a new notice")

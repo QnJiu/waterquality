@@ -136,6 +136,13 @@ class CloudTest(unittest.TestCase):
             pathlib.Path(path).write_text('garbled')
             self.assertIsNone(notice.load_pending(path))
             with self.assertRaises(ValueError): notice.save_pending(path, '01')
+            pathlib.Path(path).write_text('²', encoding='utf-8')
+            self.assertIsNone(notice.load_pending(path))
+            pathlib.Path(path).write_bytes(b'\xff')
+            self.assertIsNone(notice.load_pending(path))
+            self.assertFalse(notice.valid_version('١٢'))
+            self.assertFalse(notice.valid_version('²'))
+            self.assertTrue(notice.valid_version('4294967295'))
 
     def test_main_reports_only_confirmed_version(self):
         self.check_main_confirmed_version(False)

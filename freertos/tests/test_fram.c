@@ -74,7 +74,11 @@ int main(void) {
     f.mem[1792+10] ^= 0x10;
     int writes_before=f.writes;
     assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_OK);
-    assert(source==TP_CONFIG_DEFAULTED && seq==0 && got.period_seconds==7200 && f.writes==writes_before);
+    assert(source==TP_CONFIG_CORRUPT_DEFAULTED && seq==0 && got.period_seconds==7200 && f.writes==writes_before);
+    memset(f.mem+1792, 0xff, 256);
+    f.mem[1792] = 0x54; /* incomplete write into an otherwise blank store */
+    assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_OK);
+    assert(source==TP_CONFIG_CORRUPT_DEFAULTED && seq==0 && f.writes==writes_before);
     /* Construct an actual v1 record, then migrate it on the next save. */
     fake legacy; memset(&legacy,0xff,sizeof(legacy)); legacy.fail_after=-1; legacy.writes=0; legacy.read_error=false; legacy.ignore_write=false;
     tp_i2c_io legacy_bus={&legacy,write_i2c,read_i2c}; tp_mb85rc16 legacy_chip;

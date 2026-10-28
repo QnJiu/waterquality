@@ -71,27 +71,29 @@ static bool unsupported_record(const uint8_t *b) {
     size_t crc_offset=16u+size;
     return get32(b+crc_offset+4)==COMMIT && get32(b+crc_offset)==crc32(b,crc_offset);
 }
-static tp_result find(const tp_store_io *io, tp_config *cfg, uint32_t *seq, unsigned *slot) {
+static tp_result find(const tp_store_io *io, tp_config *cfg, uint32_t *seq, unsigned *slot, bool *nonblank) {
     uint8_t b[SLOT_SIZE]; tp_config temp, best; uint32_t s, best_seq=0;
-    unsigned best_slot=0; bool found=false, unsupported=false;
+    unsigned best_slot=0; bool found=false, unsupported=false, has_data=false;
     if(!io || !io->read || !cfg || !seq || !slot) return TP_INVALID;
     for(unsigned i=0;i<2;i++) {
         if(io->read(io->ctx,i,0,b,sizeof(b))!=TP_OK) return TP_IO_ERROR;
+        for (size_t j=0; j<sizeof(b); j++) if (b[j]!=0xffu) { has_data=true; break; }
         if(unsupported_record(b)) unsupported=true;
         else if(decode(b,&temp,&s) && (!found || (int32_t)(s-best_seq)>0)) {
             best=temp; best_seq=s; best_slot=i; found=true;
         }
     }
+    if(nonblank) *nonblank=has_data;
     if(unsupported) return TP_UNSUPPORTED;
     if(!found) return TP_INVALID;
     *cfg=best; *seq=best_seq; *slot=best_slot; return TP_OK;
 }
 tp_result tp_store_load(const tp_store_io *io, tp_config *cfg, uint32_t *sequence) {
-    unsigned slot; return find(io,cfg,sequence,&slot);
+    unsigned slot; return find(io,cfg,sequence,&slot,NULL);
 }
 tp_result tp_store_save(const tp_store_io *io, const tp_config *cfg) {
     if(!io || !io->read || !io->erase || !io->write || tp_config_validate(cfg)!=TP_OK) return TP_INVALID;
-    tp_config old; uint32_t seq=0; unsigned slot=1; tp_result r=find(io,&old,&seq,&slot);
+    tp_config old; uint32_t seq=0; unsigned slot=1; tp_result r=find(io,&old,&seq,&slot,NULL);
     if(r==TP_IO_ERROR) return r;
     if(r!=TP_OK && r!=TP_INVALID) return r;
     unsigned dest=slot^1u; uint8_t b[RECORD_SIZE], check[RECORD_SIZE]; encode(b,cfg,seq+1u);
@@ -108,16 +110,16 @@ tp_result tp_store_bootstrap(const tp_store_io *io, const tp_config *defaults,
     tp_config *out, uint32_t *sequence, tp_config_source *source) {
     if (!out || !sequence || !source || tp_config_validate(defaults) != TP_OK)
         return TP_INVALID;
-    tp_config loaded; uint32_t seq;
-    tp_result r = tp_store_load(io, &loaded, &seq);
+    tp_config loaded; uint32_t seq; unsigned slot; bool nonblank=false;
+    tp_result r = find(io, &loaded, &seq, &slot, &nonblank);
     if (r == TP_OK) {
         *out = loaded; *sequence = seq; *source = TP_CONFIG_FROM_STORAGE;
         return TP_OK;
     }
     /* TP_INVALID means there is no valid record only when the interface itself
-     * is valid. Validate it separately before treating that as a blank store. */
+     * is valid. Validate it separately before falling back to defaults. */
     if (!io || !io->read) return TP_INVALID;
     if (r != TP_INVALID) return r;
-    *out = *defaults; *sequence = 0; *source = TP_CONFIG_DEFAULTED;
+    *out = *defaults; *sequence = 0; *source = nonblank ? TP_CONFIG_CORRUPT_DEFAULTED : TP_CONFIG_DEFAULTED;
     return TP_OK;
 }

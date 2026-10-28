@@ -48,7 +48,7 @@ FreeRTOS 适配层要求 1 kHz、32 位 tick，三路端口使用各自协议上
 
 根目录 `CMakeLists.txt` 构建可移植业务库及主机检查；`firmware/` 独立构建 STM32F407VG 调度器心跳参考镜像，包含 Cortex-M4F 端口、heap_4、CMSIS 启动与链接脚本，具体构建方法和限制见 `firmware/README.md`。
 
-MB85RC16 适配器假定 2 KB 器件和 0x50–0x57 的 7 位 I2C 地址，两个配置槽各占 128 字节。参考 I2C2 驱动提供有限时等待和共享总线互斥，采用 PB10/PB11、100 kHz、外部上拉和 16 MHz APB1；设备型号、地址连接、时序和掉电行为均待硬件验证。存储任务由 `tp_runtime_attach_storage` 附加，板级须在启动调度器前调用 `tp_runtime_bootstrap_storage`：有效双槽返回最新配置；双槽均无有效记录时仅在内存使用显式默认值并报告 `TP_CONFIG_DEFAULTED`；读取失败返回 I/O 错误，不自动覆盖存储。板级需记录默认恢复状态并决定是否允许启动。
+MB85RC16 适配器假定 2 KB 器件和 0x50–0x57 的 7 位 I2C 地址，两个配置槽各占 128 字节。参考 I2C2 驱动提供有限时等待和共享总线互斥，采用 PB10/PB11、100 kHz、外部上拉和 16 MHz APB1；设备型号、地址连接、时序和掉电行为均待硬件验证。存储任务由 `tp_runtime_attach_storage` 附加，板级须在启动调度器前调用 `tp_runtime_bootstrap_storage`：有效双槽返回最新配置；双槽均无有效记录时仅在内存使用显式默认值：全为 0xff 报告 `TP_CONFIG_DEFAULTED`，有数据但无有效记录报告 `TP_CONFIG_CORRUPT_DEFAULTED`；读取失败返回 I/O 错误，不自动覆盖存储。板级需记录默认恢复状态并决定是否允许启动。
 
 F407 ADS1220 参考接口使用 SPI2 PB13/PB14/PB15、PB12 片选和 PE14 低有效 DRDY，假定 16 MHz APB1、SPI 模式 1 和 1 MHz。SPI 事务最多 5 字节，使用非等待互斥和 1 ms 周期计数期限；高优先级任务抢占时间不受此接口限制。失败时释放片选并重置 SPI；传感器可能需要重新初始化。该接口已接入可选 F407 业务装配并交叉编译，默认心跳入口未启用，尚未进行硬件时序验证。
 

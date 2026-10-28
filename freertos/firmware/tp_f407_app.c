@@ -132,14 +132,18 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     tp_hal hal={a,valves,pump_start,pump_poll,temperature,heater,adc_read,interlocks,safe};
     tp_pid pid={0}; tp_init(&a->controller,&hal,&a->config.calibration,&pid,a->config.max_temperature_c);
     INIT(tp_f407_recipe_validate(&a->controller,o->recipe,o->recipe_len,o->valves,o->channel_count));
+    INIT(tp_f407_recipe_outputs(o->recipe,o->recipe_len,true));
     if (o->auto_calibration) {
         const tp_f407_auto_cal_options *cal=o->auto_calibration;
         INIT(tp_f407_recipe_validate(&a->controller,cal->low_recipe,cal->low_recipe_len,o->valves,o->channel_count));
         INIT(tp_f407_recipe_validate(&a->controller,cal->high_recipe,cal->high_recipe_len,o->valves,o->channel_count));
+        INIT(tp_f407_recipe_outputs(cal->low_recipe,cal->low_recipe_len,false));
+        INIT(tp_f407_recipe_outputs(cal->high_recipe,cal->high_recipe_len,false));
     }
     if (o->auto_standard) {
         const tp_f407_auto_standard_options *standard=o->auto_standard;
         INIT(tp_f407_recipe_validate(&a->controller,standard->recipe,standard->recipe_len,o->valves,o->channel_count));
+        INIT(tp_f407_recipe_outputs(standard->recipe,standard->recipe_len,false));
     }
     INIT(tp_service_init(&a->service,&a->controller,o->recipe,o->recipe_len,0));
     INIT(tp_service_attach_preflight(&a->service,a,preflight));

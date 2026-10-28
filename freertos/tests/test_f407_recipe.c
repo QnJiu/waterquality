@@ -23,6 +23,8 @@ int main(void) {
     };
     size_t n=sizeof(r)/sizeof(r[0]);
     assert(tp_f407_recipe_validate(&c,r,n,&policy,3)==TP_OK);
+    assert(tp_f407_recipe_outputs(r,n,true)==TP_OK);
+    assert(tp_f407_recipe_outputs(r,n,false)==TP_OK);
     r[0].arg.valves.mask=3; assert(tp_f407_recipe_validate(&c,r,n,&policy,3)==TP_INVALID);
     r[0].arg.valves.mask=1u<<19; assert(tp_f407_recipe_validate(&c,r,n,&policy,3)==TP_INVALID);
     r[0].arg.valves.mask=1;
@@ -35,6 +37,13 @@ int main(void) {
     r[4].arg.read.channel=2; r[4].arg.read.slot=TP_READ_BLANK;
     assert(tp_f407_recipe_validate(&c,r,n,&policy,3)==TP_INVALID);
     r[5].kind=TP_STEP_WAIT; assert(tp_f407_recipe_validate(&c,r,n,&policy,3)==TP_OK);
+    assert(tp_f407_recipe_outputs(r,n,true)==TP_INVALID);
+    assert(tp_f407_recipe_outputs(r,n,false)==TP_INVALID); /* missing reacted */
+    r[4].arg.read.slot=TP_READ_TURBIDITY;
+    assert(tp_f407_recipe_outputs(r,n,false)==TP_OK);
+    assert(tp_f407_recipe_outputs(r,n,true)==TP_INVALID);
+    tp_step stale[]={r[2],r[3],r[4],{.kind=TP_STEP_CALCULATE},r[3],{.kind=TP_STEP_END}};
+    assert(tp_f407_recipe_outputs(stale,6,true)==TP_INVALID);
     assert(tp_f407_recipe_validate(&c,r,n,&policy,0)==TP_INVALID);
     policy.forbidden[1]=0; assert(tp_f407_recipe_validate(&c,r,n,&policy,3)==TP_INVALID);
     return 0;

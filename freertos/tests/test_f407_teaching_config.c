@@ -32,6 +32,10 @@ int main(void) {
     assert(tp_f407_recipe_validate(&c,cal->low_recipe,cal->low_recipe_len,o.valves,o.channel_count)==TP_OK);
     assert(tp_f407_recipe_validate(&c,cal->high_recipe,cal->high_recipe_len,o.valves,o.channel_count)==TP_OK);
     assert(tp_f407_recipe_validate(&c,std->recipe,std->recipe_len,o.valves,o.channel_count)==TP_OK);
+    assert(tp_f407_recipe_outputs(o.recipe,o.recipe_len,true)==TP_OK);
+    assert(tp_f407_recipe_outputs(cal->low_recipe,cal->low_recipe_len,false)==TP_OK);
+    assert(tp_f407_recipe_outputs(cal->high_recipe,cal->high_recipe_len,false)==TP_OK);
+    assert(tp_f407_recipe_outputs(std->recipe,std->recipe_len,false)==TP_OK);
     tp_auto_calibration a; tp_auto_standard b;
     assert(tp_auto_cal_init(&a,&c,cal->low_recipe,cal->low_recipe_len,cal->high_recipe,
         cal->high_recipe_len,cal->low_concentration,cal->high_concentration,

@@ -26,3 +26,19 @@ tp_result tp_f407_recipe_validate(const tp_controller *c,const tp_step *steps,si
     }
     return TP_OK;
 }
+
+tp_result tp_f407_recipe_outputs(const tp_step *steps,size_t count,bool require_result) {
+    if (!steps || !count) return TP_INVALID;
+    unsigned readings=0;
+    bool result=false;
+    for (size_t i=0;i<count;i++) {
+        if (steps[i].kind==TP_STEP_READ) {
+            if ((unsigned)steps[i].arg.read.slot>=TP_READ_COUNT) return TP_INVALID;
+            readings |= 1u << steps[i].arg.read.slot;
+            result=false;
+        } else if (steps[i].kind==TP_STEP_CALCULATE) {
+            result=readings==((1u<<TP_READ_COUNT)-1u);
+        }
+    }
+    return readings==((1u<<TP_READ_COUNT)-1u) && (!require_result || result) ? TP_OK : TP_INVALID;
+}

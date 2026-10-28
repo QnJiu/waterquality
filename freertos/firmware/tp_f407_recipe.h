@@ -7,4 +7,7 @@
  * Does not verify the fluidic method or the actual board wiring. */
 tp_result tp_f407_recipe_validate(const tp_controller *,const tp_step *,size_t,
                                    const tp_valve_policy *,size_t adc_channels);
+/* A measurement must end with a calculated result; a standard sample needs
+ * all three readings for calibration or checking. */
+tp_result tp_f407_recipe_outputs(const tp_step *,size_t,bool require_result);
 #endif

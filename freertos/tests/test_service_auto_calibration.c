@@ -112,5 +112,31 @@ int main(void) {
     exchange(&m,6,0,9,r); assert(r[1]==6);
     assert(tp_service_enter_maintenance(&s)==TP_OK);
     assert(s.auto_standard.state==TP_STANDARD_CANCELLED && c.fault==TP_FAULT_STOP);
+    /* At a scheduled boundary, the automatic workflow still owns a completed
+     * controller until it publishes its result. Do not attempt a normal start. */
+    for (unsigned kind=0; kind<2; kind++) {
+        fake local={0}; tp_hal local_hal={&local,valves,pump,poll,temp,heater,adc,interlock,safe};
+        tp_controller controller; tp_init(&controller,&local_hal,&base,NULL,100);
+        tp_service service; assert(tp_service_init(&service,&controller,recipe,4,0)==TP_OK);
+        assert(tp_service_attach_config(&service,&cfg,&local,save)==TP_OK);
+        assert(tp_service_attach_preflight(&service,&local,preflight)==TP_OK);
+        assert(tp_service_attach_auto_calibration(&service,recipe,4,recipe,4,0,5,0.01f)==TP_OK);
+        assert(tp_service_attach_auto_standard(&service,recipe,4,0,0.01f)==TP_OK);
+        assert(tp_service_write_holding(&service,1,5,periodic)==TP_OK);
+        uint16_t command=kind ? 9 : 6;
+        assert(tp_service_write_holding(&service,0,1,&command)==TP_OK);
+        /* Advance the recipe to its final controller state before the service
+         * consumes it, as may happen at an ownership boundary. */
+        for(unsigned i=0;i<4;i++) tp_tick(&controller,i*50);
+        assert(controller.state==TP_COMPLETE && local.reads==3);
+        service.last_start_result=TP_IO_ERROR;
+        tp_service_tick(&service,1000,false,0);
+        assert(service.last_start_result==TP_IO_ERROR && service.schedule.last_period_ms==1000);
+        if (kind) {
+            assert(service.auto_standard.state==TP_STANDARD_COMPLETE && controller.state==TP_COMPLETE);
+        } else {
+            assert(service.auto_cal.state==TP_AUTO_CAL_HIGH && controller.state==TP_RUNNING);
+        }
+    }
     puts("service automatic calibration checks passed"); return 0;
 }

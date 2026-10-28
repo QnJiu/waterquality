@@ -89,7 +89,15 @@ void tp_tick(tp_controller *c, uint32_t now) {
             c->valid_readings &= (uint8_t)~(1u << s->arg.read.slot);
             c->result_valid = false;
         }
-        if (s->kind == TP_STEP_HEAT) { c->target_c = s->arg.heat.target_c; c->heating = true; }
+        if (s->kind == TP_STEP_HEAT) {
+            /* Off time is not an integration interval. Start a fresh PID cycle
+             * when heating is enabled, including after a prior HEATER_OFF. */
+            if (!c->heating) {
+                c->pid.integral = 0; c->pid.initialized = false;
+                c->last_pid_ms = now - TP_PID_PERIOD_MS;
+            }
+            c->target_c = s->arg.heat.target_c; c->heating = true;
+        }
     }
     float temp = 0;
     if (c->heating && expired(now, c->last_pid_ms, TP_PID_PERIOD_MS)) {

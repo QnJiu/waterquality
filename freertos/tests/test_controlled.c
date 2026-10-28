@@ -1,12 +1,12 @@
 #include "tp_service.h"
 #include <assert.h>
 #include <stdio.h>
-typedef struct { unsigned valves, pumps, heat_calls, safe; bool interlock; float temperature; } fake;
+typedef struct { unsigned valves, pumps, heat_calls, safe; bool interlock; float temperature, output; } fake;
 static tp_result valves(void *ctx, uint32_t mask) { fake *f=ctx; assert(mask==3); f->valves++; return TP_OK; }
 static tp_result pump(void *ctx, int32_t steps, uint32_t hz) { fake *f=ctx; assert(steps==100 && hz==500); f->pumps++; return TP_OK; }
 static tp_result poll(void *ctx, bool *done) { (void)ctx; *done=true; return TP_OK; }
 static tp_result temp(void *ctx, float *v) { *v=((fake *)ctx)->temperature; return TP_OK; }
-static tp_result heat(void *ctx, float v) { fake *f=ctx; (void)v; f->heat_calls++; return TP_OK; }
+static tp_result heat(void *ctx, float v) { fake *f=ctx; f->output=v; f->heat_calls++; return TP_OK; }
 static tp_result adc(void *ctx, uint8_t ch, float *v) { (void)ctx; (void)ch; *v=1; return TP_OK; }
 static bool interlock(void *ctx) { return ((fake *)ctx)->interlock; }
 static void safe(void *ctx) { ((fake *)ctx)->safe++; }
@@ -52,5 +52,23 @@ int main(void) {
     assert(tp_service_write_holding(&s,0,1,&command)==TP_OK);
     assert(c.state==TP_FAILED && c.fault==TP_FAULT_STOP && f.safe==safes+1);
     command=5; assert(tp_service_write_holding(&s,0,1,&command)==TP_INVALID);
+    /* A long non-heating step must not be integrated when heating begins. */
+    fake g={.interlock=true,.temperature=20};
+    tp_hal hal2={&g,valves,pump,poll,temp,heat,adc,interlock,safe};
+    tp_pid pid2={.ki=0.01f,.output_max=1,.integral_max=100}; tp_controller c2;
+    tp_init(&c2,&hal2,NULL,&pid2,100);
+    const tp_step later[]={
+        {.kind=TP_STEP_WAIT,.timeout_ms=30000,.arg.wait={30000}},
+        {.kind=TP_STEP_HEAT,.timeout_ms=1000,.arg.heat={30,0.1f}},
+        {.kind=TP_STEP_HEATER_OFF}, {.kind=TP_STEP_WAIT,.timeout_ms=30000,.arg.wait={30000}},
+        {.kind=TP_STEP_HEAT,.timeout_ms=1000,.arg.heat={30,0.1f}}, {.kind=TP_STEP_END}};
+    assert(tp_start(&c2,later,6,0)==TP_OK);
+    tp_tick(&c2,0); tp_tick(&c2,30000); tp_tick(&c2,30001);
+    assert(g.output>0.019f && g.output<0.021f);
+    g.temperature=30; tp_tick(&c2,30002); tp_tick(&c2,30003);
+    assert(!c2.heating && g.output==0);
+    tp_tick(&c2,30004); tp_tick(&c2,60004);
+    g.temperature=20; tp_tick(&c2,60005);
+    assert(g.output>0.019f && g.output<0.021f);
     puts("controlled stepping checks passed"); return 0;
 }

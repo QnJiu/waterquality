@@ -210,6 +210,9 @@ class CloudTest(unittest.TestCase):
     def test_failed_retry_keeps_earlier_pending_confirmation(self):
         self.check_ota_progress('retry')
 
+    def test_same_version_can_be_retried_after_staging(self):
+        self.check_ota_progress('repeat')
+
     def check_ota_progress(self, uncertain):
         class Pin:
             OUT = 1
@@ -221,17 +224,17 @@ class CloudTest(unittest.TestCase):
             def ticks_diff(self, a, b): return a - b
             def sleep_ms(self, ms):
                 self.now += ms
-                if self.now >= 8000: raise KeyboardInterrupt()
+                if self.now >= (13000 if uncertain == 'repeat' else 8000): raise KeyboardInterrupt()
         class Client:
             def __init__(self):
                 self.sent = []
                 self.sock = types.SimpleNamespace(close=lambda: None)
-                self.notified = False
+                self.notifications = 0
             def set_callback(self, callback): self.callback = callback
             def subscribe(self, topic, qos): pass
             def check_msg(self):
-                if not self.notified:
-                    self.notified = True
+                if self.notifications < (2 if uncertain == 'repeat' else 1):
+                    self.notifications += 1
                     self.callback(b'/ota/device/upgrade/p/d', json.dumps(
                         {'data': {'url': 'https://example.com/a', 'version': '12'}}).encode())
             def publish(self, topic, payload, qos): self.sent.append((topic, json.loads(payload)))
@@ -247,9 +250,11 @@ class CloudTest(unittest.TestCase):
         cleared = []
         notice.clear_pending = lambda path: cleared.append(path)
         class FinishUnknown(TimeoutError): pass
+        stages = []
         def stage(*args):
+            stages.append(args[1])
             if uncertain == 'retry': raise OSError('download failed')
-            if uncertain: raise FinishUnknown('response lost')
+            if uncertain is True: raise FinishUnknown('response lost')
             return {'bank': 1, 'version': 12}
         notice.stage_bundle = stage
         modules = {'network': types.ModuleType('network'), 'ntptime': types.ModuleType('ntptime'),
@@ -268,7 +273,8 @@ class CloudTest(unittest.TestCase):
             main.read_confirmed_version = lambda *a: next(versions)
             with self.assertRaises(KeyboardInterrupt): main.main()
         reports = [m['params']['step'] for t, m in client.sent if t == b'/ota/device/progress/p/d']
-        self.assertEqual(reports, ['1', '100'])
+        self.assertEqual(reports, ['1', '1', '100'] if uncertain == 'repeat' else ['1', '100'])
+        self.assertEqual(stages, ['12', '12'] if uncertain == 'repeat' else ['12'])
         self.assertEqual(len(cleared), 1)
 
     def test_tls_setup_and_failed_connection_close(self):

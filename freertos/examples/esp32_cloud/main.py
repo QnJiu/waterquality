@@ -110,8 +110,6 @@ def main():
                 saved = True
                 awaiting_version = version
                 result = stage_bundle(url, version, config, UART, Pin, time)
-                notice.completed_version = version
-                awaiting_version = version
                 progress = (1, "Package staged; awaiting firmware confirmation")
                 print("Staged bank %d, firmware version %d; restart and confirmation pending" %
                       (result["bank"], result["version"]))

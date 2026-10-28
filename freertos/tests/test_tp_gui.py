@@ -133,7 +133,7 @@ class EventTest(unittest.TestCase):
             def log(self, sequence):
                 return {'sequence': 3, 'type': 5, 'detail': self.detail, 'utc': None,
                         'value_bits': 17}
-        for detail, source in ((0, '存储配置'), (1, '空白存储，使用默认配置'), (2, '配置无效，使用默认配置'), (7, '未知来源')):
+        for detail, source in ((0, '存储配置'), (1, '使用默认配置（旧记录原因未区分）'), (2, '配置无效，使用默认配置'), (7, '未知来源')):
             text = read_event(Client(detail))
             self.assertIn('配置来源：' + source, text)
             self.assertIn('配置序号：17', text)

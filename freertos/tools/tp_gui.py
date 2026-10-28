@@ -67,7 +67,7 @@ def read_event(client, sequence=None):
     text = ('序号：%d  类型：%d  详情：%d  时间：%s  原始值：0x%08X' %
             (event['sequence'], event['type'], event['detail'], timestamp, event['value_bits']))
     if event['type'] == 5:
-        source = {0: '存储配置', 1: '空白存储，使用默认配置', 2: '配置无效，使用默认配置'}.get(event['detail'], '未知来源')
+        source = {0: '存储配置', 1: '使用默认配置（旧记录原因未区分）', 2: '配置无效，使用默认配置'}.get(event['detail'], '未知来源')
         text += '  配置来源：%s  配置序号：%d' % (source, event['value_bits'])
     if event['type'] == 2 and event['detail'] == 1:
         value = event['value_bits']

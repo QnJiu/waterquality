@@ -111,8 +111,13 @@ static void service_once(tp_f030_subordinate *s) {
     if(droplets_lost) tp_sub_node_count_error(&s->app.node);
     if(authorized && s->app.door)
         (void)tp_door_service_authorize(s->app.door,(uint32_t)xTaskGetTickCount(),authorization_id,approved);
-    if(s->app.door)
+    if(s->app.door) {
         s->app.door_result=tp_door_service_tick(s->app.door,(uint32_t)xTaskGetTickCount());
+        if(s->app.door_result!=TP_OK && s->app.door_result!=TP_BUSY && !s->door_fault_reported) {
+            s->door_fault_reported=true;
+            if(s->door_fault_handler) s->door_fault_handler(s->door_fault_ctx);
+        }
+    }
     taskENTER_CRITICAL();
     bool lost=s->overflow;
     uint32_t now=time_us();
@@ -162,5 +167,11 @@ tp_result tp_f030_subordinate_init(tp_f030_subordinate *s,void *input_ctx,
     if(xTaskCreate(run,"tp-sub",stack_words,s,priority,&s->task)!=pdPASS) {
         instance=NULL; vQueueDelete(s->rx); s->rx=NULL; return TP_IO_ERROR;
     }
+    return TP_OK;
+}
+tp_result tp_f030_subordinate_on_door_fault(tp_f030_subordinate *s,void (*handler)(void *),void *ctx) {
+    if(!s || s!=instance || !s->app.door || !handler ||
+       xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
+    s->door_fault_handler=handler; s->door_fault_ctx=ctx;
     return TP_OK;
 }

@@ -12,6 +12,8 @@ static unsigned head, count;
 static uint32_t clock_ms;
 static BaseType_t scheduler=taskSCHEDULER_NOT_STARTED;
 static bool unlocked;
+static unsigned door_faults;
+static void door_fault(void *ctx) { assert(ctx==&door_faults); door_faults++; }
 QueueHandle_t xQueueCreate(unsigned length,size_t size) {
     assert(length==32 && size==sizeof(queue[0])); head=count=0; return queue;
 }
@@ -120,6 +122,7 @@ int main(void) {
     tp_door_io output={NULL,lock_output}; tp_door_service door;
     assert(tp_door_service_init(&door,&reader,&output,NULL,request,1000,50,1,20,100,5)==TP_OK);
     s.app.door=&door;
+    assert(tp_f030_subordinate_on_door_fault(&s,door_fault,&door_faults)==TP_OK);
     assert(tp_f030_subordinate_authorize(&s,5,true)==TP_INVALID);
     scheduler=taskSCHEDULER_RUNNING;
     uint8_t card[]={1,2,3,4}; bool new_request=false; uint32_t id=0;
@@ -140,6 +143,9 @@ int main(void) {
     assert(tp_door_observe(&door.door,65,card,sizeof(card),&new_request,&id)==TP_OK && new_request);
     assert(tp_f030_subordinate_authorize(&s,id,true)==TP_OK);
     clock_ms=165; service_once(&s); assert(!unlocked && !door.door.auth_pending);
+    clock_ms=1040; service_once(&s); assert(door_faults==1 && door.door.state==TP_DOOR_FAULT);
+    service_once(&s); assert(door_faults==1);
+    assert(tp_f030_subordinate_on_door_fault(&s,door_fault,&door_faults)==TP_INVALID);
 
     timer_high=65536u; fake_tim.CNT=7; fake_tim.SR=TIM_SR_UIF;
     assert(time_us()==131079u); TIM3_IRQHandler(); fake_tim.SR=0;

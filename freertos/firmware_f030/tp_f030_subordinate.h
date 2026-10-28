@@ -26,6 +26,9 @@ typedef struct {
     uint32_t authorization_id;
     bool authorization_approved, authorization_pending;
     bool processing_rx;
+    void (*door_fault_handler)(void *);
+    void *door_fault_ctx;
+    bool door_fault_reported;
 } tp_f030_subordinate;
 
 /* Owns USART1, TIM3, PA9/PA10 and their interrupts. Call once before scheduler.
@@ -33,6 +36,8 @@ typedef struct {
 tp_result tp_f030_subordinate_init(tp_f030_subordinate *, void *input_ctx,
     tp_result (*read_inputs)(void *, tp_sub_inputs *), tp_door_service *door,
     bool door_fault_is_device_fault, uint16_t stack_words, UBaseType_t priority);
+/* Install before the scheduler starts. Called once in the owner task on door failure. */
+tp_result tp_f030_subordinate_on_door_fault(tp_f030_subordinate *,void (*handler)(void *),void *ctx);
 /* Call from an ISR after the scheduler starts. wake is passed to portYIELD_FROM_ISR. */
 void tp_f030_subordinate_droplet_from_isr(tp_f030_subordinate *,BaseType_t *wake);
 /* Task context only, after scheduler start. TP_OK means queued, not accepted. */

@@ -1,4 +1,5 @@
 #include "tp_f407_app.h"
+#include "tp_f407_recipe.h"
 #include "tp_f407_emergency.h"
 #include "tp_f407_iwdg.h"
 #include "stm32f4xx.h"
@@ -92,6 +93,12 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     INIT(tp_adc_reader_init(&a->reader,&a->adc,o->channels,o->channel_count));
     tp_hal hal={a,valves,pump_start,pump_poll,temperature,heater,adc_read,interlocks,safe};
     tp_pid pid={0}; tp_init(&a->controller,&hal,&a->config.calibration,&pid,a->config.max_temperature_c);
+    INIT(tp_f407_recipe_validate(&a->controller,o->recipe,o->recipe_len,o->valves,o->channel_count));
+    if (o->auto_calibration) {
+        const tp_f407_auto_cal_options *cal=o->auto_calibration;
+        INIT(tp_f407_recipe_validate(&a->controller,cal->low_recipe,cal->low_recipe_len,o->valves,o->channel_count));
+        INIT(tp_f407_recipe_validate(&a->controller,cal->high_recipe,cal->high_recipe_len,o->valves,o->channel_count));
+    }
     INIT(tp_service_init(&a->service,&a->controller,o->recipe,o->recipe_len,0));
     INIT(tp_service_attach_preflight(&a->service,a,preflight));
     INIT(tp_service_attach_log(&a->service,a,request_log));

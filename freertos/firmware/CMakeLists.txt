@@ -34,7 +34,7 @@ if(TP_F407_BUSINESS)
 else()
     set(ENTRY main.c)
 endif()
-add_executable(tp_f407.elf ${ENTRY} tp_f407_system_init.c tp_f407_handoff.c tp_f407_iwdg.c tp_f407_emergency.c tp_f407_app.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_timebase.c tp_f407_usart3_rtu.c tp_f407_uart4_subordinate.c tp_f407_upgrade_uart.c tp_f407_upgrade_service.c tp_f407_upgrade.c tp_f407_image_flash.c tp_f407_flash_controller.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
+add_executable(tp_f407.elf ${ENTRY} tp_f407_system_init.c tp_f407_handoff.c tp_f407_iwdg.c tp_f407_emergency.c tp_f407_app.c tp_f407_recipe.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_timebase.c tp_f407_usart3_rtu.c tp_f407_uart4_subordinate.c tp_f407_upgrade_uart.c tp_f407_upgrade_service.c tp_f407_upgrade.c tp_f407_image_flash.c tp_f407_flash_controller.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${KERNEL}/tasks.c ${KERNEL}/queue.c ${KERNEL}/list.c ${KERNEL}/timers.c
     ${KERNEL}/portable/GCC/ARM_CM4F/port.c ${KERNEL}/portable/MemMang/heap_4.c

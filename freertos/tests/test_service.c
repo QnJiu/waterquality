@@ -89,7 +89,16 @@ int main(void) {
     assert(result_service.last_start_result==TP_IO_ERROR && !result_controller.result_valid);
     assert(tp_service_read_holding(&result_service,16,1,result_words)==TP_OK && result_words[0]==0);
     check_faults=0; checks=0;
-    safe_count=0;
+    /* Lowering the allowed temperature can make the configured recipe invalid. */
+    tp_step hot_recipe[]={ {.kind=TP_STEP_HEAT,.timeout_ms=1000,
+                            .arg.heat={.target_c=90,.tolerance_c=1}}, {.kind=TP_STEP_END} };
+    result_service.recipe=hot_recipe; result_service.recipe_len=2;
+    result_controller.max_temperature_c=80;
+    result_controller.state=TP_COMPLETE; result_controller.result_valid=true; result_controller.valid_readings=7;
+    assert(tp_service_write_holding(&result_service,0,1,&result_begin)==TP_INVALID);
+    assert(tp_service_read_holding(&result_service,16,1,result_words)==TP_OK && result_words[0]==0);
+    assert(tp_service_read_holding(&result_service,132,7,readings)==TP_OK && readings[0]==0);
+    checks=0; safe_count=0;
     uint16_t version[3];
     assert(tp_service_read_holding(&s,119,3,version)==TP_OK);
     assert(version[0]==0 && version[1]==0 && version[2]==0);

@@ -33,8 +33,14 @@ static tp_result start(tp_service *s) {
         s->controller->valid_readings=0;
         s->last_start_result=TP_IO_ERROR; return TP_IO_ERROR;
     }
+    bool was_running=s->controller->state==TP_RUNNING;
     s->last_start_result=tp_start(s->controller,s->recipe,s->recipe_len,s->now_ms);
     if (s->last_start_result==TP_OK) s->controller->single_step=s->schedule.mode==TP_MODE_CONTROLLED;
+    else if (!was_running) {
+        /* A rejected new recipe must not expose the last measurement as current. */
+        s->controller->result_valid=false;
+        s->controller->valid_readings=0;
+    }
     return s->last_start_result;
 }
 tp_result tp_service_init(tp_service *s, tp_controller *controller,

@@ -25,7 +25,7 @@ tp_result tp_config_validate(const tp_config *c) {
         !isfinite(c->integral_max) || !isfinite(c->max_temperature_c) || c->kp<0 || c->ki<0 ||
         c->kd<0 || c->deadband_c<0 || c->output_max<=0 || c->output_max>1 ||
         c->integral_max<0 || c->max_temperature_c<=0 || c->period_seconds==0 ||
-        c->slave_address==0 || c->slave_address>247) return TP_INVALID;
+        c->period_seconds > 0x7fffffffu / 1000u || c->slave_address==0 || c->slave_address>247) return TP_INVALID;
     return TP_OK;
 }
 static void encode(uint8_t *b, const tp_config *c, uint32_t seq) {

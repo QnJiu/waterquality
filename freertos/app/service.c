@@ -15,6 +15,10 @@ tp_result tp_service_init(tp_service *s, tp_controller *controller,
     return tp_schedule_configure(&s->schedule, TP_MODE_CONTROLLED, 0, 0, 0, now, false);
 }
 static void apply_config(tp_service *s, const tp_config *cfg) {
+    if (s->schedule.period_ms != cfg->period_seconds * 1000u) {
+        s->schedule.period_ms = cfg->period_seconds * 1000u;
+        s->schedule.last_period_ms = s->now_ms;
+    }
     s->config = *cfg; s->controller->calibration = cfg->calibration;
     s->controller->pid.kp = cfg->kp; s->controller->pid.ki = cfg->ki;
     s->controller->pid.kd = cfg->kd; s->controller->pid.deadband_c = cfg->deadband_c;
@@ -116,12 +120,17 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
     }
     if (address==20 && count==27) return set_config_words(s,v);
     /* The schedule block must be written in one FC16 request; no partial changes. */
-    if (address != 1 || count != 5 || v[0] > TP_MODE_DAILY) return TP_INVALID;
+    if (address != 1 || count != 5 || v[0] > TP_MODE_DAILY || s->save_status == 2) return TP_INVALID;
     uint32_t seconds = join(v[1], v[2]);
-    if (seconds > 0x7fffffffu / 1000u) return TP_INVALID;
+    if (seconds > 0x7fffffffu / 1000u || (s->request_save && !seconds)) return TP_INVALID;
     int32_t signed_offset = v[4] <= 32767u ? v[4] : (int32_t)v[4] - 65536;
-    return tp_schedule_configure(&s->schedule, (tp_mode)v[0], seconds * 1000u,
+    tp_result result = tp_schedule_configure(&s->schedule, (tp_mode)v[0], seconds * 1000u,
         v[3], (int16_t)signed_offset, s->now_ms, s->controller->state == TP_RUNNING);
+    if (result == TP_OK && s->request_save && s->config.period_seconds != seconds) {
+        s->config.period_seconds = seconds;
+        s->save_status = 1;
+    }
+    return result;
 }
 
 

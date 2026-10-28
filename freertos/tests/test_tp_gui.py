@@ -184,6 +184,19 @@ class ConnectionChangeTest(unittest.TestCase):
         self.assertIn('丢弃', self.app.message.get())
         self.assertFalse(self.app.busy)
 
+    def test_command_timeout_reports_uncertain_outcome(self):
+        self.app.events.put((0, 'COM3', 1, 'command', None, 'timeout'))
+        self.app.poll()
+        self.assertIn('执行结果可能未知', self.app.message.get())
+        self.assertIn('读取设备状态', self.app.message.get())
+        self.assertIn('timeout', self.app.message.get())
+
+    def test_read_timeout_reports_unknown_status(self):
+        self.app.events.put((0, 'COM3', 1, 'status', None, 'timeout'))
+        self.app.poll()
+        self.assertIn('状态未知', self.app.status.get())
+        self.assertNotIn('执行结果', self.app.message.get())
+
     def test_old_device_command_outcome_identifies_target(self):
         self.app.connection_changed()
         self.app.events.put((0, 'COM3', 1, 'command', None, 'timeout'))

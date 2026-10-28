@@ -73,6 +73,9 @@ def read_event(client, sequence=None):
     return text
 
 
+READ_OPERATIONS = ('status', 'cal_status', 'clock_status', 'event', 'config_read', 'schedule_read')
+
+
 CONFIG_LABELS = {
     'slope': '标定斜率', 'intercept': '标定截距', 'turbidity_factor': '浊度系数',
     'min_signal': '最小信号', 'max_concentration': '浓度上限 (mg/L)',
@@ -217,7 +220,7 @@ class App:
             self.message.set(str(error)); return
         self.busy = True
         generation = self.connection_generation
-        if operation not in ('status', 'cal_status', 'clock_status', 'event', 'config_read', 'schedule_read'):
+        if operation not in READ_OPERATIONS:
             self.status.set('命令发送后状态可能变化，请重新读取')
             self.cal_status.set('命令发送后标定及核查状态可能变化，请重新读取')
             self.clock_status.set('时间或状态可能变化，请重新读取时钟')
@@ -265,8 +268,7 @@ class App:
         else:
             self.busy = False
             if generation != self.connection_generation:
-                reads = ('status', 'cal_status', 'clock_status', 'event', 'config_read', 'schedule_read')
-                if operation in reads:
+                if operation in READ_OPERATIONS:
                     self.message.set('连接已改变，已丢弃旧设备的读取结果；请重新读取')
                 else:
                     detail = '通信失败，执行结果可能未知：' + error if error else result
@@ -280,7 +282,10 @@ class App:
                     self.clock_status.set('读取失败，时钟状态未知')
                 elif operation == 'event':
                     self.event_status.set('读取失败，事件未知')
-                self.message.set('通信失败：' + error)
+                if operation in READ_OPERATIONS:
+                    self.message.set('通信失败：' + error)
+                else:
+                    self.message.set('通信失败，执行结果可能未知，请读取设备状态确认：' + error)
             elif operation == 'status':
                 self.status.set(result)
                 self.message.set('状态已读取；温度与状态为分别读取的快照')

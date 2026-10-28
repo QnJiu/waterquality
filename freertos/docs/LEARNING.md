@@ -51,9 +51,9 @@ cmake --build W:/freertos/build-f407-example
 | 寄存器和上位机 | `protocol/`、`docs/MODBUS.md`、`tools/tp_modbus.py`、`tools/tp_gui.py` |
 | 参数和事件保存 | `storage/config_store.c`、`storage/event_log.c` |
 | 升级与从控 | `bootloader/`、`firmware_boot/`、`examples/esp32_cloud/`、`firmware_f030/` |
-| 两种 RTOS 的采集示例 | `examples/posix_slice/`、`zephyr_slice/` |
+| 两种 RTOS 的采集示例 | `examples/posix_slice/`、`examples/posix_control/`、`zephyr_slice/` |
 
-默认 F407 入口仅运行心跳；上表业务入口需要按 `firmware/README.md` 的选项单独构建。电脑模拟器和主机测试主要验证业务及协议逻辑；POSIX 示例用真实 FreeRTOS 调度器验证一条模拟 ADC 到 Modbus 的链路，并与 Zephyr 模拟结果对照。完整业务调度、硬件和云链路还需要进一步验证。可选资源诊断可观察栈和堆，CPU 占用尚未测量。
+默认 F407 入口仅运行心跳；上表业务入口需要按 `firmware/README.md` 的选项单独构建。电脑模拟器和主机测试主要验证业务及协议逻辑；POSIX 示例用真实 FreeRTOS 调度器验证一条模拟 ADC 到 Modbus 的链路，并与 Zephyr 模拟结果对照。`examples/posix_control/run.sh` 还验证控制任务处理启动和停止命令、模拟阀门进入安全状态（需 Linux 或 WSL）。完整业务调度、硬件和云链路还需要进一步验证。可选资源诊断可观察栈和堆，CPU 占用尚未测量。
 
 F407 与 F030 的教学装配可通过 F407 构建选项 `TP_F407_TEACHING_SUBORDINATE=ON` 启用，具体步骤见 `firmware/README.md`。从控状态未知、过期或报告故障时，主控会阻止启动或停止运行；F030 也需启用对应参考输入。配方和接线都是示例，不能用于实际测量。
 

@@ -10,6 +10,21 @@ int main(void) {
     tp_calibration_point ref={1,0.31622777f,0,2.5f}; float actual=99; bool passed=false;
     assert(tp_calibration_check(&fitted,&ref,0.001f,&actual,&passed)==TP_OK && passed);
     ref.concentration=3; assert(tp_calibration_check(&fitted,&ref,0.1f,&actual,&passed)==TP_OK && !passed);
+    /* Model examples cover the intended range, not instrument accuracy. */
+    const tp_calibration_point examples[]={
+        {1,1,0,0}, {1,0.63095734f,0,1}, {1,0.1f,0,5}, {1,0.01f,0,10}
+    };
+    for (unsigned i=0;i<sizeof(examples)/sizeof(examples[0]);i++) {
+        actual=99; passed=false;
+        assert(tp_calibration_check(&fitted,&examples[i],0.001f,&actual,&passed)==TP_OK);
+        assert(passed && fabsf(actual-examples[i].concentration)<0.001f);
+    }
+    tp_calibration compensated=fitted; compensated.turbidity_factor=0.1f;
+    assert(tp_concentration(&compensated,1,0.1f,0.5f,&actual)==TP_OK && fabsf(actual-4.75f)<0.001f);
+    actual=99;
+    assert(tp_concentration(&fitted,1,0.009f,0,&actual)==TP_INVALID && actual==99);
+    assert(tp_concentration(&fitted,1,1.1f,0,&actual)==TP_INVALID && actual==99);
+    assert(tp_concentration(&fitted,1,NAN,0,&actual)==TP_INVALID && actual==99);
     tp_calibration untouched=fitted; span.reacted=1;
     assert(tp_calibrate_two_point(&base,&zero,&span,0.01f,&fitted)==TP_INVALID);
     assert(fitted.slope==untouched.slope && fitted.intercept==untouched.intercept);

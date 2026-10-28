@@ -22,20 +22,20 @@ int main(void) {
     fake f={0}; memset(f.mem,0xff,sizeof(f.mem)); tp_i2c_io bus={&f,wr,rd}; tp_upgrade_fram regions;
     assert(tp_upgrade_fram_init(NULL,&bus)==TP_INVALID);
     assert(tp_upgrade_fram_init(&regions,&bus)==TP_OK);
-    tp_store_io stores[3]={tp_upgrade_fram_store(&regions.boot),tp_upgrade_fram_store(&regions.download),tp_upgrade_fram_store(&regions.manifests)};
+    tp_store_io stores[4]={tp_upgrade_fram_store(&regions.boot),tp_upgrade_fram_store(&regions.download),tp_upgrade_fram_store(&regions.manifests),tp_upgrade_fram_store(&regions.staging)};
     uint8_t data[128], out[128]; memset(data,0x35,sizeof(data));
-    for(unsigned i=0;i<3;i++) for(unsigned j=0;j<2;j++) {
+    for(unsigned i=0;i<4;i++) for(unsigned j=0;j<2;j++) {
         data[0]=(uint8_t)(i*2+j); assert(stores[i].write(stores[i].ctx,j,0,data,sizeof(data))==TP_OK);
         assert(stores[i].read(stores[i].ctx,j,0,out,sizeof(out))==TP_OK && !memcmp(data,out,sizeof(data)));
         assert(stores[i].read(stores[i].ctx,2,0,out,1)==TP_INVALID);
         assert(stores[i].write(stores[i].ctx,j,127,data,2)==TP_INVALID);
     }
-    for(unsigned i=0;i<6;i++) assert(f.mem[i*128]==i);
-    for(unsigned i=768;i<2048;i++) assert(f.mem[i]==0xff);
+    for(unsigned i=0;i<8;i++) assert(f.mem[i*128]==i);
+    for(unsigned i=1024;i<2048;i++) assert(f.mem[i]==0xff);
     /* Interrupt every erase transfer, including partial invalidation and partial erase.
        Other slots and regions must never change; an altered slot cannot retain its commit. */
-    const unsigned offsets[3]={32,64,116}; const uint8_t marks[3][4]={{0x54,0x4d,0x4f,0x43},{0x54,0x4d,0x4f,0x43},{0x54,0x50,0x4d,0x31}};
-    for(unsigned region=0;region<3;region++) for(int at=1;at<=9;at++) for(size_t partial=0;partial<=16;partial++) {
+    const unsigned offsets[4]={32,64,116,64}; const uint8_t marks[4][4]={{0x54,0x4d,0x4f,0x43},{0x54,0x4d,0x4f,0x43},{0x54,0x50,0x4d,0x31},{0x54,0x4d,0x4f,0x43}};
+    for(unsigned region=0;region<4;region++) for(int at=1;at<=9;at++) for(size_t partial=0;partial<=16;partial++) {
         memset(f.mem,0x35,sizeof(f.mem)); memcpy(f.mem+region*256+offsets[region],marks[region],4);
         uint8_t before[2048]; memcpy(before,f.mem,sizeof(before)); f.count=0; f.fail=at; f.partial=partial;
         assert(stores[region].erase(stores[region].ctx,0)==TP_IO_ERROR);

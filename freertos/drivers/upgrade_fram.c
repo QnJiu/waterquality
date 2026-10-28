@@ -35,6 +35,7 @@ tp_result tp_upgrade_fram_init(tp_upgrade_fram *f,const tp_i2c_io *bus) {
     f->boot=(tp_upgrade_fram_region){*bus,0,32};
     f->download=(tp_upgrade_fram_region){*bus,256,64};
     f->manifests=(tp_upgrade_fram_region){*bus,512,TP_SIGNED_MANIFEST_SIZE};
+    f->staging=(tp_upgrade_fram_region){*bus,768,64};
     return TP_OK;
 }
 tp_store_io tp_upgrade_fram_store(tp_upgrade_fram_region *r) {

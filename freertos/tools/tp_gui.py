@@ -6,7 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
-from tp_modbus import Client, float32
+from tp_modbus import Client, FLOAT_FIELDS, float32
 
 
 def read_status(client):
@@ -57,12 +57,28 @@ def read_latest_event(client):
             (event['sequence'], event['type'], event['detail'], timestamp, event['value_bits']))
 
 
+CONFIG_LABELS = {
+    'slope': '标定斜率', 'intercept': '标定截距', 'turbidity_factor': '浊度系数',
+    'min_signal': '最小信号', 'max_concentration': '浓度上限 (mg/L)',
+    'kp': 'PID 比例', 'ki': 'PID 积分', 'kd': 'PID 微分', 'deadband_c': '温度死区 (°C)',
+    'output_max': '输出上限', 'integral_max': '积分上限', 'max_temperature_c': '温度上限 (°C)',
+    'period_seconds': '周期 (秒)', 'slave_address': '从站地址',
+}
+
+
+def parse_config(values):
+    """Convert editable strings; the client and device validate numeric ranges."""
+    return {name: (float(values[name]) if name in FLOAT_FIELDS else int(values[name]))
+            for name in CONFIG_LABELS}
+
+
 class App:
     def __init__(self, root):
         self.root = root
         root.title('总磷检测教学上位机')
         self.events = queue.Queue()
         self.busy = False
+        self.config_window = None
         self.port = tk.StringVar(value='COM3')
         self.baud = tk.StringVar(value='115200')
         self.address = tk.StringVar(value='1')
@@ -103,6 +119,7 @@ class App:
             ttk.Label(settings, text=label).pack(side='left')
             ttk.Entry(settings, textvariable=var, width=width).pack(side='left', padx=3)
         ttk.Button(settings, text='设置模式', command=self.set_mode).pack(side='left')
+        ttk.Button(settings, text='读取参数', command=lambda: self.start('config_read')).pack(side='left', padx=2)
         ttk.Button(settings, text='保存配置', command=lambda: self.start('command', 4)).pack(side='left', padx=2)
         clock = ttk.Frame(frame); clock.grid(sticky='w')
         ttk.Button(clock, text='读取时钟', command=lambda: self.start('clock_status')).pack(side='left')
@@ -122,6 +139,32 @@ class App:
             self.message.set('模式参数必须为整数'); return
         self.start('schedule', values)
 
+    def show_config(self, config, target):
+        if self.config_window is not None and self.config_window.winfo_exists():
+            self.config_window.destroy()
+        window = self.config_window = tk.Toplevel(self.root)
+        window.title('标定和温控参数')
+        ttk.Label(window, text='读取时的完整快照，写入会覆盖整组参数；请避免其他上位机同时修改。').grid(row=0, columnspan=2, padx=8, pady=6)
+        entries = {}
+        for row, (name, label) in enumerate(CONFIG_LABELS.items(), 1):
+            ttk.Label(window, text=label + ' (' + name + ')').grid(row=row, column=0, sticky='w', padx=8)
+            entry = ttk.Entry(window, width=20)
+            entry.insert(0, str(config[name]))
+            entry.grid(row=row, column=1, padx=8, pady=2)
+            entries[name] = entry
+
+        def write_config():
+            if (self.port.get().strip(), self.baud.get(), self.address.get()) != target:
+                self.message.set('连接参数已改变，请重新读取参数'); return
+            try:
+                values = parse_config({name: entry.get() for name, entry in entries.items()})
+            except ValueError:
+                self.message.set('参数格式错误：周期和地址须为整数，其他项须为数字'); return
+            self.start('config_write', values)
+
+        ttk.Button(window, text='写入参数', command=write_config).grid(columnspan=2, pady=6)
+        ttk.Label(window, textvariable=self.message, foreground='blue', wraplength=480).grid(columnspan=2, padx=8, pady=4)
+
     def start(self, operation, value=None):
         if self.busy:
             self.message.set('通信中，请稍候'); return
@@ -132,7 +175,7 @@ class App:
         except ValueError as error:
             self.message.set(str(error)); return
         self.busy = True
-        if operation not in ('status', 'cal_status', 'clock_status', 'event'):
+        if operation not in ('status', 'cal_status', 'clock_status', 'event', 'config_read'):
             self.status.set('命令发送后状态可能变化，请重新读取')
             self.cal_status.set('命令发送后标定及核查状态可能变化，请重新读取')
             self.clock_status.set('时间或状态可能变化，请重新读取时钟')
@@ -151,6 +194,11 @@ class App:
                         result = read_clock_status(client)
                     elif operation == 'event':
                         result = read_latest_event(client)
+                    elif operation == 'config_read':
+                        result = (client.get_config(), (port, str(baud), str(address)))
+                    elif operation == 'config_write':
+                        client.set_config(value)
+                        result = '参数已写入内存；请保存配置并读取状态确认，地址更改重启后生效'
                     elif operation == 'set_clock':
                         client.set_clock(int(time.time()))
                         result = '校时请求已接收，请读取时钟确认回读成功'
@@ -191,6 +239,9 @@ class App:
             elif operation == 'clock_status':
                 self.clock_status.set(result)
                 self.message.set('时钟快照已读取')
+            elif operation == 'config_read':
+                self.show_config(*result)
+                self.message.set('参数已读取；写入后需保存并确认保存状态')
             elif operation == 'event':
                 self.event_status.set(result)
                 self.message.set('最新事件已读取')

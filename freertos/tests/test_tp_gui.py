@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
-from tp_gui import read_status, read_calibration_status, read_clock_status, read_latest_event
+from tp_gui import read_status, read_calibration_status, read_clock_status, read_latest_event, parse_config, CONFIG_LABELS
 
 
 def words(value):
@@ -99,6 +99,27 @@ class EventTest(unittest.TestCase):
                 raise ValueError('日志为空')
         with self.assertRaisesRegex(ValueError, '日志为空'):
             read_latest_event(Client())
+
+
+class ConfigInputTest(unittest.TestCase):
+    def test_converts_complete_snapshot(self):
+        values = {name: '1.25' for name in CONFIG_LABELS}
+        values.update(period_seconds='60', slave_address='1')
+        result = parse_config(values)
+        self.assertEqual(set(result), set(CONFIG_LABELS))
+        self.assertEqual(result['kp'], 1.25)
+        self.assertEqual(result['period_seconds'], 60)
+        self.assertEqual(result['slave_address'], 1)
+
+    def test_rejects_invalid_integer_and_float(self):
+        values = {name: '1' for name in CONFIG_LABELS}
+        values['period_seconds'] = '1.5'
+        with self.assertRaises(ValueError):
+            parse_config(values)
+        values['period_seconds'] = '60'
+        values['kp'] = 'abc'
+        with self.assertRaises(ValueError):
+            parse_config(values)
 
 
 if __name__ == '__main__':

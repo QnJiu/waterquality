@@ -7,7 +7,7 @@ from machine import UART, Pin
 from umqtt.simple import MQTTClient, MQTTException
 import config
 from modbus_status import read_status, read_confirmed_version
-from cloud import publish_status, publish_version
+from cloud import publish_status, publish_version, publish_progress
 from ota_notice import UpgradeNotice
 
 
@@ -51,6 +51,8 @@ def main():
     direction = Pin(config.RS485_DE, Pin.OUT, value=0)
     message_id = 0
     notice = UpgradeNotice(config.OTA_TOPIC) if config.OTA_ENABLED else None
+    progress = None
+    awaiting_version = None
     while True:
         client = None
         try:
@@ -60,6 +62,9 @@ def main():
             if notice:
                 client.set_callback(notice.callback)
                 client.subscribe(config.OTA_TOPIC.encode(), qos=0)
+            if notice and progress:
+                publish_progress(client, config.OTA_PROGRESS_TOPIC, progress[0], progress[1])
+                progress = None
             last_version = None
             next_publish = time.ticks_ms()
             while wlan.isconnected():
@@ -79,6 +84,9 @@ def main():
                             message_id += 1
                             publish_version(client, config.OTA_INFORM_TOPIC, version, message_id)
                             last_version = version
+                        if awaiting_version == str(version):
+                            publish_progress(client, config.OTA_PROGRESS_TOPIC, 100, "Firmware confirmed")
+                            awaiting_version = None
                     next_publish = time.ticks_add(time.ticks_ms(), config.PUBLISH_INTERVAL_S * 1000)
                 time.sleep_ms(1000)
         except (OSError, ValueError, MQTTException) as exc:
@@ -94,9 +102,13 @@ def main():
             try:
                 result = stage_bundle(url, version, config, UART, Pin, time)
                 notice.completed_version = version
+                awaiting_version = version
+                progress = (1, "Package staged; awaiting firmware confirmation")
                 print("Staged bank %d, firmware version %d; restart and confirmation pending" %
                       (result["bank"], result["version"]))
             except (OSError, ValueError, ProtocolError) as exc:
+                awaiting_version = None
+                progress = (-1, "Download or staging failed")
                 print("OTA staging failed:", exc)
         time.sleep_ms(5000)
 

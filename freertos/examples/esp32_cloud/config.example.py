@@ -19,6 +19,7 @@ PUBLISH_INTERVAL_S = 10
 # Optional OTA: use a second UART for F407 USART6, separate from Modbus.
 OTA_ENABLED = False
 OTA_TOPIC = "/ota/device/upgrade/your-product-key/your-device-name"
+OTA_PROGRESS_TOPIC = "/ota/device/progress/your-product-key/your-device-name"
 OTA_INFORM_TOPIC = "/ota/device/inform/your-product-key/your-device-name"
 OTA_UART_ID = 1
 OTA_UART_TX = 25

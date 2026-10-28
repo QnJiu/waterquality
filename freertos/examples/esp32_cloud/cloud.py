@@ -31,3 +31,8 @@ def publish_version(client, topic, version, message_id):
         raise ValueError("invalid confirmed version")
     payload = json.dumps({"id": str(message_id), "params": {"version": str(version)}})
     client.publish(topic.encode(), payload.encode(), qos=0)
+
+
+def publish_progress(client, topic, step, description):
+    payload = json.dumps({"id": "1", "params": {"step": str(step), "desc": description}})
+    client.publish(topic.encode(), payload.encode(), qos=0)

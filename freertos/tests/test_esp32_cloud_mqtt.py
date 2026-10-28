@@ -144,6 +144,56 @@ class CloudTest(unittest.TestCase):
         reports = [message for topic, message in client.sent if topic == b'/ota/device/inform/p/d']
         self.assertEqual([m['params']['version'] for m in reports], ['12'])
 
+    def test_ota_progress_after_staging_and_confirmation(self):
+        class Pin:
+            OUT = 1
+            def __init__(self, *args, **kwargs): pass
+        class Clock:
+            now = 0
+            def ticks_ms(self): return self.now
+            def ticks_add(self, a, b): return a + b
+            def ticks_diff(self, a, b): return a - b
+            def sleep_ms(self, ms):
+                self.now += ms
+                if self.now >= 8000: raise KeyboardInterrupt()
+        class Client:
+            def __init__(self):
+                self.sent = []
+                self.sock = types.SimpleNamespace(close=lambda: None)
+                self.notified = False
+            def set_callback(self, callback): self.callback = callback
+            def subscribe(self, topic, qos): pass
+            def check_msg(self):
+                if not self.notified:
+                    self.notified = True
+                    self.callback(b'/ota/device/upgrade/p/d', json.dumps(
+                        {'data': {'url': 'https://example.com/a', 'version': '12'}}).encode())
+            def publish(self, topic, payload, qos): self.sent.append((topic, json.loads(payload)))
+        mqtt = types.ModuleType('umqtt.simple')
+        mqtt.MQTTClient, mqtt.MQTTException = object, type('MQTTException', (Exception,), {})
+        cfg = types.SimpleNamespace(PUBLISH_INTERVAL_S=1, UART_ID=2, UART_TX=17, UART_RX=16,
+                                    RS485_DE=4, OTA_ENABLED=True, OTA_TOPIC='/ota/device/upgrade/p/d',
+                                    OTA_INFORM_TOPIC='/ota/device/inform/p/d', OTA_PROGRESS_TOPIC='/ota/device/progress/p/d',
+                                    MQTT_TOPIC='status', MODBUS_ADDRESS=1)
+        notice = load('ota_notice', 'ota_notice.py')
+        notice.stage_bundle = lambda *args: {'bank': 1, 'version': 12}
+        modules = {'network': types.ModuleType('network'), 'ntptime': types.ModuleType('ntptime'),
+                   'machine': types.SimpleNamespace(UART=lambda *a, **kw: object(), Pin=Pin),
+                   'umqtt': types.ModuleType('umqtt'), 'umqtt.simple': mqtt, 'config': cfg,
+                   'modbus_status': load('modbus_status', 'modbus_status.py'), 'cloud': cloud,
+                   'ota_notice': notice, 'ota_client': types.SimpleNamespace(ProtocolError=type('ProtocolError', (Exception,), {}))}
+        with patch.dict(sys.modules, modules):
+            main = load('esp32_cloud_main_progress', 'main.py')
+            client, versions = Client(), iter([None, 12, 12])
+            main.time = Clock()
+            main.connect_wifi = lambda: types.SimpleNamespace(isconnected=lambda: True)
+            main.connect_mqtt = lambda: client
+            main.read_status = lambda *a: self.status
+            main.read_confirmed_version = lambda *a: next(versions)
+            with self.assertRaises(KeyboardInterrupt): main.main()
+        reports = [m['params']['step'] for t, m in client.sent if t == b'/ota/device/progress/p/d']
+        self.assertEqual(reports, ['1', '100'])
+
     def test_tls_setup_and_failed_connection_close(self):
         calls = []
         class Socket:

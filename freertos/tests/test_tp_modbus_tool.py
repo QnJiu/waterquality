@@ -190,6 +190,22 @@ class Tests(unittest.TestCase):
         with self.assertRaises(m.ModbusError):
             m.Client(p, 1).get_schedule()
 
+    def test_cli_uncertain_write_and_read_failures(self):
+        class SerialPort(Port):
+            def __init__(self, *args, **kwargs): super().__init__(b'')
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        with patch.dict(sys.modules, {'serial': SimpleNamespace(Serial=SerialPort)}):
+            for action in (['command', 'start'], ['status']):
+                text = io.StringIO()
+                with contextlib.redirect_stderr(text):
+                    self.assertEqual(m.main(['--port', 'COM3', '--timeout', '0.001'] + action), 1)
+                self.assertEqual('outcome may be unknown' in text.getvalue(), action[0] == 'command')
+            text = io.StringIO()
+            with contextlib.redirect_stderr(text):
+                self.assertEqual(m.main(['--port', 'COM3', 'schedule', 'daily', '0', '0', '0']), 1)
+            self.assertNotIn('outcome may be unknown', text.getvalue())
+
     def test_exception_corruption_and_timeout(self):
         for reply in (m.frame(bytes.fromhex('018302')), bytes.fromhex('01030200000000'), b''):
             with self.assertRaises(m.ModbusError): m.Client(Port(reply), 1, .001).read(10, 1)

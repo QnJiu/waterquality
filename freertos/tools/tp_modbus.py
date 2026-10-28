@@ -34,6 +34,7 @@ class Client:
         if not 1 <= address <= 247 or timeout <= 0:
             raise ValueError('invalid slave address or timeout')
         self.port, self.address, self.timeout = port, address, timeout
+        self.write_attempted = False
 
     def readings(self):
         """Read the three signals and their validity mask in one request."""
@@ -54,6 +55,8 @@ class Client:
     def exchange(self, request, expected):
         self.port.reset_input_buffer()
         packet = frame(bytes([self.address]) + request)
+        if request[0] in (6, 16):
+            self.write_attempted = True
         if self.port.write(packet) != len(packet):
             raise ModbusError('short serial write')
         self.port.flush()
@@ -259,6 +262,7 @@ def main(argv=None):
     schedule.add_argument('minute', type=int, help='local minute of day, 0..1439')
     schedule.add_argument('utc_offset', type=int, help='UTC offset in minutes')
     args = p.parse_args(argv)
+    client = None
     try:
         import serial
         with serial.Serial(args.port, args.baud, bytesize=8, parity='N', stopbits=1, timeout=0.1, write_timeout=args.timeout) as port:
@@ -312,6 +316,8 @@ def main(argv=None):
                 print('maintenance=%s' % ('unknown' if maintenance is None else 'active' if maintenance else 'inactive'))
     except (ImportError, OSError, ValueError, ModbusError) as e:
         print('Error: %s' % e, file=sys.stderr)
+        if client is not None and client.write_attempted:
+            print('A device write was attempted; its outcome may be unknown. Read device status before retrying.', file=sys.stderr)
         return 1
     return 0
 

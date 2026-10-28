@@ -21,13 +21,14 @@ bool tp_event_transition(tp_run_state before,const tp_controller *after,tp_event
  * runs can be distinguished from measurements even when no concentration is
  * produced by the underlying controller. */
 tp_operation_snapshot tp_operation_capture(const tp_service *s) {
-    tp_operation_snapshot snapshot={TP_AUTO_CAL_IDLE,TP_STANDARD_IDLE,0};
+    tp_operation_snapshot snapshot={TP_AUTO_CAL_IDLE,TP_STANDARD_IDLE,0,false};
     if (s) { snapshot.calibration=s->auto_cal.state; snapshot.standard=s->auto_standard.state;
-             snapshot.preflight_faults=s->preflight_faults; }
+             snapshot.preflight_faults=s->preflight_faults; snapshot.preflight_checked=s->preflight_checked; }
     return snapshot;
 }
 bool tp_operation_preflight_event(tp_operation_snapshot before,const tp_service *s,tp_event *out) {
-    if (!s || !out || !s->preflight || before.preflight_faults==s->preflight_faults) return false;
+    if (!s || !out || !s->preflight || (before.preflight_faults==s->preflight_faults &&
+        (before.preflight_checked || !s->preflight_checked))) return false;
     tp_event e={0}; e.type=TP_EVENT_PREFLIGHT; e.detail=s->preflight_faults;
     *out=e; return true;
 }

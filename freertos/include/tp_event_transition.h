@@ -14,9 +14,9 @@ bool tp_event_transition(tp_run_state before,const tp_controller *after,tp_event
  * report meaningful operation state changes. Completion of a standard check
  * stores the float concentration in value and pass flag in detail bit 8;
  * failure stores the tp_result code in value. Low detail byte is state+1. */
-typedef struct { tp_auto_cal_state calibration; tp_standard_state standard; uint16_t preflight_faults; } tp_operation_snapshot;
+typedef struct { tp_auto_cal_state calibration; tp_standard_state standard; uint16_t preflight_faults; bool preflight_checked; } tp_operation_snapshot;
 tp_operation_snapshot tp_operation_capture(const tp_service *);
-/* Record changed preflight results; detail is the current fault bit mask. */
+/* Record the first preflight and changed results; detail is the current fault bit mask. */
 bool tp_operation_preflight_event(tp_operation_snapshot, const tp_service *, tp_event *);
 bool tp_operation_cal_event(tp_operation_snapshot, const tp_service *, tp_event *);
 bool tp_operation_standard_event(tp_operation_snapshot, const tp_service *, tp_event *);

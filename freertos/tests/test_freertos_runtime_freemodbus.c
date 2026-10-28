@@ -19,9 +19,10 @@ UBaseType_t uxQueueMessagesWaiting(QueueHandle_t q) { (void)q;return 0; }
 
 static int safe_count, sent_count, event_count;
 static uint16_t faults;
+static bool check_error;
 static tp_event last_event;
 static tp_result preflight(void *ctx, uint16_t *out) {
-    (void)ctx; *out=faults; return faults ? TP_IO_ERROR : TP_OK;
+    (void)ctx; *out=faults; return (faults || check_error) ? TP_IO_ERROR : TP_OK;
 }
 static void event(void *ctx, const tp_event *e) { (void)ctx; event_count++; last_event=*e; }
 static unsigned sent_port;
@@ -93,5 +94,11 @@ int main(void) {
     s.preflight_checked=false; rt.startup_preflight_pending=true; faults=0;
     startup_preflight(&rt,(uint32_t)1000-(uint32_t)(UINT32_MAX-1000));
     assert(s.preflight_checked && !rt.startup_preflight_pending);
+    /* A callback error without specific bits must still log the first check. */
+    s.preflight_checked=false; s.preflight_faults=TP_PREFLIGHT_NOT_RUN;
+    rt.startup_preflight_pending=true; check_error=true; prior_events=event_count;
+    startup_preflight(&rt,2000);
+    assert(s.preflight_checked && s.preflight_faults==TP_PREFLIGHT_NOT_RUN);
+    assert(event_count==prior_events+1 && last_event.detail==TP_PREFLIGHT_NOT_RUN);
     return 0;
 }

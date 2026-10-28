@@ -23,5 +23,11 @@ bool tp_health_can_feed(tp_health *h,uint32_t now) {
 tp_result tp_health_heartbeat(tp_health *h,uint8_t task,uint32_t now) {
     if(!h || !h->armed || task>=h->count || h->count>TP_HEALTH_MAX_TASKS) return TP_INVALID;
     if(!tp_health_can_feed(h,now)) return TP_TIMEOUT;
-    h->last_ms[task]=now; return TP_OK;
+    h->last_ms[task]=now; h->seen_mask|=1u<<task; return TP_OK;
+}
+
+bool tp_health_all_started(tp_health *h,uint32_t now) {
+    if(!tp_health_can_feed(h,now)) return false;
+    uint32_t expected=(1u<<h->count)-1u;
+    return (h->seen_mask & expected)==expected;
 }

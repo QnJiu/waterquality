@@ -21,4 +21,6 @@ tp_result tp_freertos_health_start(tp_freertos_health *,const uint32_t *,uint8_t
     void (*feed)(void *),void (*fault)(void *,uint32_t));
 /* Task context only. Call after the task has made meaningful progress. */
 tp_result tp_freertos_health_heartbeat(tp_freertos_health *,uint8_t task_id);
+/* Task context; synchronized snapshot. Does not check hardware or application faults. */
+bool tp_freertos_health_all_started(tp_freertos_health *);
 #endif

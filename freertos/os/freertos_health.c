@@ -37,3 +37,10 @@ tp_result tp_freertos_health_heartbeat(tp_freertos_health *h,uint8_t id) {
     taskENTER_CRITICAL(); r=tp_health_heartbeat(&h->health,id,(uint32_t)xTaskGetTickCount()); taskEXIT_CRITICAL();
     return r;
 }
+
+bool tp_freertos_health_all_started(tp_freertos_health *h) {
+    if(!h || !h->task) return false;
+    bool ready;
+    taskENTER_CRITICAL(); ready=tp_health_all_started(&h->health,(uint32_t)xTaskGetTickCount()); taskEXIT_CRITICAL();
+    return ready;
+}

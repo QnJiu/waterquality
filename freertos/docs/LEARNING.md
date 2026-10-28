@@ -4,13 +4,16 @@
 
 ## 1. 编译和运行
 
-在本目录的 PowerShell 中执行，电脑需要已安装 CMake、Ninja 和 C 编译器：
+在项目根目录 `水质检测` 打开 PowerShell，先进入 `freertos` 目录；电脑需要已安装 CMake、Ninja 和 C 编译器。以下命令及本文中的 `tools/` 路径均以 `freertos` 为当前目录：
 
 ```powershell
+cd freertos
 cmake -S . -B build -G Ninja
 cmake --build build
 .\build\tp_simulator.exe
 .\build\tp_simulator.exe interlock
+.\build\tp_simulator.exe sensor
+.\build\tp_simulator.exe stop-rinse
 .\build\tp_simulator.exe recover
 .\build\tp_simulator.exe recover-sensor
 .\build\tp_simulator.exe periodic
@@ -94,6 +97,6 @@ F407 与 F030 的教学装配可通过 F407 构建选项 `TP_F407_TEACHING_SUBOR
 
 ## 4. 两种 RTOS 的采集示例
 
-Linux 或 WSL 下运行 `sh freertos/examples/posix_slice/run.sh`，可在 FreeRTOS POSIX 任务中观察模拟 ADS1220 采集与 Modbus 响应。Zephyr 对应自测和相同输入向量的说明见 `zephyr_slice/README.md`。两者使用模拟外设，不代表板卡测试。
+在 `freertos` 目录的 Linux 或 WSL 终端中运行 `sh examples/posix_slice/run.sh`，可在 FreeRTOS POSIX 任务中观察模拟 ADS1220 采集与 Modbus 响应。Zephyr 对应自测和相同输入向量的说明见 `zephyr_slice/README.md`。两者使用模拟外设，不代表板卡测试。
 
 F407 教学配置启动控制任务约 2 秒后自动自检一次，让温度和从板数据有时间更新；2 秒是参考值，实际硬件需要确认。启动检测前仍会再次检查；如果上电自检失败，可排除故障后使用 Modbus 命令 10 重查。

@@ -107,7 +107,9 @@ void tp_tick(tp_controller *c, uint32_t now) {
         if (temp >= c->max_temperature_c) { fail(c, TP_FAULT_OVERTEMP); return; }
         float dt = (float)(uint32_t)(now - c->last_pid_ms) / 1000.0f;
         c->last_pid_ms = now;
-        if (c->hal.set_heater(c->hal.ctx, tp_pid_update(&c->pid, c->target_c, temp, dt)) != TP_OK) {
+        float output = tp_pid_update(&c->pid, c->target_c, temp, dt);
+        if (!isfinite(output)) { fail(c, TP_FAULT_IO); return; }
+        if (c->hal.set_heater(c->hal.ctx, output) != TP_OK) {
             fail(c, TP_FAULT_IO); return;
         }
     }

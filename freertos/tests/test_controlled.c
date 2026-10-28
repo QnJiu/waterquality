@@ -1,5 +1,6 @@
 #include "tp_service.h"
 #include <assert.h>
+#include <float.h>
 #include <stdio.h>
 typedef struct { unsigned valves, pumps, heat_calls, safe; bool interlock; float temperature, output; } fake;
 static tp_result valves(void *ctx, uint32_t mask) { fake *f=ctx; assert(mask==3); f->valves++; return TP_OK; }
@@ -70,5 +71,15 @@ int main(void) {
     tp_tick(&c2,30004); tp_tick(&c2,60004);
     g.temperature=20; tp_tick(&c2,60005);
     assert(g.output>0.019f && g.output<0.021f);
+    /* Finite but extreme PID settings must never reach the heater as NaN/Inf. */
+    fake h={.interlock=true,.temperature=20};
+    tp_hal hal3={&h,valves,pump,poll,temp,heat,adc,interlock,safe};
+    tp_pid pid3={.kp=FLT_MAX,.output_max=1,.integral_max=1}; tp_controller c3;
+    tp_init(&c3,&hal3,NULL,&pid3,100);
+    const tp_step overflow[]={ {.kind=TP_STEP_HEAT,.timeout_ms=1000,.arg.heat={30,1}},
+        {.kind=TP_STEP_END} };
+    assert(tp_start(&c3,overflow,2,0)==TP_OK);
+    tp_tick(&c3,0);
+    assert(c3.state==TP_FAILED && c3.fault==TP_FAULT_IO && h.safe==1 && h.heat_calls==0);
     puts("controlled stepping checks passed"); return 0;
 }

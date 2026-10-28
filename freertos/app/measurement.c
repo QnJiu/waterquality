@@ -14,12 +14,15 @@ float tp_pid_update(tp_pid *p, float target, float measured, float dt)
     float derivative = p->initialized ? -(measured - p->previous_temp) / dt : 0;
     float candidate = limit(p->integral + error * dt, -p->integral_max, p->integral_max);
     float raw = p->kp * error + p->ki * candidate + p->kd * derivative;
+    if (!isfinite(error) || !isfinite(derivative) || !isfinite(candidate) || !isfinite(raw))
+        return NAN;
     /* Do not integrate further into saturation. */
     if ((raw >= 0 && raw <= p->output_max) || (raw > p->output_max && error < 0) ||
         (raw < 0 && error > 0)) p->integral = candidate;
     p->previous_temp = measured;
     p->initialized = true;
-    return limit(p->kp * error + p->ki * p->integral + p->kd * derivative, 0, p->output_max);
+    float output = p->kp * error + p->ki * p->integral + p->kd * derivative;
+    return isfinite(output) ? limit(output, 0, p->output_max) : NAN;
 }
 
 static tp_result optical_absorbance(const tp_calibration *c, float blank, float reacted,

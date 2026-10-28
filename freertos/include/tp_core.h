@@ -80,6 +80,7 @@ tp_result tp_advance(tp_controller *c, uint32_t now_ms);
 void tp_tick(tp_controller *c, uint32_t now);
 void tp_stop(tp_controller *c);
 tp_result tp_clear_fault(tp_controller *c);
+/* Returns NaN if intermediate arithmetic overflows. */
 float tp_pid_update(tp_pid *pid, float target, float measured, float dt_seconds);
 tp_result tp_concentration(const tp_calibration *cal, float blank, float reacted,
                            float turbidity, float *result);

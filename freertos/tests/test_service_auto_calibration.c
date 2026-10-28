@@ -53,6 +53,16 @@ int main(void) {
     assert(s.auto_cal.state==TP_AUTO_CAL_COMPLETE && f.reads==6 && f.checks==2 && f.safe==2);
     exchange(&m,3,90,2,r); assert(r[1]==3 && r[4]==4 && r[6]==0);
     assert(c.calibration.slope==1 && f.saves==0);
+    /* Changing calibration settings invalidates the just-completed fit. */
+    tp_config changed=cfg; changed.calibration.turbidity_factor=0.25f;
+    assert(tp_service_attach_config(&s,&changed,&f,save)==TP_OK);
+    assert(s.auto_cal.state==TP_AUTO_CAL_IDLE);
+    exchange(&m,6,0,7,r); assert(r[1]==0x86 && c.calibration.turbidity_factor==0.25f);
+    assert(tp_service_attach_config(&s,&cfg,&f,save)==TP_OK);
+    f.reads=0; f.checks=0;
+    exchange(&m,6,0,6,r); assert(r[1]==6);
+    for(unsigned i=0;i<8;i++) tp_service_tick(&s,400+i,false,0);
+    assert(s.auto_cal.state==TP_AUTO_CAL_COMPLETE && f.reads==6);
     exchange(&m,6,0,7,r); assert(r[1]==6 && fabsf(c.calibration.slope-5)<0.0001f);
     assert(f.saves==0 && s.save_status==1);
     exchange(&m,6,0,4,r); assert(r[1]==6 && f.saves==1 && fabsf(f.saved.calibration.slope-5)<0.0001f);

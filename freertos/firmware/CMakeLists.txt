@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
 set(KERNEL ${ROOT}/third_party/FreeRTOS-Kernel)
 set(DEVICE ${ROOT}/third_party/STM32F4-CMSIS)
-add_executable(tp_f407.elf main.c tp_f407_emergency.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_usart3_rtu.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
+add_executable(tp_f407.elf main.c tp_f407_emergency.c tp_f407_app.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_usart3_rtu.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${KERNEL}/tasks.c ${KERNEL}/queue.c ${KERNEL}/list.c ${KERNEL}/timers.c
     ${KERNEL}/portable/GCC/ARM_CM4F/port.c ${KERNEL}/portable/MemMang/heap_4.c
@@ -20,7 +20,7 @@ target_compile_options(tp_f407.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp
     -mfloat-abi=hard -ffunction-sections -fdata-sections)
 target_link_options(tp_f407.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16
     -mfloat-abi=hard --specs=nosys.specs -T${CMAKE_CURRENT_LIST_DIR}/stm32f407vg.ld
-    -Wl,--gc-sections -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/tp_f407.map)
+    -Wl,--gc-sections -Wl,--undefined=tp_f407_app_init -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/tp_f407.map)
 target_link_libraries(tp_f407.elf PRIVATE m)
 add_custom_command(TARGET tp_f407.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:tp_f407.elf> ${CMAKE_CURRENT_BINARY_DIR}/tp_f407.hex

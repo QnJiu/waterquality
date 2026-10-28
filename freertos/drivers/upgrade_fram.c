@@ -25,6 +25,10 @@ static tp_result erase_slot(void *ctx,unsigned slot) {
     const uint8_t invalid[4]={0,0,0,0}; uint8_t erased[CHUNK]; memset(erased,0xff,sizeof(erased));
     tp_result result=write_slot(r,slot,r->commit,invalid,sizeof(invalid));
     if(result!=TP_OK) return result;
+    uint8_t check[sizeof(invalid)];
+    result=read_slot(r,slot,r->commit,check,sizeof(check));
+    if(result!=TP_OK) return result;
+    if(memcmp(check,invalid,sizeof(check))!=0) return TP_IO_ERROR;
     for(uint32_t off=0;off<SLOT_SIZE;off+=CHUNK) {
         result=write_slot(r,slot,off,erased,sizeof(erased)); if(result!=TP_OK) return result;
     }

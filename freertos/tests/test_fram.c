@@ -2,10 +2,11 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-typedef struct { uint8_t mem[2048]; int writes, fail_after; bool read_error; } fake;
+typedef struct { uint8_t mem[2048]; int writes, fail_after; bool read_error, ignore_write; } fake;
 static tp_result write_i2c(void *ctx,uint8_t dev,const uint8_t *tx,size_t n) {
     fake *f=ctx; if (f->fail_after>=0 && f->writes++ >= f->fail_after) return TP_IO_ERROR;
     if (dev<0x50 || dev>0x57 || n<2 || (size_t)tx[0]+n-1>256) return TP_IO_ERROR;
+    if (f->ignore_write) { f->ignore_write=false; return TP_OK; }
     size_t addr=(size_t)(dev-0x50)*256+tx[0]; memcpy(f->mem+addr,tx+1,n-1); return TP_OK;
 }
 static tp_result read_i2c(void *ctx,uint8_t dev,const uint8_t *tx,size_t tn,uint8_t *rx,size_t n) {
@@ -17,7 +18,7 @@ static uint32_t crc32(const uint8_t *p,size_t n) {
 }
 static void put32(uint8_t *p,uint32_t v) { for(unsigned i=0;i<4;i++) p[i]=(uint8_t)(v>>(8*i)); }
 int main(void) {
-    fake f; memset(&f,0xff,sizeof(f)); f.fail_after=-1; f.writes=0; f.read_error=false;
+    fake f; memset(&f,0xff,sizeof(f)); f.fail_after=-1; f.writes=0; f.read_error=false; f.ignore_write=false;
     tp_i2c_io bus={&f,write_i2c,read_i2c}; tp_mb85rc16 chip;
     assert(tp_mb85rc16_init(&chip,&bus,1792)==TP_OK);
     tp_mb85rc16_log_region region;
@@ -40,11 +41,16 @@ int main(void) {
     f.read_error=true; source=TP_CONFIG_FROM_STORAGE; seq=123;
     assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_IO_ERROR);
     assert(source==TP_CONFIG_FROM_STORAGE && seq==123 && f.writes==0);
-    f.read_error=false;
+    f.read_error=false; f.ignore_write=false;
     assert(tp_store_load(&io,&got,&seq)==TP_INVALID);
     assert(tp_store_save(&io,&cfg)==TP_OK); assert(tp_store_load(&io,&got,&seq)==TP_OK && seq==1);
     assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_OK);
     assert(source==TP_CONFIG_FROM_STORAGE && seq==1 && got.period_seconds==3600);
+    /* A falsely successful invalidation must not overwrite the committed record. */
+    uint8_t before[128]; memcpy(before,f.mem+1792,sizeof(before));
+    f.ignore_write=true; assert(io.erase(io.ctx,0)==TP_IO_ERROR);
+    assert(!memcmp(before,f.mem+1792,sizeof(before)));
+    assert(tp_store_load(&io,&got,&seq)==TP_OK && seq==1);
     /* A committed future-format record must survive old-firmware boot/save. */
     memcpy(f.mem+1792+128,f.mem+1792,128);
     f.mem[1792+128+4]=3;
@@ -70,7 +76,7 @@ int main(void) {
     assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_OK);
     assert(source==TP_CONFIG_DEFAULTED && seq==0 && got.period_seconds==7200 && f.writes==writes_before);
     /* Construct an actual v1 record, then migrate it on the next save. */
-    fake legacy; memset(&legacy,0xff,sizeof(legacy)); legacy.fail_after=-1; legacy.writes=0; legacy.read_error=false;
+    fake legacy; memset(&legacy,0xff,sizeof(legacy)); legacy.fail_after=-1; legacy.writes=0; legacy.read_error=false; legacy.ignore_write=false;
     tp_i2c_io legacy_bus={&legacy,write_i2c,read_i2c}; tp_mb85rc16 legacy_chip;
     assert(tp_mb85rc16_init(&legacy_chip,&legacy_bus,1792)==TP_OK);
     tp_store_io legacy_io=tp_mb85rc16_store(&legacy_chip);

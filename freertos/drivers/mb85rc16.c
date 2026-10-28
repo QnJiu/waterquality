@@ -35,6 +35,10 @@ static tp_result erase_slot(void *ctx, unsigned slot) {
     uint8_t invalid[9] = {0};
     tp_result r = write_slot(ctx,slot,COMMIT_OFFSET,invalid,sizeof(invalid));
     if (r != TP_OK) return r;
+    uint8_t check[sizeof(invalid)];
+    r = read_slot(ctx,slot,COMMIT_OFFSET,check,sizeof(check));
+    if (r != TP_OK) return r;
+    if (memcmp(check,invalid,sizeof(check)) != 0) return TP_IO_ERROR;
     uint8_t erased[WRITE_CHUNK]; memset(erased,0xff,sizeof(erased));
     for (uint32_t off=0; off<SLOT_SIZE; off+=sizeof(erased)) {
         r = write_slot(ctx,slot,off,erased,sizeof(erased));

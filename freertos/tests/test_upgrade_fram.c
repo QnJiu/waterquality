@@ -3,11 +3,12 @@
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
-typedef struct { uint8_t mem[2048]; int count, fail; size_t partial; bool read_fail; } fake;
+typedef struct { uint8_t mem[2048]; int count, fail; size_t partial; bool read_fail, ignore_write; } fake;
 static tp_result wr(void *ctx,uint8_t dev,const uint8_t *tx,size_t n) {
     fake *f=ctx; assert(dev>=0x50 && dev<=0x57 && n>=2 && (size_t)tx[0]+n-1<=256);
     size_t addr=(size_t)(dev-0x50)*256+tx[0];
     if(++f->count==f->fail) { size_t k=f->partial; if(k>n-1) k=n-1; memcpy(f->mem+addr,tx+1,k); return TP_IO_ERROR; }
+    if(f->ignore_write) { f->ignore_write=false; return TP_OK; }
     memcpy(f->mem+addr,tx+1,n-1); return TP_OK;
 }
 static tp_result rd(void *ctx,uint8_t dev,const uint8_t *tx,size_t tn,uint8_t *rx,size_t n) {
@@ -32,6 +33,16 @@ int main(void) {
     }
     for(unsigned i=0;i<8;i++) assert(f.mem[i*128]==i);
     for(unsigned i=1024;i<2048;i++) assert(f.mem[i]==0xff);
+    /* An ignored invalidation must stop erasure before any record bytes change. */
+    const unsigned commit_offsets[4]={32,64,116,64};
+    for(unsigned i=0;i<4;i++) {
+        memset(f.mem+i*256,0x35,128);
+        uint8_t before[128]; memcpy(before,f.mem+i*256,sizeof(before));
+        f.count=0; f.ignore_write=true;
+        assert(stores[i].erase(stores[i].ctx,0)==TP_IO_ERROR && f.count==1);
+        assert(!memcmp(before,f.mem+i*256,sizeof(before)));
+        assert(f.mem[i*256+commit_offsets[i]]==0x35);
+    }
     /* Interrupt every erase transfer, including partial invalidation and partial erase.
        Other slots and regions must never change; an altered slot cannot retain its commit. */
     const unsigned offsets[4]={32,64,116,64}; const uint8_t marks[4][4]={{0x54,0x4d,0x4f,0x43},{0x54,0x4d,0x4f,0x43},{0x54,0x50,0x4d,0x31},{0x54,0x4d,0x4f,0x43}};

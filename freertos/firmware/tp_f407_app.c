@@ -94,7 +94,7 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     INIT(tp_f407_valves_init(&a->valves,o->valves));
     INIT(tp_f407_pump_init(&a->pump));
     INIT(tp_f407_heater_init(&a->heater));
-    INIT(tp_f407_i2c_init(&a->i2c));
+    INIT(tp_f407_i2c_init_on(&a->i2c,o->business_i2c ? o->business_i2c : 2));
     tp_i2c_io bus=tp_f407_i2c_io(&a->i2c);
     INIT(tp_mb85rc16_init(&a->fram,&bus,0));
     if (o->config_eeprom) {

@@ -7,36 +7,38 @@
 #define TIMEOUT_CYCLES (16u * 1000u * 30u)
 #define ERROR_FLAGS (I2C_SR1_BERR | I2C_SR1_ARLO | I2C_SR1_AF | I2C_SR1_OVR | I2C_SR1_TIMEOUT)
 static bool elapsed(uint32_t start) { return (uint32_t)(DWT->CYCCNT-start) >= TIMEOUT_CYCLES; }
-static tp_result wait_sr1(uint32_t flag, uint32_t start) {
+static I2C_TypeDef *device(const tp_f407_i2c *bus) { return bus->peripheral==3 ? I2C3 : I2C2; }
+static tp_result wait_sr1(tp_f407_i2c *bus, uint32_t flag, uint32_t start) {
     for (;;) {
-        uint32_t sr=I2C2->SR1;
+        uint32_t sr=device(bus)->SR1;
         if (sr & ERROR_FLAGS) return TP_IO_ERROR;
         if (sr & flag) return TP_OK;
         if (elapsed(start)) return TP_TIMEOUT;
     }
 }
-static tp_result idle(uint32_t start) {
-    while (I2C2->SR2 & I2C_SR2_BUSY) if (elapsed(start)) return TP_TIMEOUT;
+static tp_result idle(tp_f407_i2c *bus, uint32_t start) {
+    while (device(bus)->SR2 & I2C_SR2_BUSY) if (elapsed(start)) return TP_TIMEOUT;
     return TP_OK;
 }
-static void configure_peripheral(void) {
-    RCC->APB1RSTR |= RCC_APB1RSTR_I2C2RST;
-    RCC->APB1RSTR &= ~RCC_APB1RSTR_I2C2RST;
-    I2C2->CR2=16; I2C2->CCR=80; I2C2->TRISE=17; I2C2->CR1=I2C_CR1_PE;
+static void configure_peripheral(tp_f407_i2c *bus) {
+    uint32_t reset = bus->peripheral==3 ? RCC_APB1RSTR_I2C3RST : RCC_APB1RSTR_I2C2RST;
+    RCC->APB1RSTR |= reset;
+    RCC->APB1RSTR &= ~reset;
+    device(bus)->CR2=16; device(bus)->CCR=80; device(bus)->TRISE=17; device(bus)->CR1=I2C_CR1_PE;
 }
-static tp_result address(uint8_t address7, bool read, uint32_t start) {
-    I2C2->CR1 |= I2C_CR1_START;
-    tp_result r=wait_sr1(I2C_SR1_SB,start); if (r!=TP_OK) return r;
-    I2C2->DR=(uint8_t)((address7<<1) | (read?1u:0u));
-    return wait_sr1(I2C_SR1_ADDR,start);
+static tp_result address(tp_f407_i2c *bus, uint8_t address7, bool read, uint32_t start) {
+    device(bus)->CR1 |= I2C_CR1_START;
+    tp_result r=wait_sr1(bus,I2C_SR1_SB,start); if (r!=TP_OK) return r;
+    device(bus)->DR=(uint8_t)((address7<<1) | (read?1u:0u));
+    return wait_sr1(bus,I2C_SR1_ADDR,start);
 }
-static void clear_addr(void) { (void)I2C2->SR1; (void)I2C2->SR2; }
-static tp_result tx_bytes(const uint8_t *data, size_t n, uint32_t start) {
+static void clear_addr(tp_f407_i2c *bus) { (void)device(bus)->SR1; (void)device(bus)->SR2; }
+static tp_result tx_bytes(tp_f407_i2c *bus, const uint8_t *data, size_t n, uint32_t start) {
     for (size_t i=0;i<n;i++) {
-        tp_result r=wait_sr1(I2C_SR1_TXE,start); if (r!=TP_OK) return r;
-        I2C2->DR=data[i];
+        tp_result r=wait_sr1(bus,I2C_SR1_TXE,start); if (r!=TP_OK) return r;
+        device(bus)->DR=data[i];
     }
-    return wait_sr1(I2C_SR1_BTF,start);
+    return wait_sr1(bus,I2C_SR1_BTF,start);
 }
 static tp_result lock(tp_f407_i2c *bus) {
     #ifdef TP_F407_I2C_POLL_ONLY
@@ -52,8 +54,8 @@ static tp_result lock(tp_f407_i2c *bus) {
 }
 static void release(tp_f407_i2c *bus, tp_result result) {
     if (result!=TP_OK) {
-        I2C2->CR1 |= I2C_CR1_STOP;
-        configure_peripheral(); /* A physically stuck bus remains an error. */
+        device(bus)->CR1 |= I2C_CR1_STOP;
+        configure_peripheral(bus); /* A physically stuck bus remains an error. */
     }
     #ifdef TP_F407_I2C_POLL_ONLY
     (void)bus;
@@ -66,10 +68,10 @@ static tp_result write_bus(void *ctx, uint8_t dev, const uint8_t *data, size_t n
     if (!data || !n || dev>127) return TP_INVALID;
     tp_result r=lock(bus); if (r!=TP_OK) return r;
     uint32_t start=DWT->CYCCNT;
-    r=idle(start);
-    if (r==TP_OK) r=address(dev,false,start);
-    if (r==TP_OK) { clear_addr(); r=tx_bytes(data,n,start); }
-    if (r==TP_OK) I2C2->CR1 |= I2C_CR1_STOP;
+    r=idle(bus,start);
+    if (r==TP_OK) r=address(bus,dev,false,start);
+    if (r==TP_OK) { clear_addr(bus); r=tx_bytes(bus,data,n,start); }
+    if (r==TP_OK) device(bus)->CR1 |= I2C_CR1_STOP;
     release(bus,r); return r;
 }
 static tp_result read_bus(void *ctx, uint8_t dev, const uint8_t *tx, size_t tn, uint8_t *rx, size_t n) {
@@ -80,23 +82,24 @@ static tp_result read_bus(void *ctx, uint8_t dev, const uint8_t *tx, size_t tn, 
        sequencing; each byte has its own bounded transaction deadline. */
     for (size_t i=0;i<n && r==TP_OK;i++) {
         uint32_t start=DWT->CYCCNT; uint8_t offset=(uint8_t)(tx[0]+i);
-        r=idle(start); if (r==TP_OK) r=address(dev,false,start);
-        if (r==TP_OK) { clear_addr(); r=tx_bytes(&offset,1,start); }
-        if (r==TP_OK) r=address(dev,true,start);
+        r=idle(bus,start); if (r==TP_OK) r=address(bus,dev,false,start);
+        if (r==TP_OK) { clear_addr(bus); r=tx_bytes(bus,&offset,1,start); }
+        if (r==TP_OK) r=address(bus,dev,true,start);
         if (r==TP_OK) {
             /* For one byte, ACK=0 before clearing ADDR; STOP immediately after.
                Keep these register accesses together against task/IRQ preemption. */
             uint32_t mask=__get_PRIMASK(); __disable_irq();
-            I2C2->CR1 &= ~I2C_CR1_ACK; clear_addr(); I2C2->CR1 |= I2C_CR1_STOP;
+            device(bus)->CR1 &= ~I2C_CR1_ACK; clear_addr(bus); device(bus)->CR1 |= I2C_CR1_STOP;
             __set_PRIMASK(mask);
-            r=wait_sr1(I2C_SR1_RXNE,start);
-            if (r==TP_OK) rx[i]=(uint8_t)I2C2->DR;
+            r=wait_sr1(bus,I2C_SR1_RXNE,start);
+            if (r==TP_OK) rx[i]=(uint8_t)device(bus)->DR;
         }
     }
     release(bus,r); return r;
 }
-tp_result tp_f407_i2c_init(tp_f407_i2c *bus) {
-    if (!bus) return TP_INVALID;
+tp_result tp_f407_i2c_init_on(tp_f407_i2c *bus, unsigned peripheral) {
+    if (!bus || (peripheral!=2 && peripheral!=3)) return TP_INVALID;
+    bus->peripheral=peripheral;
     #ifdef TP_F407_I2C_POLL_ONLY
     bus->initialized=false;
     #endif
@@ -106,34 +109,42 @@ tp_result tp_f407_i2c_init(tp_f407_i2c *bus) {
     bus->mutex=xSemaphoreCreateMutex(); if (!bus->mutex) return TP_IO_ERROR;
     #endif
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN; RCC->APB1ENR |= RCC_APB1ENR_I2C2EN;
+    GPIO_TypeDef *scl = peripheral==3 ? GPIOA : GPIOB;
+    GPIO_TypeDef *sda = peripheral==3 ? GPIOC : GPIOB;
+    uint32_t scl_pin=peripheral==3 ? LL_GPIO_PIN_8 : LL_GPIO_PIN_10;
+    uint32_t sda_pin=peripheral==3 ? LL_GPIO_PIN_9 : LL_GPIO_PIN_11;
+    RCC->AHB1ENR |= peripheral==3 ? (RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOCEN) : RCC_AHB1ENR_GPIOBEN;
+    RCC->APB1ENR |= peripheral==3 ? RCC_APB1ENR_I2C3EN : RCC_APB1ENR_I2C2EN;
     (void)RCC->AHB1ENR; (void)RCC->APB1ENR;
-    LL_GPIO_SetAFPin_8_15(GPIOB,LL_GPIO_PIN_10,LL_GPIO_AF_4);
-    LL_GPIO_SetAFPin_8_15(GPIOB,LL_GPIO_PIN_11,LL_GPIO_AF_4);
-    LL_GPIO_SetPinOutputType(GPIOB,LL_GPIO_PIN_10|LL_GPIO_PIN_11,LL_GPIO_OUTPUT_OPENDRAIN);
-    LL_GPIO_SetPinSpeed(GPIOB,LL_GPIO_PIN_10,LL_GPIO_SPEED_FREQ_HIGH);
-    LL_GPIO_SetPinSpeed(GPIOB,LL_GPIO_PIN_11,LL_GPIO_SPEED_FREQ_HIGH);
-    LL_GPIO_SetPinPull(GPIOB,LL_GPIO_PIN_10,LL_GPIO_PULL_NO);
-    LL_GPIO_SetPinPull(GPIOB,LL_GPIO_PIN_11,LL_GPIO_PULL_NO);
-    LL_GPIO_SetPinMode(GPIOB,LL_GPIO_PIN_10,LL_GPIO_MODE_ALTERNATE);
-    LL_GPIO_SetPinMode(GPIOB,LL_GPIO_PIN_11,LL_GPIO_MODE_ALTERNATE);
-    configure_peripheral();
+    LL_GPIO_SetAFPin_8_15(scl,scl_pin,LL_GPIO_AF_4);
+    LL_GPIO_SetAFPin_8_15(sda,sda_pin,LL_GPIO_AF_4);
+    LL_GPIO_SetPinOutputType(scl,scl_pin,LL_GPIO_OUTPUT_OPENDRAIN);
+    LL_GPIO_SetPinOutputType(sda,sda_pin,LL_GPIO_OUTPUT_OPENDRAIN);
+    LL_GPIO_SetPinSpeed(scl,scl_pin,LL_GPIO_SPEED_FREQ_HIGH);
+    LL_GPIO_SetPinSpeed(sda,sda_pin,LL_GPIO_SPEED_FREQ_HIGH);
+    LL_GPIO_SetPinPull(scl,scl_pin,LL_GPIO_PULL_NO);
+    LL_GPIO_SetPinPull(sda,sda_pin,LL_GPIO_PULL_NO);
+    LL_GPIO_SetPinMode(scl,scl_pin,LL_GPIO_MODE_ALTERNATE);
+    LL_GPIO_SetPinMode(sda,sda_pin,LL_GPIO_MODE_ALTERNATE);
+    configure_peripheral(bus);
     #ifdef TP_F407_I2C_POLL_ONLY
     bus->initialized=true;
     #endif
     return TP_OK;
 }
+tp_result tp_f407_i2c_init(tp_f407_i2c *bus) { return tp_f407_i2c_init_on(bus,2); }
 #ifdef TP_F407_I2C_POLL_ONLY
 tp_result tp_f407_i2c_poll_shutdown(tp_f407_i2c *bus) {
     if (!bus || !bus->initialized) return TP_INVALID;
-    tp_result r=idle(DWT->CYCCNT);
+    tp_result r=idle(bus,DWT->CYCCNT);
     if (r!=TP_OK) return r;
-    I2C2->CR1=0;
-    RCC->APB1RSTR |= RCC_APB1RSTR_I2C2RST;
-    RCC->APB1RSTR &= ~RCC_APB1RSTR_I2C2RST;
-    RCC->APB1ENR &= ~RCC_APB1ENR_I2C2EN;
-    LL_GPIO_SetPinMode(GPIOB,LL_GPIO_PIN_10,LL_GPIO_MODE_INPUT);
-    LL_GPIO_SetPinMode(GPIOB,LL_GPIO_PIN_11,LL_GPIO_MODE_INPUT);
+    device(bus)->CR1=0;
+    uint32_t reset = bus->peripheral==3 ? RCC_APB1RSTR_I2C3RST : RCC_APB1RSTR_I2C2RST;
+    RCC->APB1RSTR |= reset;
+    RCC->APB1RSTR &= ~reset;
+    RCC->APB1ENR &= ~(bus->peripheral==3 ? RCC_APB1ENR_I2C3EN : RCC_APB1ENR_I2C2EN);
+    LL_GPIO_SetPinMode(bus->peripheral==3 ? GPIOA : GPIOB,bus->peripheral==3 ? LL_GPIO_PIN_8 : LL_GPIO_PIN_10,LL_GPIO_MODE_INPUT);
+    LL_GPIO_SetPinMode(bus->peripheral==3 ? GPIOC : GPIOB,bus->peripheral==3 ? LL_GPIO_PIN_9 : LL_GPIO_PIN_11,LL_GPIO_MODE_INPUT);
     bus->initialized=false;
     return TP_OK;
 }

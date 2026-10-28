@@ -32,6 +32,8 @@ typedef struct {
 } tp_f407_auto_standard_options;
 typedef struct {
     const tp_step *recipe; size_t recipe_len;
+    /* 0 or 2: I2C2; 3: I2C3. Use I2C3 with the reference boot upgrade bus. */
+    unsigned business_i2c;
     const tp_valve_policy *valves;
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
     uint16_t (*resource_faults)(void *); void *resource_ctx;

@@ -5,8 +5,8 @@
  * CRC covers magic through payload; commit word is programmed last. */
 _Static_assert(sizeof(float) == 4, "storage format requires 32-bit float");
 #define MAGIC 0x54504346u
-#define VERSION 1u
-#define PAYLOAD_SIZE 53u
+#define VERSION 2u
+#define PAYLOAD_SIZE 58u
 #define RECORD_SIZE (16u + PAYLOAD_SIZE + 8u)
 #define COMMIT 0x434f4d54u
 #define SLOT_SIZE 128u
@@ -26,7 +26,9 @@ tp_result tp_config_validate(const tp_config *c) {
         !isfinite(c->integral_max) || !isfinite(c->max_temperature_c) || c->kp<0 || c->ki<0 ||
         c->kd<0 || c->deadband_c<0 || c->output_max<=0 || c->output_max>1 ||
         c->integral_max<0 || c->max_temperature_c<=0 || c->period_seconds==0 ||
-        c->period_seconds > 0x7fffffffu / 1000u || c->slave_address==0 || c->slave_address>247) return TP_INVALID;
+        c->period_seconds > 0x7fffffffu / 1000u || c->slave_address==0 || c->slave_address>247 ||
+        c->mode>2 || c->daily_minute>=1440 || c->utc_offset_minutes < -720 ||
+        c->utc_offset_minutes > 840) return TP_INVALID;
     return TP_OK;
 }
 static void encode(uint8_t *b, const tp_config *c, uint32_t seq) {
@@ -36,24 +38,36 @@ static void encode(uint8_t *b, const tp_config *c, uint32_t seq) {
       c->output_max,c->integral_max,c->max_temperature_c};
     for(unsigned i=0;i<12;i++) putfloat(b+16+4*i,f[i]);
     put32(b+64,c->period_seconds); b[68]=c->slave_address;
-    put32(b+69,crc32(b,69)); put32(b+73,COMMIT);
+    b[69]=c->mode; b[70]=(uint8_t)c->daily_minute; b[71]=(uint8_t)(c->daily_minute>>8);
+    uint16_t offset=(uint16_t)c->utc_offset_minutes; b[72]=(uint8_t)offset; b[73]=(uint8_t)(offset>>8);
+    put32(b+74,crc32(b,74)); put32(b+78,COMMIT);
 }
 static bool decode(const uint8_t *b, tp_config *c, uint32_t *seq) {
-    if(get32(b)!=MAGIC || get32(b+4)!=VERSION || get32(b+12)!=PAYLOAD_SIZE ||
-       get32(b+73)!=COMMIT || get32(b+69)!=crc32(b,69)) return false;
+    uint32_t version=get32(b+4), payload=get32(b+12);
+    if(get32(b)!=MAGIC || !((version==1u && payload==53u) ||
+       (version==VERSION && payload==PAYLOAD_SIZE))) return false;
+    size_t crc_offset=16u+payload;
+    if(get32(b+crc_offset+4)!=COMMIT || get32(b+crc_offset)!=crc32(b,crc_offset)) return false;
     c->calibration.slope=getfloat(b+16); c->calibration.intercept=getfloat(b+20);
     c->calibration.turbidity_factor=getfloat(b+24); c->calibration.min_signal=getfloat(b+28);
     c->calibration.max_concentration=getfloat(b+32); c->kp=getfloat(b+36); c->ki=getfloat(b+40);
     c->kd=getfloat(b+44); c->deadband_c=getfloat(b+48); c->output_max=getfloat(b+52);
     c->integral_max=getfloat(b+56); c->max_temperature_c=getfloat(b+60);
     c->period_seconds=get32(b+64); c->slave_address=b[68]; *seq=get32(b+8);
+    c->mode=0; c->daily_minute=0; c->utc_offset_minutes=0;
+    if(version==VERSION) {
+        c->mode=b[69]; c->daily_minute=(uint16_t)(b[70] | ((uint16_t)b[71]<<8));
+        uint16_t raw=(uint16_t)(b[72] | ((uint16_t)b[73]<<8));
+        c->utc_offset_minutes=(int16_t)(raw<=32767u ? (int32_t)raw : (int32_t)raw-65536);
+    }
     return tp_config_validate(c)==TP_OK;
 }
 /* Versions share the 16-byte header and trailing CRC/commit envelope.
  * A valid unfamiliar record is preserved, even alongside a known record. */
 static bool unsupported_record(const uint8_t *b) {
     uint32_t size=get32(b+12);
-    if (get32(b)!=MAGIC || get32(b+4)==VERSION || size>SLOT_SIZE-24u) return false;
+    if (get32(b)!=MAGIC || size>SLOT_SIZE-24u) return false;
+    if ((get32(b+4)==VERSION && size==PAYLOAD_SIZE) || (get32(b+4)==1u && size==53u)) return false;
     size_t crc_offset=16u+size;
     return get32(b+crc_offset+4)==COMMIT && get32(b+crc_offset)==crc32(b,crc_offset);
 }

@@ -32,9 +32,13 @@ tp_result tp_service_attach_preflight(tp_service *s,void *ctx,tp_result (*check)
     s->preflight_ctx=ctx; s->preflight=check; s->preflight_faults=TP_PREFLIGHT_NOT_RUN; return TP_OK;
 }
 static void apply_config(tp_service *s, const tp_config *cfg) {
-    if (s->schedule.period_ms != cfg->period_seconds * 1000u) {
-        s->schedule.period_ms = cfg->period_seconds * 1000u;
-        s->schedule.last_period_ms = s->now_ms;
+    if (s->schedule.mode != (tp_mode)cfg->mode ||
+        s->schedule.period_ms != cfg->period_seconds * 1000u ||
+        s->schedule.daily_minute != cfg->daily_minute ||
+        s->schedule.utc_offset_minutes != cfg->utc_offset_minutes) {
+        (void)tp_schedule_configure(&s->schedule, (tp_mode)cfg->mode,
+            cfg->period_seconds * 1000u, cfg->daily_minute,
+            cfg->utc_offset_minutes, s->now_ms, false);
     }
     s->config = *cfg; s->controller->calibration = cfg->calibration;
     s->controller->pid.kp = cfg->kp; s->controller->pid.ki = cfg->ki;
@@ -180,8 +184,11 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
     int32_t signed_offset = v[4] <= 32767u ? v[4] : (int32_t)v[4] - 65536;
     tp_result result = tp_schedule_configure(&s->schedule, (tp_mode)v[0], seconds * 1000u,
         v[3], (int16_t)signed_offset, s->now_ms, s->controller->state == TP_RUNNING);
-    if (result == TP_OK && s->request_save && s->config.period_seconds != seconds) {
+    if (result == TP_OK && s->request_save) {
         s->config.period_seconds = seconds;
+        s->config.mode = (uint8_t)v[0];
+        s->config.daily_minute = v[3];
+        s->config.utc_offset_minutes = (int16_t)signed_offset;
         s->save_status = 1;
     }
     return result;

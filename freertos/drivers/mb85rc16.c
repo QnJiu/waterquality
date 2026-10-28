@@ -3,6 +3,7 @@
 #define MEMORY_SIZE 2048u
 #define SLOT_SIZE 128u
 #define WRITE_CHUNK 16u
+/* Invalidate both v1 (73..76) and v2 (78..81) commit words. */
 #define COMMIT_OFFSET 73u
 static tp_result access(tp_mb85rc16 *d, unsigned slot, uint32_t off, void *buffer,
                         size_t n, bool write) {
@@ -31,7 +32,7 @@ static tp_result write_slot(void *ctx, unsigned slot, uint32_t off, const void *
 }
 static tp_result erase_slot(void *ctx, unsigned slot) {
     /* Invalidate commit first, before modifying any other record bytes. */
-    uint8_t invalid[4] = {0,0,0,0};
+    uint8_t invalid[9] = {0};
     tp_result r = write_slot(ctx,slot,COMMIT_OFFSET,invalid,sizeof(invalid));
     if (r != TP_OK) return r;
     uint8_t erased[WRITE_CHUNK]; memset(erased,0xff,sizeof(erased));

@@ -1,6 +1,7 @@
 #include "tp_m24c02.h"
 #include <string.h>
 #define SLOT_SIZE 128u
+/* Invalidate both v1 (73..76) and v2 (78..81) commit words. */
 #define COMMIT_OFFSET 73u
 static tp_result slot_read(void *ctx, unsigned slot, uint32_t off, void *data, size_t size) {
     if (slot > 1 || off > SLOT_SIZE || size > SLOT_SIZE - off) return TP_INVALID;
@@ -13,7 +14,7 @@ static tp_result slot_write(void *ctx, unsigned slot, uint32_t off, const void *
 static tp_result slot_erase(void *ctx, unsigned slot) {
     /* EEPROM needs no erase: invalidate the old commit before changing data.
      * Read it back so write protection cannot leave an apparently valid slot. */
-    const uint8_t invalid[4] = {0, 0, 0, 0}; uint8_t check[4];
+    const uint8_t invalid[9] = {0}; uint8_t check[9];
     if (slot_write(ctx, slot, COMMIT_OFFSET, invalid, sizeof(invalid)) != TP_OK ||
         slot_read(ctx, slot, COMMIT_OFFSET, check, sizeof(check)) != TP_OK ||
         memcmp(check, invalid, sizeof(check)) != 0) return TP_IO_ERROR;

@@ -47,14 +47,14 @@ int main(void) {
     assert(source==TP_CONFIG_FROM_STORAGE && seq==1 && got.period_seconds==3600);
     /* A committed future-format record must survive old-firmware boot/save. */
     memcpy(f.mem+1792+128,f.mem+1792,128);
-    f.mem[1792+128+4]=2;
-    put32(f.mem+1792+128+69,crc32(f.mem+1792+128,69));
+    f.mem[1792+128+4]=3;
+    put32(f.mem+1792+128+74,crc32(f.mem+1792+128,74));
     int protected_writes=f.writes; seq=123; source=TP_CONFIG_FROM_STORAGE;
     assert(tp_store_load(&io,&got,&seq)==TP_UNSUPPORTED && seq==123);
     assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_UNSUPPORTED && seq==123);
     assert(tp_store_save(&io,&cfg)==TP_UNSUPPORTED && f.writes==protected_writes);
     /* Interrupted or corrupt future records cannot hide the valid old slot. */
-    f.mem[1792+128+73]^=1;
+    f.mem[1792+128+78]^=1;
     assert(tp_store_load(&io,&got,&seq)==TP_OK && seq==1);
     cfg.period_seconds=7200; f.writes=0; f.fail_after=4;
     assert(tp_store_save(&io,&cfg)==TP_IO_ERROR);
@@ -69,5 +69,23 @@ int main(void) {
     int writes_before=f.writes;
     assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_OK);
     assert(source==TP_CONFIG_DEFAULTED && seq==0 && got.period_seconds==7200 && f.writes==writes_before);
+    /* Construct an actual v1 record, then migrate it on the next save. */
+    fake legacy; memset(&legacy,0xff,sizeof(legacy)); legacy.fail_after=-1; legacy.writes=0; legacy.read_error=false;
+    tp_i2c_io legacy_bus={&legacy,write_i2c,read_i2c}; tp_mb85rc16 legacy_chip;
+    assert(tp_mb85rc16_init(&legacy_chip,&legacy_bus,1792)==TP_OK);
+    tp_store_io legacy_io=tp_mb85rc16_store(&legacy_chip);
+    cfg.mode=2; cfg.daily_minute=1439; cfg.utc_offset_minutes=-720;
+    assert(tp_store_save(&legacy_io,&cfg)==TP_OK);
+    assert(tp_store_load(&legacy_io,&got,&seq)==TP_OK && got.mode==2 && got.daily_minute==1439 && got.utc_offset_minutes==-720);
+    uint8_t *record=legacy.mem+1792;
+    put32(record+4,1); put32(record+12,53); put32(record+69,crc32(record,69)); put32(record+73,0x434f4d54u);
+    assert(tp_store_load(&legacy_io,&got,&seq)==TP_OK && seq==1);
+    assert(got.period_seconds==7200 && got.mode==0 && got.daily_minute==0 && got.utc_offset_minutes==0);
+    assert(tp_store_save(&legacy_io,&cfg)==TP_OK);
+    assert(tp_store_load(&legacy_io,&got,&seq)==TP_OK && seq==2 && got.mode==2 && got.daily_minute==1439 && got.utc_offset_minutes==-720);
+    tp_config invalid=cfg; invalid.mode=3; assert(tp_store_save(&legacy_io,&invalid)==TP_INVALID);
+    invalid=cfg; invalid.daily_minute=1440; assert(tp_store_save(&legacy_io,&invalid)==TP_INVALID);
+    invalid=cfg; invalid.utc_offset_minutes=-721; assert(tp_store_save(&legacy_io,&invalid)==TP_INVALID);
+    invalid=cfg; invalid.utc_offset_minutes=841; assert(tp_store_save(&legacy_io,&invalid)==TP_INVALID);
     puts("FRAM config recovery checks passed"); return 0;
 }

@@ -1,6 +1,8 @@
 #include "tp_service.h"
 #include <assert.h>
 #include <stdio.h>
+static tp_config saved;
+static tp_result save_config(void *ctx,const tp_config *cfg) { (void)ctx; saved=*cfg; return TP_OK; }
 static int safe_count;
 static uint16_t check_faults; static int checks;
 static tp_result preflight(void *ctx,uint16_t *faults) {
@@ -66,6 +68,25 @@ int main(void) {
     before_safe=safe_count; assert(tp_service_enter_maintenance(&s)==TP_OK);
     assert(c.state==TP_IDLE && c.fault==TP_FAULT_NONE && safe_count==before_safe+1);
     assert(tp_service_enter_maintenance(NULL)==TP_INVALID);
+    tp_config cfg={.calibration={1,0,0,0.01f,10},.kp=1,.output_max=1,.integral_max=10,
+                   .max_temperature_c=100,.period_seconds=3600,.slave_address=1};
+    assert(tp_service_attach_config(&s,&cfg,NULL,save_config)==TP_OK);
+    uint16_t persisted[]={TP_MODE_DAILY,0,120,60,(uint16_t)-300};
+    assert(tp_service_write_holding(&s,1,5,persisted)==TP_OK);
+    uint16_t save=4; assert(tp_service_write_holding(&s,0,1,&save)==TP_OK);
+    assert(saved.mode==TP_MODE_DAILY && saved.period_seconds==120 && saved.daily_minute==60 && saved.utc_offset_minutes==-300);
+    tp_service_save_complete(&s,TP_OK);
+    tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,5000)==TP_OK);
+    assert(tp_service_attach_config(&s,&saved,NULL,save_config)==TP_OK);
+    uint16_t restored[5]; assert(tp_service_read_holding(&s,1,5,restored)==TP_OK);
+    for(unsigned i=0;i<5;i++) assert(restored[i]==persisted[i]);
+    tp_service_tick(&s,6000,false,21600); assert(c.state==TP_IDLE);
+    tp_service_tick(&s,7000,true,21600); assert(c.state==TP_RUNNING);
+    tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,5000)==TP_OK);
+    saved.mode=TP_MODE_PERIODIC; saved.period_seconds=2;
+    assert(tp_service_attach_config(&s,&saved,NULL,save_config)==TP_OK);
+    tp_service_tick(&s,6999,false,0); assert(c.state==TP_IDLE);
+    tp_service_tick(&s,7000,false,0); assert(c.state==TP_RUNNING);
     puts("service checks passed"); return 0;
 }
 

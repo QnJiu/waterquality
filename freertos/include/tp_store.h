@@ -14,6 +14,9 @@ typedef struct {
     float kp, ki, kd, deadband_c, output_max, integral_max, max_temperature_c;
     uint32_t period_seconds;
     uint8_t slave_address;
+    uint8_t mode; /* controlled=0, periodic=1, daily=2 */
+    uint16_t daily_minute;
+    int16_t utc_offset_minutes;
 } tp_config;
 tp_result tp_config_validate(const tp_config *cfg);
 /* A committed record using an unsupported version returns TP_UNSUPPORTED,

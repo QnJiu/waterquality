@@ -62,6 +62,8 @@ int main(void) {
     for(unsigned i=0;i<4;i++) tp_service_tick(&s,500+i*50,false,0);
     assert(s.auto_cal.state==TP_AUTO_CAL_FAILED && s.preflight_faults==TP_PREFLIGHT_REAGENT);
     assert(f.reads==3 && c.calibration.slope==5);
+    uint16_t signals[7];
+    assert(tp_service_read_holding(&s,132,7,signals)==TP_OK && signals[0]==0);
     exchange(&m,6,0,7,r); assert(r[1]==0x86 && c.calibration.slope==5);
     f.reads=0; f.checks=0; f.fail_second=false;
     exchange(&m,6,0,6,r); assert(r[1]==6);
@@ -114,6 +116,22 @@ int main(void) {
     assert(tp_service_enter_maintenance(&s)==TP_OK);
     assert(s.auto_standard.state==TP_STANDARD_CANCELLED && c.fault==TP_FAULT_STOP);
     assert(tp_service_attach_config(&s,&cfg,&f,save)==TP_BUSY);
+    /* Failed start checks cannot expose an earlier measurement as current. */
+    for (unsigned kind=0; kind<2; kind++) {
+        fake local={.checks=1,.fail_second=true};
+        tp_hal local_hal={&local,valves,pump,poll,temp,heater,adc,interlock,safe};
+        tp_controller controller; tp_init(&controller,&local_hal,&base,NULL,100);
+        tp_service service; assert(tp_service_init(&service,&controller,recipe,4,0)==TP_OK);
+        assert(tp_service_attach_config(&service,&cfg,&local,save)==TP_OK);
+        assert(tp_service_attach_preflight(&service,&local,preflight)==TP_OK);
+        assert(tp_service_attach_auto_calibration(&service,recipe,4,recipe,4,0,5,0.01f)==TP_OK);
+        assert(tp_service_attach_auto_standard(&service,recipe,4,0,0.01f)==TP_OK);
+        controller.state=TP_COMPLETE; controller.result_valid=true; controller.valid_readings=7;
+        uint16_t command=kind ? 9 : 6, snapshot[7], valid;
+        assert(tp_service_write_holding(&service,0,1,&command)==TP_IO_ERROR);
+        assert(tp_service_read_holding(&service,132,7,snapshot)==TP_OK && snapshot[0]==0);
+        assert(tp_service_read_holding(&service,16,1,&valid)==TP_OK && valid==0);
+    }
     /* At a scheduled boundary, the automatic workflow still owns a completed
      * controller until it publishes its result. Do not attempt a normal start. */
     for (unsigned kind=0; kind<2; kind++) {

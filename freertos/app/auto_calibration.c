@@ -31,8 +31,15 @@ tp_result tp_auto_cal_init(tp_auto_calibration *a, tp_controller *c,
     a->points[0].concentration=low_concentration; a->points[1].concentration=high_concentration;
     a->min_delta=min_delta; a->check=check; a->check_ctx=check_ctx; return TP_OK;
 }
+static tp_result check_start(tp_controller *controller, void *ctx, tp_result (*check)(void *)) {
+    if (!check) return TP_OK;
+    tp_result r=check(ctx);
+    if (r!=TP_OK) { controller->result_valid=false; controller->valid_readings=0; }
+    return r;
+}
 static tp_result start_stage(tp_auto_calibration *a, unsigned stage, uint32_t now) {
-    if (a->check) { tp_result r=a->check(a->check_ctx); if (r!=TP_OK) return r; }
+    tp_result check=check_start(a->controller,a->check_ctx,a->check);
+    if (check!=TP_OK) return check;
     return tp_start(a->controller,a->recipes[stage],a->lengths[stage],now);
 }
 tp_result tp_auto_cal_start(tp_auto_calibration *a, uint32_t now) {
@@ -93,7 +100,8 @@ tp_result tp_auto_standard_init(tp_auto_standard *a, tp_controller *c,
 }
 tp_result tp_auto_standard_start(tp_auto_standard *a, uint32_t now) {
     if (!a || !a->controller || a->state!=TP_STANDARD_IDLE) return TP_INVALID;
-    if (a->check) { tp_result r=a->check(a->check_ctx); if (r!=TP_OK) return r; }
+    tp_result check=check_start(a->controller,a->check_ctx,a->check);
+    if (check!=TP_OK) return check;
     tp_result r=tp_start(a->controller,a->recipe,a->length,now);
     if (r==TP_OK) a->state=TP_STANDARD_RUNNING;
     return r;

@@ -1,4 +1,5 @@
-#include "tp_w25q128.h"
+#include "tp_w25q128_image.h"
+#include "tp_download.h"
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
@@ -16,6 +17,28 @@ static tp_result spi(void *ctx,const uint8_t *tx,uint8_t *rx,size_t n) {
     if(tx[0]==0x02 && !f->protect) for(size_t i=4;i<n;i++) memory[a+i-4]&=tx[i];
     else if(tx[0]==0x20 && !f->protect) memset(memory+a,0xff,TP_W25Q128_SECTOR_SIZE);
     return TP_OK;
+}
+typedef struct { fake *f; uint32_t now; bool stuck; } clock_state;
+static uint32_t now_ms(void *ctx) { return ((clock_state *)ctx)->now; }
+static void sleep_ms(void *ctx) {
+    clock_state *c=ctx; c->now++; if(!c->stuck) c->f->busy=false;
+}
+static uint8_t metadata[2][128];
+static tp_result meta_read(void *ctx,unsigned slot,uint32_t offset,void *out,size_t n) {
+    (void)ctx; if(slot>1 || offset>128 || n>128-offset) return TP_INVALID;
+    memcpy(out,metadata[slot]+offset,n); return TP_OK;
+}
+static tp_result meta_erase(void *ctx,unsigned slot) {
+    (void)ctx; if(slot>1) return TP_INVALID; memset(metadata[slot],255,128); return TP_OK;
+}
+static tp_result meta_write(void *ctx,unsigned slot,uint32_t offset,const void *src,size_t n) {
+    (void)ctx; if(slot>1 || offset>128 || n>128-offset) return TP_INVALID;
+    memcpy(metadata[slot]+offset,src,n); return TP_OK;
+}
+static tp_result verify_image(void *ctx,const tp_download_manifest *manifest) {
+    uint8_t got[3]; const uint8_t expected[3]={0x12,0x34,0x56};
+    return manifest->size==3 && tp_w25q128_image_read(ctx,manifest->bank,0,got,3)==TP_OK &&
+        !memcmp(got,expected,3) ? TP_OK : TP_IO_ERROR;
 }
 int main(void) {
     memset(memory,0xff,sizeof(memory)); fake f={0}; tp_w25q128 flash;
@@ -45,5 +68,39 @@ int main(void) {
     assert(tp_w25q128_init(&flash,&io)==TP_BUSY); f.busy=false;
     assert(tp_w25q128_init(&flash,&io)==TP_OK); f.fail=true;
     assert(tp_w25q128_read(&flash,0,out,3)==TP_IO_ERROR && !flash.ready);
+    f.fail=false; assert(tp_w25q128_init(&flash,&io)==TP_OK);
+    clock_state clock={.f=&f}; tp_w25q128_image image;
+    assert(tp_w25q128_image_init(&image,&flash,&clock,now_ms,sleep_ms,0,0,4096,0,10,10)==TP_INVALID);
+    assert(tp_w25q128_image_init(&image,&flash,&clock,now_ms,sleep_ms,0,4096,4096,0,10,10)==TP_OK);
+    assert(tp_w25q128_image_write(&image,0,0,bytes,3)==TP_INVALID);
+    assert(tp_w25q128_image_erase(&image,1)==TP_OK);
+    unsigned before=f.operations;
+    assert(tp_w25q128_image_write(&image,1,255,bytes,3)==TP_OK && f.operations==before+2);
+    assert(tp_w25q128_image_read(&image,1,255,out,3)==TP_OK && !memcmp(bytes,out,3));
+    before=f.operations;
+    assert(tp_w25q128_image_write(&image,1,255,bytes,3)==TP_OK && f.operations==before);
+    uint8_t ones[3]={255,255,255};
+    assert(tp_w25q128_image_write(&image,1,255,ones,3)==TP_INVALID && f.operations==before);
+    f.protect=true;
+    assert(tp_w25q128_image_erase(&image,1)==TP_IO_ERROR); f.protect=false;
+    assert(tp_w25q128_image_erase(&image,1)==TP_OK);
+    clock.stuck=true;
+    assert(tp_w25q128_image_write(&image,1,0,bytes,3)==TP_TIMEOUT && !flash.ready);
+    f.busy=false; clock.stuck=false; assert(tp_w25q128_init(&flash,&io)==TP_OK);
+    assert(tp_w25q128_image_write(&image,1,0,bytes,3)==TP_OK);
+    assert(tp_w25q128_image_set_protected(&image,1)==TP_OK);
+    assert(tp_w25q128_image_erase(&image,1)==TP_INVALID);
+    assert(tp_w25q128_image_set_protected(&image,0)==TP_OK);
+    memset(metadata,255,sizeof(metadata));
+    tp_download_io download={{NULL,meta_read,meta_erase,meta_write},&image,
+        tp_w25q128_image_erase,tp_w25q128_image_read,tp_w25q128_image_write,verify_image};
+    tp_download_manifest manifest={.version=1,.size=3,.bank=1};
+    assert(tp_download_begin(&download,&manifest)==TP_OK);
+    assert(tp_download_write(&download,0,bytes,2)==TP_OK);
+    assert(tp_download_resume(&download)==TP_OK);
+    assert(tp_download_write(&download,2,bytes+2,1)==TP_OK);
+    assert(tp_download_finish(&download)==TP_OK);
+    tp_download_state state;
+    assert(tp_download_read(&download,&state)==TP_OK && state.phase==TP_DOWNLOAD_VERIFIED);
     puts("W25Q128 checks passed"); return 0;
 }

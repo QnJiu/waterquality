@@ -14,6 +14,7 @@ cmake --build build
 .\build\tp_simulator.exe recover
 .\build\tp_simulator.exe periodic
 .\build\tp_simulator.exe daily
+.\build\tp_simulator.exe calibration
 ctest --test-dir build --output-on-failure
 ```
 
@@ -28,6 +29,8 @@ ctest --test-dir build --output-on-failure
 5. `firmware/`、`firmware_f030/`：主控与从控参考固件，具体构建选项分别见目录内的 README。
 
 不同硬件的管脚、传感器、反应参数和标定数据需要按实物配置。默认 F407 固件是心跳示例，业务入口需单独配置；F030 浅睡眠和 RTC 定时 STOP 均为可选，尚未实机验证。ESP32 局域网升级网关见 `examples/esp32_gateway/README.md`；阿里云状态上报和可选升级示例见 `examples/esp32_cloud/README.md`，均需实际设备联调。软件实现和实机验证的详细状态见 `docs/STATUS.md`。
+
+运行 `calibration` 可观察两种模拟标准液的自动采样、两点标定结果应用和标液核查。示例通过 Modbus 命令 6、7、9 依次启动、应用和核查；应用只改变内存，示例不执行保存。标准液读数和浓度是教学数据，实际配方需按仪器确定。
 
 每日定时模式需要先设置 RTC。可用 `python tools/tp_modbus.py --port COM3 set-clock <UTC秒数>` 设置，然后用 `clock-status` 查询结果；具体地址见 `docs/MODBUS.md`；校时只允许在设备未运行时操作。
 

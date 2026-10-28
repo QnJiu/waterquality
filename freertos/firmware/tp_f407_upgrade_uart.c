@@ -89,7 +89,7 @@ static tp_result shared_execute(void *ctx,const tp_upgrade_commands *commands,tp
                                 const uint8_t *data,size_t length,tp_upgrade_reply *reply) {
     tp_f407_upgrade_uart *u=ctx;
     if (!u->try_lock(u->lock_ctx)) {
-        memset(reply,0,sizeof(*reply)); reply->result=TP_BUSY; return TP_BUSY;
+        memset(reply,0,sizeof(*reply)); reply->result=TP_LOCK_BUSY; return TP_LOCK_BUSY;
     }
     tp_result r=tp_upgrade_command_execute(commands,command,data,length,reply);
     u->unlock(u->lock_ctx);

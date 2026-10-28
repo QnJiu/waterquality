@@ -78,7 +78,7 @@ int main(void) {
     unavailable=true; frame_bytes(frame,0,n); upgrade_step(&u);
     assert(commands_run==0 && unlocks==0 && response_len>=10);
     /* This STATUS response has no escaped header/body bytes. */
-    assert(response[0]==0x7e && response[2]==(TP_UP_CMD_STATUS|0x80) && response[7]==TP_BUSY && response[8]==0);
+    assert(response[0]==0x7e && response[2]==(TP_UP_CMD_STATUS|0x80) && response[7]==TP_LOCK_BUSY && response[8]==0);
     unavailable=false; frame_bytes(frame,0,n); upgrade_step(&u);
     assert(commands_run==1 && unlocks==1 && !held && response[7]==TP_OK);
     u.stream.wire.send=send_response;

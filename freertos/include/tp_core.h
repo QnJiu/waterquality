@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* Millisecond clocks are unsigned and may wrap. All durations must be < 2^31. */
-typedef enum { TP_OK, TP_BUSY, TP_INVALID, TP_IO_ERROR, TP_TIMEOUT } tp_result;
+typedef enum { TP_OK, TP_BUSY, TP_INVALID, TP_IO_ERROR, TP_TIMEOUT, TP_LOCK_BUSY } tp_result;
 typedef enum { TP_FAULT_NONE, TP_FAULT_STOP, TP_FAULT_INTERLOCK, TP_FAULT_SENSOR,
     TP_FAULT_OVERTEMP, TP_FAULT_PUMP, TP_FAULT_TIMEOUT, TP_FAULT_CALIBRATION,
     TP_FAULT_IO, TP_FAULT_RECIPE } tp_fault;

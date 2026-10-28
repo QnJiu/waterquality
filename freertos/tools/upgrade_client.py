@@ -9,7 +9,7 @@ import time
 
 FLAG, ESC = 0x7E, 0x7D
 STATUS, BEGIN, RESUME, WRITE, FINISH = range(1, 6)
-OK, BUSY, INVALID, IO_ERROR, TIMEOUT = range(5)
+OK, BUSY, INVALID, IO_ERROR, TIMEOUT, LOCK_BUSY = range(6)
 MAX_RAW = 520
 
 
@@ -81,7 +81,7 @@ class Decoder:
 
 
 def parse_reply(data):
-    if len(data) < 2 or data[0] > TIMEOUT or data[1] not in (0, 1):
+    if len(data) < 2 or data[0] > LOCK_BUSY or data[1] not in (0, 1):
         raise ProtocolError("invalid response header")
     if not data[1]:
         if len(data) != 2:
@@ -97,23 +97,35 @@ def parse_reply(data):
 
 
 class Client:
-    def __init__(self, transport, timeout):
+    def __init__(self, transport, timeout, busy_retries=20, busy_delay=0.1):
+        if timeout <= 0 or busy_retries < 0 or busy_delay < 0:
+            raise ValueError("invalid timeout or busy retry policy")
         self.transport, self.timeout = transport, timeout
+        self.busy_retries, self.busy_delay = busy_retries, busy_delay
         self.sequence = 0
         self.decoder = Decoder()
 
     def command(self, cmd, payload=b""):
-        seq = self.sequence
-        self.sequence = (seq + 1) & 0xFFFF
-        self.transport.write(encode(cmd, seq, payload))
-        deadline = time.monotonic() + self.timeout
-        while time.monotonic() < deadline:
-            chunk = self.transport.read(deadline - time.monotonic())
-            for byte in chunk:
-                frame = self.decoder.feed(byte)
-                if frame and frame[0] == (cmd | 0x80) and frame[1] == seq:
-                    return parse_reply(frame[2])
-        raise TimeoutError("response timeout")
+        # A lock-busy reply has no state and means the command did not run.
+        # A BUSY reply with state is application-level and is returned intact.
+        for attempt in range(self.busy_retries + 1):
+            seq = self.sequence
+            self.sequence = (seq + 1) & 0xFFFF
+            self.transport.write(encode(cmd, seq, payload))
+            deadline = time.monotonic() + self.timeout
+            reply = None
+            while time.monotonic() < deadline and reply is None:
+                chunk = self.transport.read(deadline - time.monotonic())
+                for byte in chunk:
+                    frame = self.decoder.feed(byte)
+                    if frame and frame[0] == (cmd | 0x80) and frame[1] == seq:
+                        reply = parse_reply(frame[2])
+                        break
+            if reply is None:
+                raise TimeoutError("response timeout")
+            if reply != (LOCK_BUSY, None) or attempt == self.busy_retries:
+                return reply
+            time.sleep(self.busy_delay)
 
 
 def match_state(state, manifest_id, image):

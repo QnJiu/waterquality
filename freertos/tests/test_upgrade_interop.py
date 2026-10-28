@@ -56,6 +56,69 @@ class Tests(unittest.TestCase):
         self.assertEqual(lib.sim_writes(), 3)
         self.assertEqual(lib.sim_boot_phase(), 1)  # TP_BOOT_READY
 
+    def test_lock_busy_retries_without_executing_command(self):
+        class BusyTransport(CTransport):
+            def __init__(self, lib):
+                super().__init__(lib)
+                self.drop.clear()
+                self.busy = {u.BEGIN: 2, u.WRITE: 1, u.FINISH: 1}
+
+            def write(self, data):
+                decoder = u.Decoder()
+                frame = None
+                for byte in data:
+                    frame = decoder.feed(byte) or frame
+                command, sequence, _ = frame
+                if self.busy.get(command, 0):
+                    self.busy[command] -= 1
+                    self.response = u.encode(command | 0x80, sequence, bytes((u.LOCK_BUSY, 0)))
+                else:
+                    super().write(data)
+
+        image = bytes(range(256)) * 3
+        transport = BusyTransport(self.lib)
+        state = u.upload(u.Client(transport, 0.02, busy_retries=3, busy_delay=0),
+                         b"ok", bytes([1]) + bytes(31), image)
+        self.assertEqual(state["written"], len(image))
+        self.assertEqual(self.lib.sim_writes(), 3)
+        self.assertEqual(self.lib.sim_boot_phase(), 1)
+
+    def test_lock_busy_retry_limit(self):
+        class BusyTransport:
+            count = 0
+            def write(self, data):
+                self.count += 1
+                decoder = u.Decoder()
+                for byte in data:
+                    frame = decoder.feed(byte)
+                    if frame:
+                        self.response = u.encode(frame[0] | 0x80, frame[1], bytes((u.LOCK_BUSY, 0)))
+            def read(self, timeout):
+                response, self.response = self.response, b""
+                return response
+        transport = BusyTransport()
+        self.assertEqual(u.Client(transport, 0.02, busy_retries=2, busy_delay=0).command(u.STATUS),
+                         (u.LOCK_BUSY, None))
+        self.assertEqual(transport.count, 3)
+
+    def test_application_busy_without_state_is_not_retried(self):
+        class BusyTransport:
+            count = 0
+            def write(self, data):
+                self.count += 1
+                decoder = u.Decoder()
+                for byte in data:
+                    frame = decoder.feed(byte)
+                    if frame:
+                        self.response = u.encode(frame[0] | 0x80, frame[1], bytes((u.BUSY, 0)))
+            def read(self, timeout):
+                response, self.response = self.response, b""
+                return response
+        transport = BusyTransport()
+        self.assertEqual(u.Client(transport, 0.02, busy_retries=2, busy_delay=0).command(u.BEGIN, b"ok"),
+                         (u.BUSY, None))
+        self.assertEqual(transport.count, 1)
+
     def test_reconnect_after_partial_download(self):
         lib = self.lib
         transport = CTransport(lib); transport.drop.clear()

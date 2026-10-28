@@ -40,6 +40,21 @@ cmake --build W:/freertos/build-f407-example
 4. `protocol/` 和 `docs/MODBUS.md`：Modbus 通信及寄存器。
 5. `firmware/`、`firmware_f030/`：主控与从控参考固件，具体构建选项分别见目录内的 README。
 
+### 功能与代码位置
+
+| 想了解的功能 | 从这里开始 |
+|---|---|
+| 启动与任务 | `firmware/main_business.c`、`firmware/tp_f407_teaching_config.c`、`os/freertos_runtime.c` |
+| 检测步骤、安全停止与自检 | `app/controller.c`、`app/service.c`、`app/preflight.c` |
+| 测量、温控与标定 | `app/measurement.c`、`app/auto_calibration.c`，ADC 驱动见 `drivers/` |
+| 周期、每日定时和受控模式 | `app/schedule.c`、`app/service.c` |
+| 寄存器和上位机 | `protocol/`、`docs/MODBUS.md`、`tools/tp_modbus.py`、`tools/tp_gui.py` |
+| 参数和事件保存 | `storage/config_store.c`、`storage/event_log.c` |
+| 升级与从控 | `bootloader/`、`firmware_boot/`、`examples/esp32_cloud/`、`firmware_f030/` |
+| 两种 RTOS 的采集示例 | `examples/posix_slice/`、`zephyr_slice/` |
+
+默认 F407 入口仅运行心跳；上表业务入口需要按 `firmware/README.md` 的选项单独构建。电脑模拟器和主机测试主要验证业务及协议逻辑；POSIX 示例用真实 FreeRTOS 调度器验证一条模拟 ADC 到 Modbus 的链路，并与 Zephyr 模拟结果对照。完整业务调度、硬件和云链路还需要进一步验证。可选资源诊断可观察栈和堆，CPU 占用尚未测量。
+
 F407 与 F030 的教学装配可通过 F407 构建选项 `TP_F407_TEACHING_SUBORDINATE=ON` 启用，具体步骤见 `firmware/README.md`。从控状态未知、过期或报告故障时，主控会阻止启动或停止运行；F030 也需启用对应参考输入。配方和接线都是示例，不能用于实际测量。
 
 不同硬件的管脚、传感器、反应参数和标定数据需要按实物配置。默认 F407 固件是心跳示例，业务入口需单独配置；F030 浅睡眠和 RTC 定时 STOP 均为可选，尚未实机验证。ESP32 局域网升级网关见 `examples/esp32_gateway/README.md`；阿里云状态上报和可选升级示例见 `examples/esp32_cloud/README.md`，均需实际设备联调。软件实现和实机验证的详细状态见 `docs/STATUS.md`。

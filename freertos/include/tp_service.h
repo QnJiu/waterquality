@@ -44,6 +44,9 @@ typedef struct {
     float standard_check_actual;
     void *recover_ctx;
     tp_result (*recover_adc)(void *);
+    void *clock_ctx;
+    tp_result (*set_clock)(void *,uint32_t);
+    uint8_t (*clock_status)(void *);
     void *version_ctx;
     uint32_t (*confirmed_version)(void *);
 } tp_service;
@@ -67,6 +70,8 @@ tp_result tp_service_attach_preflight(tp_service *,void *,tp_result (*)(void *,u
 /* Optional bounded ADC recovery, called only by the owner with outputs safe.
  * The callback must not start a conversion or clear a controller fault. */
 tp_result tp_service_attach_adc_recovery(tp_service *,void *,tp_result (*)(void *));
+/* Nonblocking request and status snapshot; worker owns RTC I/O. */
+tp_result tp_service_attach_clock(tp_service *,void *,tp_result (*)(void *,uint32_t),uint8_t (*)(void *));
 /* Optional nonblocking snapshot; zero means no confirmed running version. */
 tp_result tp_service_attach_version(tp_service *,void *,uint32_t (*)(void *));
 /* One asynchronous query at a time; callback copies the request without waiting.

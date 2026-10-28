@@ -22,6 +22,15 @@ static tp_result heat(void *c, float v) { (void)c; (void)v; return TP_OK; }
 static tp_result adc(void *c, uint8_t ch, float *v) { (void)c; (void)ch; *v=1; return TP_OK; }
 static bool ok(void *c) { (void)c; return true; }
 static void safe(void *c) { (void)c; safe_count++; }
+static uint32_t clock_request;
+static uint8_t clock_state=1;
+static tp_result set_clock(void *ctx,uint32_t seconds) {
+    (void)ctx;
+    if (clock_state==2) return TP_BUSY;
+    if (seconds<946684800u || seconds>=4102444800u) return TP_INVALID;
+    clock_request=seconds; clock_state=2; return TP_OK;
+}
+static uint8_t clock_status(void *ctx) { (void)ctx; return clock_state; }
 int main(void) {
     tp_hal hal={NULL,valves,pump,poll,temp,heat,adc,ok,safe}; tp_controller c;
     tp_init(&c,&hal,NULL,NULL,100);
@@ -146,6 +155,20 @@ int main(void) {
     assert(tp_service_write_holding(&s,0,1,&clear)==TP_INVALID);
     assert(tp_service_enter_maintenance(&s)==TP_OK);
     assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_BUSY);
+    tp_init(&c,&hal,NULL,NULL,100);
+    assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    uint16_t time_words[2]={0x6553,0xf100}, clock_word=99; /* 1700000000 UTC */
+    assert(tp_service_read_holding(&s,122,1,&clock_word)==TP_OK && clock_word==0);
+    assert(tp_service_write_holding(&s,123,2,time_words)==TP_INVALID);
+    assert(tp_service_attach_clock(&s,NULL,set_clock,clock_status)==TP_OK);
+    assert(tp_service_write_holding(&s,123,1,time_words)==TP_INVALID);
+    assert(tp_service_write_holding(&s,123,2,time_words)==TP_OK && clock_request==1700000000u);
+    assert(tp_service_read_holding(&s,122,1,&clock_word)==TP_OK && clock_word==2);
+    assert(tp_service_write_holding(&s,123,2,time_words)==TP_BUSY);
+    assert(tp_service_write_holding(&s,0,1,&begin)==TP_BUSY);
+    clock_state=3;
+    assert(tp_service_write_holding(&s,0,1,&begin)==TP_OK);
+    assert(tp_service_write_holding(&s,123,2,time_words)==TP_BUSY);
     puts("service checks passed"); return 0;
 }
 

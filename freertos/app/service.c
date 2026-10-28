@@ -22,7 +22,8 @@ static tp_result run_preflight(void *ctx) {
     return TP_OK;
 }
 static tp_result start(tp_service *s) {
-    if (s->maintenance || s->save_status==2 || calibration_running(s) || standard_running(s)) {
+    if (s->maintenance || s->save_status==2 || calibration_running(s) || standard_running(s) ||
+        (s->clock_status && s->clock_status(s->clock_ctx)==2)) {
         s->last_start_result=TP_BUSY; return TP_BUSY;
     }
     if (s->controller->state!=TP_RUNNING && s->controller->state!=TP_FAILED && run_preflight(s)!=TP_OK) {
@@ -38,6 +39,10 @@ tp_result tp_service_init(tp_service *s, tp_controller *controller,
     memset(s, 0, sizeof(*s)); s->controller = controller; s->recipe = recipe; s->recipe_len = len;
     s->now_ms = now; s->last_start_result = TP_OK; s->preflight_faults=TP_PREFLIGHT_NOT_RUN;
     return tp_schedule_configure(&s->schedule, TP_MODE_CONTROLLED, 0, 0, 0, now, false);
+}
+tp_result tp_service_attach_clock(tp_service *s,void *ctx,tp_result (*set)(void *,uint32_t),uint8_t (*status)(void *)) {
+    if (!s || !s->controller || !set || !status || s->set_clock || s->controller->state==TP_RUNNING) return TP_INVALID;
+    s->clock_ctx=ctx; s->set_clock=set; s->clock_status=status; return TP_OK;
 }
 tp_result tp_service_attach_auto_calibration(tp_service *s,
     const tp_step *low, size_t low_len, const tp_step *high, size_t high_len,
@@ -55,6 +60,7 @@ tp_result tp_service_attach_auto_calibration(tp_service *s,
 static tp_result start_auto_cal(tp_service *s) {
     if (!s->cal_attached || !s->request_save) return TP_INVALID;
     if (s->maintenance || s->save_status==2 || calibration_running(s) || standard_running(s) ||
+        (s->clock_status && s->clock_status(s->clock_ctx)==2) ||
         s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED) return TP_BUSY;
     tp_auto_calibration candidate;
     tp_result r=tp_auto_cal_init(&candidate,s->controller,s->cal_recipes[0],s->cal_lengths[0],
@@ -81,6 +87,7 @@ tp_result tp_service_attach_auto_standard(tp_service *s, const tp_step *recipe,
 static tp_result start_auto_standard(tp_service *s) {
     if (!s->standard_attached) return TP_INVALID;
     if (s->maintenance || s->save_status==2 || calibration_running(s) || standard_running(s) ||
+        (s->clock_status && s->clock_status(s->clock_ctx)==2) ||
         s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED) return TP_BUSY;
     tp_auto_standard candidate;
     tp_result r=tp_auto_standard_init(&candidate,s->controller,s->standard_recipe,s->standard_length,
@@ -218,7 +225,8 @@ tp_result tp_service_enter_maintenance(tp_service *s) {
 void tp_service_tick(tp_service *s, uint32_t now, bool rtc_valid, int64_t utc) {
     if (!s || !s->controller) return;
     s->now_ms = now;
-    bool busy = s->maintenance || s->controller->state == TP_RUNNING || s->controller->state == TP_FAILED;
+    bool busy = s->maintenance || s->controller->state == TP_RUNNING || s->controller->state == TP_FAILED ||
+                (s->clock_status && s->clock_status(s->clock_ctx)==2);
     if (tp_schedule_poll(&s->schedule, now, rtc_valid, utc, busy)) (void)start(s);
     if (calibration_running(s)) tp_auto_cal_tick(&s->auto_cal,now);
     else if (standard_running(s)) tp_auto_standard_tick(&s->auto_standard,now);
@@ -256,6 +264,11 @@ tp_result tp_service_attach_log_stats(tp_service *s,void *ctx,void (*snapshot)(v
     s->log_stats_ctx=ctx; s->log_stats=snapshot; return TP_OK;
 }
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values) {
+    tp_service *clock_service=ctx;
+    if (clock_service && clock_service->controller && values && address==122 && count==1) {
+        values[0]=clock_service->clock_status ? clock_service->clock_status(clock_service->clock_ctx) : 0;
+        return TP_OK;
+    }
     tp_service *s = ctx;
     if (s && s->controller && values && count && address>=105 && (uint32_t)address+count<=110) {
         uint16_t words[]={s->standard_attached ? (uint16_t)(s->auto_standard.state+1) : 0,
@@ -354,6 +367,12 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
             s->save_status=2; return TP_OK;
         default: return TP_INVALID;
         }
+    }
+    /* Atomic FC16 timestamp, seconds since Unix epoch, high word first. */
+    if (address==123 && count==2) {
+        if (!s->set_clock) return TP_INVALID;
+        if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s) || standard_running(s)) return TP_BUSY;
+        return s->set_clock(s->clock_ctx,join(v[0],v[1]));
     }
     if(address==50 && count==3) {
         if(!s->request_log || v[0]>1 || (v[0]==0 && (v[1] || v[2]))) return TP_INVALID;

@@ -40,6 +40,8 @@ static void safe(void *p) {
     if (a->reader.adc) (void)tp_adc_reader_cancel(&a->reader);
 }
 static tp_result send(void *p,unsigned port,const uint8_t *bytes,size_t len) { return tp_f407_usart3_rtu_send(&((tp_f407_app *)p)->uart,port,bytes,len); }
+static tp_result set_clock(void *p,uint32_t utc) { return tp_freertos_clock_set(&((tp_f407_app *)p)->clock,utc); }
+static uint8_t clock_status(void *p) { return tp_freertos_clock_set_status(&((tp_f407_app *)p)->clock); }
 static bool now(void *p,int64_t *utc) { return tp_freertos_clock_now(&((tp_f407_app *)p)->clock,utc); }
 static tp_result request_log(void *p,bool latest,uint32_t sequence) {
     return tp_freertos_event_log_query(&((tp_f407_app *)p)->events,latest,sequence);
@@ -154,6 +156,7 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     }
     INIT(tp_f407_temperature_start(&a->temperature,500,256,tskIDLE_PRIORITY+1));
     INIT(tp_freertos_clock_start(&a->clock,&a->rtc,1000,3000,256,tskIDLE_PRIORITY+1));
+    INIT(tp_service_attach_clock(&a->service,a,set_clock,clock_status));
     INIT(tp_f407_usart3_rtu_init(&a->uart,&a->runtime,0,512,tskIDLE_PRIORITY+2));
     INIT(tp_runtime_start(&a->runtime,768,tskIDLE_PRIORITY+3));
     const uint32_t control_timeout=1000;

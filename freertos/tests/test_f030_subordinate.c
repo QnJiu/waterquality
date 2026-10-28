@@ -90,6 +90,21 @@ int main(void) {
     fake_tim.CNT=25000; service_once(&s);
     fake_tim.CNT=28000; service_once(&s); assert(!s.transmitting);
 
+    BaseType_t wake=pdFALSE;
+    for(unsigned i=0;i<3;i++) tp_f030_subordinate_droplet_from_isr(&s,&wake);
+    assert(s.droplets_pending==3 && s.app.node.droplets==0);
+    service_once(&s); assert(s.app.node.droplets==3 && !s.app.node.count_fault);
+    s.droplets_pending=UINT32_MAX;
+    tp_f030_subordinate_droplet_from_isr(&s,&wake);
+    assert(s.droplets_overflow);
+    service_once(&s); assert(s.app.node.droplets==UINT32_MAX && s.app.node.count_fault);
+    master.pending=false;
+    assert(tp_sub_master_request(&master,30,req)==TP_OK);
+    receive_frame(req,30000); fake_tim.CNT=31000; service_once(&s);
+    fake_tim.CNT=33000; clock_ms=33; service_once(&s); assert(s.transmitting);
+    finish_tx(reply); assert(tp_sub_master_receive(&master,33,reply,sizeof(reply))==TP_OK);
+    assert(master.status.droplet_count==UINT32_MAX && master.status.faults==TP_SUB_DEVICE_FAULT);
+
     timer_high=65536u; fake_tim.CNT=7; fake_tim.SR=TIM_SR_UIF;
     assert(time_us()==131079u); TIM3_IRQHandler(); fake_tim.SR=0;
     assert(time_us()==131079u);

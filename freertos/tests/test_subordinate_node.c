@@ -47,6 +47,13 @@ int main(void) {
     assert(master.status.faults==TP_SUB_DEVICE_FAULT);
 
     assert(tp_sub_node_init(&node,&io,115200,10)==TP_OK);
+    tp_sub_node_droplets(&node,UINT32_MAX-1u);
+    assert(node.droplets==UINT32_MAX-1u && !node.count_fault);
+    tp_sub_node_droplets(&node,1);
+    assert(node.droplets==UINT32_MAX && !node.count_fault);
+    tp_sub_node_droplets(&node,2);
+    assert(node.droplets==UINT32_MAX && node.count_fault);
+    assert(tp_sub_node_init(&node,&io,115200,10)==TP_OK);
     node.droplets=UINT32_MAX; tp_sub_node_droplet(&node);
     cycle(&node,&master,&f,200);
     assert(master.status.droplet_count==UINT32_MAX && master.status.faults==TP_SUB_DEVICE_FAULT);

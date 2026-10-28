@@ -24,9 +24,12 @@ tp_result tp_sub_node_init(tp_sub_node *n,const tp_sub_node_io *io,uint32_t baud
     return r;
 }
 void tp_sub_node_droplet(tp_sub_node *n) {
+    tp_sub_node_droplets(n,1);
+}
+void tp_sub_node_droplets(tp_sub_node *n,uint32_t count) {
     if(!n || !n->link.initialized) return;
-    if(n->droplets==UINT32_MAX) n->count_fault=true;
-    else n->droplets++;
+    if(count>UINT32_MAX-n->droplets) { n->droplets=UINT32_MAX; n->count_fault=true; }
+    else n->droplets+=count;
 }
 void tp_sub_node_count_error(tp_sub_node *n) {
     if(n && n->link.initialized) n->count_fault=true;

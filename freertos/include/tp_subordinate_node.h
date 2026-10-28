@@ -21,6 +21,8 @@ typedef struct {
 /* Single owner, including droplet and error events. Callbacks are nonblocking. */
 tp_result tp_sub_node_init(tp_sub_node *,const tp_sub_node_io *,uint32_t baud,uint8_t bits);
 void tp_sub_node_droplet(tp_sub_node *);
+/* Add a batch of observed edges in constant time; overflow is latched. */
+void tp_sub_node_droplets(tp_sub_node *,uint32_t count);
 /* Report a lost edge, input queue overflow, or other invalid count. Latched. */
 void tp_sub_node_count_error(tp_sub_node *);
 tp_result tp_sub_node_byte(tp_sub_node *,uint8_t,uint32_t us,uint32_t ms);

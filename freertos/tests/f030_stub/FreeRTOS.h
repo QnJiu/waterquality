@@ -13,4 +13,6 @@ typedef int BaseType_t;
 #define taskENTER_CRITICAL() ((void)0)
 #define taskEXIT_CRITICAL() ((void)0)
 #define portYIELD_FROM_ISR(wake) ((void)(wake))
+#define portSET_INTERRUPT_MASK_FROM_ISR() 0u
+#define portCLEAR_INTERRUPT_MASK_FROM_ISR(mask) ((void)(mask))
 #endif

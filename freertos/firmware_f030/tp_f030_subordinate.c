@@ -57,6 +57,14 @@ void USART1_IRQHandler(void) {
     }
     portYIELD_FROM_ISR(wake);
 }
+void tp_f030_subordinate_droplet_from_isr(tp_f030_subordinate *s,BaseType_t *wake) {
+    if(!s || s!=instance || !wake) return;
+    UBaseType_t mask=portSET_INTERRUPT_MASK_FROM_ISR();
+    if(s->droplets_pending==UINT32_MAX) s->droplets_overflow=true;
+    else s->droplets_pending++;
+    portCLEAR_INTERRUPT_MASK_FROM_ISR(mask);
+    vTaskNotifyGiveFromISR(s->task,wake);
+}
 static void hardware_start(void) {
     RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
     RCC->APB1ENR |= RCC_APB1ENR_TIM3EN;
@@ -76,6 +84,13 @@ static void hardware_start(void) {
 }
 static void service_once(tp_f030_subordinate *s) {
     tp_f030_rx_event event;
+    taskENTER_CRITICAL();
+    uint32_t droplets=s->droplets_pending;
+    bool droplets_lost=s->droplets_overflow;
+    s->droplets_pending=0; s->droplets_overflow=false;
+    taskEXIT_CRITICAL();
+    tp_sub_node_droplets(&s->app.node,droplets);
+    if(droplets_lost) tp_sub_node_count_error(&s->app.node);
     if(s->app.door)
         s->app.door_result=tp_door_service_tick(s->app.door,(uint32_t)xTaskGetTickCount());
     taskENTER_CRITICAL();

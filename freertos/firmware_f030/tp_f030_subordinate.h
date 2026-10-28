@@ -21,6 +21,8 @@ typedef struct {
     uint8_t tx[TP_SUB_RESPONSE_SIZE];
     volatile uint8_t tx_length, tx_position;
     volatile bool transmitting, overflow;
+    volatile uint32_t droplets_pending;
+    volatile bool droplets_overflow;
     bool processing_rx;
 } tp_f030_subordinate;
 
@@ -29,4 +31,6 @@ typedef struct {
 tp_result tp_f030_subordinate_init(tp_f030_subordinate *, void *input_ctx,
     tp_result (*read_inputs)(void *, tp_sub_inputs *), tp_door_service *door,
     bool door_fault_is_device_fault, uint16_t stack_words, UBaseType_t priority);
+/* Call from an ISR after the scheduler starts. wake is passed to portYIELD_FROM_ISR. */
+void tp_f030_subordinate_droplet_from_isr(tp_f030_subordinate *,BaseType_t *wake);
 #endif

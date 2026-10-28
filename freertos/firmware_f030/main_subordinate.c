@@ -1,9 +1,20 @@
 #include "tp_f030_subordinate.h"
 #include "tp_f030_board_inputs.h"
 #include "stm32f0xx.h"
+#ifdef TP_F030_DOOR_CONFIG
+#include "tp_f030_i2c.h"
+#include "tp_f030_pn532_door.h"
+static tp_f030_i2c i2c;
+static tp_f030_pn532_door door;
+#endif
 
 static tp_f030_subordinate subordinate;
 volatile tp_result tp_f030_startup_result=TP_BUSY;
+#ifdef TP_F030_DOOR_CONFIG
+tp_result tp_f030_door_authorize(uint32_t request_id,bool approved) {
+    return tp_f030_subordinate_authorize(&subordinate,request_id,approved);
+}
+#endif
 
 void tp_platform_assert(const char *file,int line) {
     (void)file; (void)line;
@@ -16,9 +27,25 @@ void vApplicationStackOverflowHook(TaskHandle_t task,char *name) {
 }
 int main(void) {
     SystemCoreClockUpdate();
-    tp_f030_startup_result=tp_f030_subordinate_init(&subordinate,NULL,tp_f030_board_inputs,
-                                                      NULL,false,384,tskIDLE_PRIORITY+2);
+    tp_door_service *service=NULL;
+#ifdef TP_F030_DOOR_CONFIG
+    tp_f030_door_config config={0};
+    tp_f030_startup_result=tp_f030_door_board_prepare(&config);
     if(tp_f030_startup_result!=TP_OK) tp_platform_assert(__FILE__,__LINE__);
+    tp_f030_startup_result=tp_f030_i2c_init(&i2c);
+    if(tp_f030_startup_result!=TP_OK) tp_platform_assert(__FILE__,__LINE__);
+    tp_pn532_i2c_bus bus=tp_f030_i2c_bus(&i2c);
+    tp_f030_startup_result=tp_f030_pn532_door_init(&door,&bus,&config);
+    if(tp_f030_startup_result!=TP_OK) tp_platform_assert(__FILE__,__LINE__);
+    service=&door.service;
+#endif
+    tp_f030_startup_result=tp_f030_subordinate_init(&subordinate,NULL,tp_f030_board_inputs,
+                                                      service,service!=NULL,384,tskIDLE_PRIORITY+2);
+    if(tp_f030_startup_result!=TP_OK) tp_platform_assert(__FILE__,__LINE__);
+#ifdef TP_F030_DOOR_CONFIG
+    tp_f030_startup_result=tp_f030_subordinate_on_door_fault(&subordinate,tp_f030_pn532_door_abort,&door);
+    if(tp_f030_startup_result!=TP_OK) tp_platform_assert(__FILE__,__LINE__);
+#endif
     vTaskStartScheduler();
     tp_platform_assert(__FILE__,__LINE__);
 }

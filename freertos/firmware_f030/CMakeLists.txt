@@ -8,6 +8,7 @@ set(DEVICE ${ROOT}/third_party/STM32F0-CMSIS)
 option(TP_F030_SUBORDINATE "Build the subordinate reference entry" OFF)
 option(TP_F030_REFERENCE_INPUTS "Use reference GPIO and EXTI inputs" OFF)
 set(TP_F030_INPUT_CONFIG "" CACHE FILEPATH "Board input callback implementation")
+set(TP_F030_DOOR_CONFIG "" CACHE FILEPATH "Board PN532 and door configuration implementation")
 if(TP_F030_SUBORDINATE)
     set(ENTRY main_subordinate.c tp_f030_subordinate.c tp_f030_i2c.c
         ${ROOT}/app/subordinate_app.c ${ROOT}/app/subordinate_node.c
@@ -15,6 +16,9 @@ if(TP_F030_SUBORDINATE)
         ${ROOT}/drivers/pn532.c ${ROOT}/drivers/pn532_scan.c ${ROOT}/drivers/pn532_i2c.c
         ${ROOT}/protocol/rtu_receiver.c ${ROOT}/protocol/subordinate.c
         ${ROOT}/protocol/subordinate_poll.c ${ROOT}/protocol/subordinate_link.c)
+    if(TP_F030_DOOR_CONFIG)
+        list(APPEND ENTRY tp_f030_pn532_door.c "${TP_F030_DOOR_CONFIG}")
+    endif()
     if(TP_F030_REFERENCE_INPUTS AND TP_F030_INPUT_CONFIG)
         message(FATAL_ERROR "Choose reference inputs or a custom input callback, not both")
     elseif(TP_F030_REFERENCE_INPUTS)
@@ -37,6 +41,9 @@ target_include_directories(tp_f030.elf PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${ROOT}
 target_compile_definitions(tp_f030.elf PRIVATE STM32F030x8)
 if(TP_F030_SUBORDINATE AND TP_F030_REFERENCE_INPUTS)
     target_compile_definitions(tp_f030.elf PRIVATE TP_F030_REFERENCE_INPUTS)
+endif()
+if(TP_F030_SUBORDINATE AND TP_F030_DOOR_CONFIG)
+    target_compile_definitions(tp_f030.elf PRIVATE TP_F030_DOOR_CONFIG)
 endif()
 target_compile_options(tp_f030.elf PRIVATE -mcpu=cortex-m0 -mthumb -Os -ffunction-sections -fdata-sections)
 target_link_options(tp_f030.elf PRIVATE -mcpu=cortex-m0 -mthumb --specs=nosys.specs

@@ -246,6 +246,27 @@ class Tests(unittest.TestCase):
             u.upload(client, b"manifest", bytes(32), b"data")
         self.assertEqual(client.state["phase"], 3)
 
+    def test_invalid_finish_reply_reports_unknown_result(self):
+        class InvalidFinish(FakeClient):
+            def __init__(self, reply):
+                super().__init__(b"data", bytes(32))
+                self.reply = reply
+            def command(self, cmd, payload=b""):
+                if cmd == u.FINISH:
+                    self.state["phase"] = 3  # The device may have accepted FINISH.
+                    if self.reply == "malformed":
+                        raise u.ProtocolError("invalid response")
+                    if self.reply == "missing":
+                        return u.OK, None
+                    return u.OK, dict(self.state, phase=2)
+                return super().command(cmd, payload)
+        for reply in ("malformed", "missing", "wrong_phase"):
+            with self.subTest(reply=reply):
+                client = InvalidFinish(reply)
+                with self.assertRaisesRegex(u.ProtocolError, "upgrade result is unknown"):
+                    u.upload(client, b"manifest", bytes(32), b"data")
+                self.assertEqual(client.state["phase"], 3)
+
     def test_mismatched_identity_does_not_write(self):
         client = FakeClient(b"data", bytes(32))
         with self.assertRaises(u.ProtocolError):

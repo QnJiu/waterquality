@@ -198,11 +198,18 @@ def upload(client, manifest, manifest_id, image, retries=3):
         except OSError as exc:
             raise OSError("communication failed during finish; upgrade result is unknown. "
                           "Check the device version and boot status after reconnecting") from exc
+        except ProtocolError as exc:
+            raise ProtocolError("invalid finish reply; upgrade result is unknown. "
+                                "Check the device version and boot status after reconnecting") from exc
         if result != OK:
             raise ProtocolError("finish failed: %d" % result)
-        state = match_state(state, manifest_id, image)
-        if state["phase"] != 3 or state["written"] != len(image):
-            raise ProtocolError("unexpected final state")
+        try:
+            state = match_state(state, manifest_id, image)
+            if state["phase"] != 3 or state["written"] != len(image):
+                raise ProtocolError("unexpected final state")
+        except ProtocolError as exc:
+            raise ProtocolError("invalid finish state; upgrade result is unknown. "
+                                "Check the device version and boot status after reconnecting") from exc
         return state
 
 

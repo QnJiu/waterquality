@@ -10,7 +10,7 @@ option(TP_F030_REFERENCE_INPUTS "Use reference GPIO and EXTI inputs" OFF)
 set(TP_F030_INPUT_CONFIG "" CACHE FILEPATH "Board input callback implementation")
 set(TP_F030_DOOR_CONFIG "" CACHE FILEPATH "Board PN532 and door configuration implementation")
 if(TP_F030_SUBORDINATE)
-    set(ENTRY main_subordinate.c tp_f030_subordinate.c tp_f030_i2c.c tp_f030_reference_lock.c
+    set(ENTRY main_subordinate.c tp_f030_subordinate.c tp_f030_i2c.c tp_f030_reference_lock.c tp_f030_reference_pn532_reset.c
         ${ROOT}/app/subordinate_app.c ${ROOT}/app/subordinate_node.c
         ${ROOT}/app/door.c ${ROOT}/app/door_service.c ${ROOT}/app/door_allowlist.c
         ${ROOT}/drivers/pn532.c ${ROOT}/drivers/pn532_scan.c ${ROOT}/drivers/pn532_i2c.c

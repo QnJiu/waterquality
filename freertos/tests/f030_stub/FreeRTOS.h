@@ -8,6 +8,7 @@ typedef int BaseType_t;
 #define pdTRUE 1
 #define pdFALSE 0
 #define configMAX_PRIORITIES 8
+#define configTICK_RATE_HZ 1000
 #define pdMS_TO_TICKS(ms) (ms)
 #define taskSCHEDULER_NOT_STARTED 0
 #define taskSCHEDULER_RUNNING 1

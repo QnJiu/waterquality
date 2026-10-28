@@ -9,6 +9,7 @@
 #define TP_SUB_REAGENT_FAULT 0x01u
 #define TP_SUB_LEVEL_FAULT 0x02u
 #define TP_SUB_DEVICE_FAULT 0x04u
+#define TP_SUB_LEAK_FAULT 0x08u
 
 typedef struct {
     uint32_t droplet_count;

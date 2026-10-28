@@ -58,14 +58,29 @@ int main(void) {
     f.now=101; tp_service_tick(&service,f.now,false,0);
     assert(controller.state==TP_FAILED && controller.fault==TP_FAULT_INTERLOCK && !f.pump_running);
     assert(resources(&f)==TP_PREFLIGHT_RESOURCE_UNKNOWN);
-    f.now=102; reply(&f,TP_SUB_LEVEL_FAULT);
-    assert(resources(&f)==TP_PREFLIGHT_LEVEL && !interlock(&f));
+    f.now=102; reply(&f,TP_SUB_LEAK_FAULT);
+    assert(resources(&f)==TP_PREFLIGHT_LEAK && !interlock(&f));
+    uint16_t faults=0; assert(check(&f,&faults)==TP_IO_ERROR && (faults & TP_PREFLIGHT_LEAK));
     f.now=150; assert(tp_sub_poll_tick(&f.poll,f.now)==TP_OK); f.now=151; reply(&f,0);
     assert(interlock(&f));
     f.now=200; f.send_fail=true;
     assert(tp_sub_poll_tick(&f.poll,f.now)==TP_IO_ERROR && !interlock(&f));
     assert(resources(&f)==TP_PREFLIGHT_RESOURCE_UNKNOWN);
     assert(tp_sub_poll_tick(&f.poll,201)==TP_OK && f.sent==5);
+
+    /* A fresh leak report while pumping must trip the running interlock. */
+    memset(&f,0,sizeof(f));
+    assert(tp_sub_poll_init(&f.poll,&f,send_frame,50,20,100,10)==TP_OK);
+    tp_init(&controller,&hal,NULL,NULL,80);
+    assert(tp_service_init(&service,&controller,recipe,2,0)==TP_OK);
+    assert(tp_service_attach_preflight(&service,&f,check)==TP_OK);
+    assert(tp_sub_poll_tick(&f.poll,0)==TP_OK); f.now=1; reply(&f,0);
+    assert(tp_service_write_holding(&service,0,1,&start)==TP_OK);
+    tp_service_tick(&service,1,false,0); assert(f.pump_running);
+    f.now=50; assert(tp_sub_poll_tick(&f.poll,f.now)==TP_OK);
+    f.now=51; reply(&f,TP_SUB_LEAK_FAULT);
+    tp_service_tick(&service,f.now,false,0);
+    assert(controller.state==TP_FAILED && controller.fault==TP_FAULT_INTERLOCK && !f.pump_running);
 
     memset(&f,0,sizeof(f));
     assert(tp_sub_poll_init(&f.poll,&f,send_frame,50,20,100,4)==TP_OK);

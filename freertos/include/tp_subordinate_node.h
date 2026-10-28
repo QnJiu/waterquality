@@ -3,7 +3,7 @@
 #include "tp_subordinate_link.h"
 
 typedef struct {
-    bool reagent_fault, level_fault, device_fault;
+    bool reagent_fault, level_fault, device_fault, leak_fault;
 } tp_sub_inputs;
 typedef struct {
     void *ctx;

@@ -37,9 +37,10 @@ int main(void) {
     tp_sub_node_droplet(&node); tp_sub_node_droplet(&node);
     cycle(&node,&master,&f,0);
     assert(tp_sub_master_healthy(&master,4) && master.status.droplet_count==2);
-    f.input.level_fault=true; f.input.reagent_fault=true;
+    f.input.level_fault=true; f.input.reagent_fault=true; f.input.leak_fault=true;
     cycle(&node,&master,&f,50);
-    assert(master.status.faults==(TP_SUB_LEVEL_FAULT|TP_SUB_REAGENT_FAULT));
+    assert(master.status.faults==(TP_SUB_LEVEL_FAULT|TP_SUB_REAGENT_FAULT|TP_SUB_LEAK_FAULT));
+    assert(tp_sub_master_resource_faults(&master,54)==(TP_PREFLIGHT_LEVEL|TP_PREFLIGHT_REAGENT|TP_PREFLIGHT_LEAK));
     f.fail_read=true; cycle(&node,&master,&f,100);
     assert(master.status.faults==TP_SUB_DEVICE_FAULT);
     f.fail_read=false; f.input=(tp_sub_inputs){0};

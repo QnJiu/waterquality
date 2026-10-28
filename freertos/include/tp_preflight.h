@@ -7,9 +7,10 @@
 #define TP_PREFLIGHT_REAGENT 0x0008u
 #define TP_PREFLIGHT_LEVEL 0x0010u
 #define TP_PREFLIGHT_RESOURCE_UNKNOWN 0x0020u
+#define TP_PREFLIGHT_LEAK 0x0040u
 #define TP_PREFLIGHT_NOT_RUN 0x8000u
 /* All callbacks are nonblocking and return a fresh sample. The resource
- * callback reports reagent/level failures or unknown status in the bits above. */
+ * callback reports reagent/level/leak failures or unknown status in the bits above. */
 typedef struct {
     void *ctx;
     bool (*interlocks_ok)(void *);

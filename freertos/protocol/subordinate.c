@@ -4,7 +4,7 @@
 #define REQUEST 0x51u
 #define RESPONSE 0x52u
 #define VERSION 1u
-#define FAULT_MASK (TP_SUB_REAGENT_FAULT|TP_SUB_LEVEL_FAULT|TP_SUB_DEVICE_FAULT)
+#define FAULT_MASK (TP_SUB_REAGENT_FAULT|TP_SUB_LEVEL_FAULT|TP_SUB_DEVICE_FAULT|TP_SUB_LEAK_FAULT)
 static uint16_t crc(const uint8_t *p,size_t n) {
     uint16_t c=0xffffu;
     while(n--) { c^=*p++; for(unsigned i=0;i<8;i++) c=(uint16_t)((c>>1)^((c&1u)?0xa001u:0)); }
@@ -59,6 +59,7 @@ uint16_t tp_sub_master_resource_faults(const tp_sub_master *m,uint32_t now) {
     if(m->status.faults&TP_SUB_REAGENT_FAULT) result|=TP_PREFLIGHT_REAGENT;
     if(m->status.faults&TP_SUB_LEVEL_FAULT) result|=TP_PREFLIGHT_LEVEL;
     if(m->status.faults&TP_SUB_DEVICE_FAULT) result|=TP_PREFLIGHT_RESOURCE_UNKNOWN;
+    if(m->status.faults&TP_SUB_LEAK_FAULT) result|=TP_PREFLIGHT_LEAK;
     return result;
 }
 tp_result tp_sub_reply(const uint8_t *request,size_t n,const tp_sub_status *s,uint8_t out[TP_SUB_RESPONSE_SIZE]) {

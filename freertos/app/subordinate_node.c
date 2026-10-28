@@ -13,6 +13,7 @@ static tp_result snapshot(void *ctx,tp_sub_status *status) {
     if(r!=TP_OK || n->count_fault || input.device_fault) status->faults|=TP_SUB_DEVICE_FAULT;
     if(r==TP_OK && input.reagent_fault) status->faults|=TP_SUB_REAGENT_FAULT;
     if(r==TP_OK && input.level_fault) status->faults|=TP_SUB_LEVEL_FAULT;
+    if(r==TP_OK && input.leak_fault) status->faults|=TP_SUB_LEAK_FAULT;
     return TP_OK;
 }
 tp_result tp_sub_node_init(tp_sub_node *n,const tp_sub_node_io *io,uint32_t baud,uint8_t bits) {

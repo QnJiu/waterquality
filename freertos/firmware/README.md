@@ -110,6 +110,29 @@ python tools/check_f407_slot.py 0 build-f407-slot0/tp_f407.elf build-f407-slot0/
 
 板级代码须读取真实 `SCB->VTOR` 提供运行槽，提供可信身份、公钥及隔离后的 FRAM 总线，并确保升级 Flash 操作期间设备已进入安全状态、禁止并发恢复运行，且看门狗策略覆盖单 Bank Flash 操作可能造成的停顿。完成回调须处理确认失败并安排安全复位；调度器启动前任一步失败不得继续启动，也不可直接重试，因为已有任务可能创建。默认板级仍未启用此服务；USART、升级总线及健康策略尚未在实物验证。
 
+### 精简参考入口
+
+`tp_f407_upgrade_reference_start` 可直接接入业务入口，内部从 VTOR 读取运行槽并提供共享锁。以下是装配示意，具体硬件对象、可信公钥和参数须由板级实现提供：
+
+```c
+static tp_f407_upgrade_reference upgrade_ref; /* 零初始化，直到复位都有效 */
+
+/* 在调用 tp_f407_app_init 前配置： */
+upgrade_ref.options.storage.fram_bus = board_upgrade_fram_bus;
+upgrade_ref.options.storage.flash_ops = board_flash_ops;
+upgrade_ref.options.storage.product_id = board_product_id;
+memcpy(upgrade_ref.options.storage.public_key, board_public_key, 64);
+upgrade_ref.options.ctx = &board_context;
+upgrade_ref.options.healthy = board_trial_healthy;
+upgrade_ref.options.finished = board_trial_finished;
+/* 同时设置 frame_timeout_ms、stable_ms、max_gap_ms、period_ms、
+ * trial_timeout_ms，以及两个任务的栈大小和优先级。 */
+app_options.start_services = tp_f407_upgrade_reference_start;
+app_options.services_ctx = &upgrade_ref;
+```
+
+Flash 回调可通过 `tp_f407_flash_controller_init` 获得；升级 FRAM 总线须与业务 FRAM 隔离。其他升级元数据或镜像访问也必须使用 `tp_f407_upgrade_reference_try_lock` 和 `tp_f407_upgrade_reference_unlock`，并正确配对。启动后不得修改 `upgrade_ref.options`；板级健康回调须检查并锁存自身故障，完成回调须处理失败。板级仍须针对单 Bank Flash 写入制定安全输出和看门狗策略。以上示意尚未接入默认板级配置，也未上板验证。
+
 ## 自动两点标定配置
 
 板级选项可把 `auto_calibration` 指向长期有效的 `tp_f407_auto_cal_options`；其中提供低、高标准液各自的配方数组、长度、浓度（mg/L）和最小吸光度差。应用先加载配置并初始化存储，再验证并装配两套配方；选项为空则不启用。配方及其引用数据在应用运行期间不得修改。具体阀路、泵量、反应条件、光学通道和标准液参数必须由所采用的检测方法确定。

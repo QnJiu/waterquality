@@ -4,6 +4,9 @@
 typedef struct { uint32_t AHB1ENR, APB1ENR, CFGR; } RCC_TypeDef;
 typedef struct { uint32_t SR,DR,CR1,CR2,CR3,BRR; } USART_TypeDef;
 typedef struct { int unused; } GPIO_TypeDef;
+typedef struct { uint32_t VTOR; } SCB_Type;
+extern SCB_Type fake_scb;
+#define SCB (&fake_scb)
 extern RCC_TypeDef fake_rcc;
 extern USART_TypeDef fake_usart;
 extern GPIO_TypeDef fake_gpio;

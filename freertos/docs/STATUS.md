@@ -128,3 +128,7 @@ W25Q128 镜像暂存适配器 `tp_w25q128_image` 提供两个不重叠、4 KiB �
 W25Q128 已提供芯片驱动、镜像暂存适配器及可选 F407 SPI1 参考端口；默认不启用。已提供暂存镜像认证、目标槽分块复制、断点恢复及受启动状态保护的通用装配，测试覆盖签名、数据篡改、重启恢复和试运行回滚；已提供与 F407 升级服务维护模式和共享锁的可选绑定；网络下载任务及暂存区仍须配置，硬件未验证。
 
 暂存镜像复制核心 `tp_staged_copy` 可在后台逐块将已认证的源镜像复制到目标下载槽，使用独立下载元数据恢复中断的擦除和写入，并在完成时验证目标；重启后需重新验证源镜像，已验证状态也会重新检查目标。初始元数据提交若损坏且不存在有效副本，会拒绝自动覆盖，需受控维护处理。源镜像、目标槽和验证上下文须在全程独占；调用者须保护活动及待启动槽。该核心尚未装配到 F407 或 Bootloader，也不执行启动切换。
+
+- Signed staging reception now authenticates the manifest before erase, supports
+  checkpoint resume and rechecks the complete staging image. It is a transport-
+  independent API; networking and board storage partitioning are not wired yet.

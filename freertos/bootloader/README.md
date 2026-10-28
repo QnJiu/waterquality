@@ -115,3 +115,23 @@ python freertos/tools/upgrade_client.py --serial COM3 --manifest-url https://exa
 `tp_staged_upgrade` 把签名校验、暂存源读取、断点复制和启动状态检查串联起来。先初始化 `tp_secure_upgrade`，再使用可信公钥对应的签名清单和 `tp_image_hash_io` 初始化此对象；循环调用 `tp_staged_upgrade_step`，直到返回 `TP_OK`，然后显式调用 `tp_staged_upgrade_finish` 将目标槽设为试运行。重启后可用相同清单重新初始化以恢复。目标在复制与暂存前分别重新验证，版本必须高于已确认版本，活动槽及待试运行状态禁止改写。
 
 整个操作要求同一个执行者独占启动与下载元数据、目标镜像、签名清单及暂存源；调用方还须确保当前运行的程序就是已确认活动槽。不得移动已初始化的对象，底层擦除或哈希可能耗时，须在合适的后台任务运行。此通用装配尚未接入 F407 默认业务入口、网络下载或实物 Flash 布局。
+
+### Signed staging reception
+
+`tp_stage_receiver` accepts sequential chunks into a staging image via the
+`tp_download_io` erase/read/write callbacks (for example W25Q128 image callbacks).
+Its metadata must use a separate two-slot store from boot metadata, destination
+download metadata, and the image itself. Supply the staging capacities, trusted
+public key, product ID and signed manifest to `open`. It authenticates the
+manifest and checks boot state before erasing; after interruption, open the same
+manifest and read `tp_download_read(&receiver.download, ...)` for the next offset.
+`finish` hashes the stored bytes and records completion without staging a boot.
+An already completed image is hashed again on open and finish.
+
+One owner must hold the shared upgrade lock during the reception session and
+prevent any other writer from changing staging data until copying is complete.
+Release that lock before entering `tp_staged_guard_begin`, which takes the same
+lock itself; coordinate the handoff so the staging image stays exclusively owned.
+Pass the same signed manifest and a reader of the same staging image to the
+staged guard. A transport task, board-specific partition layout and actual
+network protocol remain to be integrated for the selected hardware.

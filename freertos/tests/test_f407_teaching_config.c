@@ -91,6 +91,31 @@ static void teaching_scheduled_flow(const tp_f407_app_options *o, tp_mode mode) 
     assert(c.state==TP_COMPLETE && c.result_valid && fabsf(c.result_mg_l-0.30103f)<0.0001f);
     assert(f.pumps==4 && f.safe_calls==1);
 }
+/* A failed automatic run stays stopped until cleared, then uses the next period. */
+static void teaching_periodic_recovery(const tp_f407_app_options *o) {
+    teaching_fake f={.pump_fails=true};
+    tp_hal hal={&f,teaching_valves,teaching_pump,poll,teaching_temp,heater,teaching_adc,interlock,teaching_safe};
+    tp_controller c; tp_init(&c,&hal,&o->defaults.calibration,NULL,o->defaults.max_temperature_c);
+    tp_service s; assert(tp_service_init(&s,&c,o->recipe,o->recipe_len,0)==TP_OK);
+    assert(tp_service_attach_config(&s,&o->defaults,&f,teaching_save)==TP_OK);
+    assert(tp_service_attach_preflight(&s,NULL,teaching_preflight)==TP_OK);
+    uint16_t schedule[]={TP_MODE_PERIODIC,0,60,0,0};
+    assert(tp_service_write_holding(&s,1,5,schedule)==TP_OK);
+    tp_service_tick(&s,60000,false,0);
+    for (uint32_t now=60050; now<=65000 && c.state==TP_RUNNING; now+=50)
+        tp_service_tick(&s,now,false,0);
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_PUMP && f.pumps==1 && f.safe_calls==1);
+    tp_service_tick(&s,120000,false,0);
+    assert(c.state==TP_FAILED && f.pumps==1 && s.schedule.last_period_ms==120000);
+    f.pump_fails=false;
+    uint16_t clear=3; assert(tp_service_write_holding(&s,0,1,&clear)==TP_OK);
+    tp_service_tick(&s,179999,false,0); assert(c.state==TP_IDLE);
+    tp_service_tick(&s,180000,false,0); assert(c.state==TP_RUNNING);
+    for (uint32_t now=180050; now<=205000 && c.state==TP_RUNNING; now+=50)
+        tp_service_tick(&s,now,false,0);
+    assert(c.state==TP_COMPLETE && c.result_valid && fabsf(c.result_mg_l-0.30103f)<0.0001f);
+    assert(f.pumps==5);
+}
 /* Exercise the real teaching recipe when its pump cannot start. */
 static void teaching_pump_failure(const tp_f407_app_options *o) {
     teaching_fake f={.pump_fails=true};
@@ -142,5 +167,6 @@ int main(void) {
     teaching_pump_failure(&o);
     teaching_scheduled_flow(&o,TP_MODE_PERIODIC);
     teaching_scheduled_flow(&o,TP_MODE_DAILY);
+    teaching_periodic_recovery(&o);
     return 0;
 }

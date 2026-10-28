@@ -125,5 +125,21 @@ int main(void) {
     k.temperature=20; assert(tp_clear_fault(&c5)==TP_OK); k.temperature=NAN;
     assert(tp_start(&c5,pump_recipe,2,200)==TP_OK); tp_tick(&c5,200);
     assert(c5.state==TP_FAILED && c5.fault==TP_FAULT_SENSOR && k.pumps==0 && k.safe==3);
+    /* Reads between PID cycles must also update the published temperature. */
+    fake m={.interlock=true,.temperature=20};
+    tp_hal hal6={&m,valves,pump,poll,temp,heat,adc,interlock,safe};
+    tp_controller c6; tp_init(&c6,&hal6,NULL,&pid,100);
+    const tp_step heating[]={ {.kind=TP_STEP_HEAT,.timeout_ms=1000,.arg.heat={30,0.1f}},
+        {.kind=TP_STEP_END} };
+    tp_service s6; assert(tp_service_init(&s6,&c6,heating,2,0)==TP_OK);
+    command=1; assert(tp_service_write_holding(&s6,0,1,&command)==TP_OK);
+    tp_service_tick(&s6,0,false,0);
+    m.temperature=29; tp_service_tick(&s6,1,false,0);
+    assert(tp_service_read_holding(&s6,128,3,snapshot)==TP_OK &&
+           snapshot[0]==1 && snapshot[1]==0x41e8 && snapshot[2]==0);
+    m.temperature=NAN; tp_service_tick(&s6,2,false,0);
+    assert(c6.state==TP_FAILED && c6.fault==TP_FAULT_SENSOR && !c6.temperature_valid);
+    assert(tp_service_read_holding(&s6,128,3,snapshot)==TP_OK &&
+           snapshot[0]==0 && snapshot[1]==0 && snapshot[2]==0);
     puts("controlled stepping checks passed"); return 0;
 }

@@ -141,9 +141,13 @@ void tp_tick(tp_controller *c, uint32_t now) {
     }
     case TP_STEP_HEAT:
         /* Read on each tick so entry and PID scheduling cannot falsely satisfy the target. */
-        if (c->hal.read_temperature(c->hal.ctx, &temp) != TP_OK || !isfinite(temp)) fail(c, TP_FAULT_SENSOR);
-        else if (temp >= c->max_temperature_c) fail(c, TP_FAULT_OVERTEMP);
-        else if (fabsf(temp - c->target_c) <= s->arg.heat.tolerance_c) next(c, now);
+        if (c->hal.read_temperature(c->hal.ctx, &temp) != TP_OK || !isfinite(temp)) {
+            c->temperature_valid = false; fail(c, TP_FAULT_SENSOR);
+        } else {
+            c->last_temperature_c = temp; c->temperature_valid = true;
+            if (temp >= c->max_temperature_c) fail(c, TP_FAULT_OVERTEMP);
+            else if (fabsf(temp - c->target_c) <= s->arg.heat.tolerance_c) next(c, now);
+        }
         break;
     case TP_STEP_HOLD: case TP_STEP_WAIT:
         if (expired(now, c->entered_ms, s->arg.wait.duration_ms)) next(c, now);

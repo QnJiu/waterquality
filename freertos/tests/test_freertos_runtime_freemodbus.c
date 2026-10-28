@@ -61,5 +61,17 @@ int main(void) {
     process(&rt,&f); assert(event_count==1);
     faults=0; process(&rt,&f);
     assert(event_count==2 && last_event.type==TP_EVENT_PREFLIGHT && last_event.detail==0);
+    /* A scheduled preflight failure invalidates the old result and reports
+     * its changed fault through the same event path used by the control task. */
+    c.state=TP_COMPLETE; c.result_valid=true; c.result_mg_l=1.5f;
+    assert(tp_schedule_configure(&s.schedule,TP_MODE_PERIODIC,1000,0,0,0,false)==TP_OK);
+    faults=TP_PREFLIGHT_LEVEL;
+    tick_service(&rt,1000,false,0);
+    assert(c.state==TP_COMPLETE && !c.result_valid && s.last_start_result==TP_IO_ERROR);
+    assert(event_count==3 && last_event.type==TP_EVENT_PREFLIGHT && last_event.detail==TP_PREFLIGHT_LEVEL);
+    uint16_t valid=1;
+    assert(tp_service_read_holding(&s,16,1,&valid)==TP_OK && valid==0);
+    tick_service(&rt,2000,false,0);
+    assert(event_count==3); /* Unchanged fault does not flood the log. */
     return 0;
 }

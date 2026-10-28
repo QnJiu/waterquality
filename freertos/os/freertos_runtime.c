@@ -127,6 +127,14 @@ static void process_maintenance(tp_freertos_runtime *rt) {
     rt->maintenance_state=result==TP_OK ? MAINTENANCE_READY : MAINTENANCE_FAILED;
     taskEXIT_CRITICAL();
 }
+/* Keep periodic service work and its event snapshots together. */
+static void tick_service(tp_freertos_runtime *rt, uint32_t now, bool valid, int64_t utc) {
+    tp_run_state before=rt->service->controller->state;
+    tp_operation_snapshot operation_before=tp_operation_capture(rt->service);
+    tp_service_tick(rt->service,now,valid,utc);
+    emit_transition(rt,before);
+    emit_operation_events(rt,operation_before);
+}
 static void task(void *arg) {
     tp_freertos_runtime *rt = arg;
     const TickType_t period = pdMS_TO_TICKS(rt->tick_ms) ? pdMS_TO_TICKS(rt->tick_ms) : 1;
@@ -150,11 +158,7 @@ static void task(void *arg) {
         }
         int64_t utc = 0;
         bool valid = rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx, &utc);
-        tp_run_state before=rt->service->controller->state;
-        tp_operation_snapshot operation_before=tp_operation_capture(rt->service);
-        tp_service_tick(rt->service, (uint32_t)xTaskGetTickCount(), valid, utc);
-        emit_transition(rt,before);
-        emit_operation_events(rt,operation_before);
+        tick_service(rt,(uint32_t)xTaskGetTickCount(),valid,utc);
         while (budget-- && xQueueReceive(rt->requests, &f, 0) == pdPASS) {
             process_maintenance(rt);
             /* Check again between requests to bound stop latency. */

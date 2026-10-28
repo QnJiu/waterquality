@@ -70,6 +70,8 @@ typedef struct {
 
 void tp_init(tp_controller *c, const tp_hal *hal, const tp_calibration *cal,
              const tp_pid *pid, float max_temperature_c);
+/* Validate without starting pumps or changing controller state. */
+tp_result tp_validate_recipe(const tp_controller *c, const tp_step *recipe, size_t count);
 tp_result tp_start(tp_controller *c, const tp_step *recipe, size_t count, uint32_t now);
 /* Single-step can be enabled immediately after a successful start, before tick.
  * At each boundary a 30-second wait is enforced while interlocks and temperature

@@ -24,30 +24,35 @@ void tp_init(tp_controller *c, const tp_hal *hal, const tp_calibration *cal,
     c->state = TP_IDLE;
 }
 static bool valid_step(const tp_step *s) {
-    if (s->kind > TP_STEP_END || s->timeout_ms > TP_MAX_DURATION) return false;
+    if ((unsigned)s->kind > TP_STEP_END || s->timeout_ms > TP_MAX_DURATION) return false;
     switch (s->kind) {
     case TP_STEP_PUMP: return s->timeout_ms && s->arg.pump.steps && s->arg.pump.frequency_hz;
     case TP_STEP_HEAT: return s->timeout_ms && isfinite(s->arg.heat.target_c) &&
         isfinite(s->arg.heat.tolerance_c) && s->arg.heat.tolerance_c > 0;
     case TP_STEP_HOLD: case TP_STEP_WAIT: return s->arg.wait.duration_ms <= TP_MAX_DURATION &&
         s->timeout_ms >= s->arg.wait.duration_ms;
-    case TP_STEP_READ: return s->timeout_ms && s->arg.read.slot < TP_READ_COUNT && s->arg.read.samples &&
+    case TP_STEP_READ: return s->timeout_ms && (unsigned)s->arg.read.slot < TP_READ_COUNT && s->arg.read.samples &&
         (!s->arg.read.trim_extremes || s->arg.read.samples >= 3);
     default: return true;
     }
 }
-tp_result tp_start(tp_controller *c, const tp_step *recipe, size_t count, uint32_t now) {
+tp_result tp_validate_recipe(const tp_controller *c, const tp_step *recipe, size_t count) {
     if (!c || !recipe || !count || !c->hal.safe_outputs || !c->hal.interlocks_ok ||
         !c->hal.set_valves || !c->hal.pump_start || !c->hal.pump_poll ||
         !c->hal.read_temperature || !c->hal.set_heater || !c->hal.read_adc ||
         !isfinite(c->max_temperature_c)) return TP_INVALID;
-    if (c->state == TP_RUNNING || c->state == TP_FAILED) return TP_BUSY;
     if (recipe[count-1].kind != TP_STEP_END) return TP_INVALID;
     for (size_t i = 0; i < count; i++) {
         if (!valid_step(&recipe[i]) || (recipe[i].kind == TP_STEP_HEAT &&
              recipe[i].arg.heat.target_c >= c->max_temperature_c) ||
             (i + 1 < count && recipe[i].kind == TP_STEP_END)) return TP_INVALID;
     }
+    return TP_OK;
+}
+tp_result tp_start(tp_controller *c, const tp_step *recipe, size_t count, uint32_t now) {
+    if (!c) return TP_INVALID;
+    if (c->state == TP_RUNNING || c->state == TP_FAILED) return TP_BUSY;
+    if (tp_validate_recipe(c,recipe,count)!=TP_OK) return TP_INVALID;
     if (!c->hal.interlocks_ok(c->hal.ctx)) { fail(c, TP_FAULT_INTERLOCK); return TP_IO_ERROR; }
     c->recipe = recipe; c->recipe_len = count; c->index = 0; c->entered = false;
     c->state = TP_RUNNING; c->fault = TP_FAULT_NONE; c->heating = false;

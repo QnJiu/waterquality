@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(tp_core C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-add_library(tp_core STATIC app/controller.c app/preflight.c app/health.c app/event_transition.c app/clock_cache.c app/valve_policy.c app/pulse_counter.c app/heater_duty.c app/measurement.c app/schedule.c app/service.c app/door.c app/door_service.c app/subordinate_node.c app/subordinate_app.c app/adc_status.c
+add_library(tp_core STATIC app/controller.c app/auto_calibration.c app/preflight.c app/health.c app/event_transition.c app/clock_cache.c app/valve_policy.c app/pulse_counter.c app/heater_duty.c app/measurement.c app/schedule.c app/service.c app/door.c app/door_service.c app/subordinate_node.c app/subordinate_app.c app/adc_status.c
     drivers/ads1220.c drivers/adc_reader.c drivers/mb85rc16.c drivers/m24c02.c drivers/m24c02_store.c drivers/upgrade_fram.c drivers/ds3231.c drivers/ntc.c drivers/pn532.c drivers/pn532_scan.c drivers/pn532_i2c.c protocol/modbus_rtu.c protocol/rtu_receiver.c protocol/rtu_port.c protocol/subordinate.c protocol/subordinate_poll.c protocol/subordinate_link.c
     storage/config_store.c storage/event_log.c bootloader/boot.c bootloader/boot_target.c bootloader/download.c bootloader/upgrade.c bootloader/upgrade_commands.c bootloader/upgrade_wire.c bootloader/upgrade_stream.c bootloader/image_hash.c bootloader/signed_manifest.c bootloader/signed_boot.c bootloader/factory_provision.c bootloader/trial_confirm.c bootloader/secure_upgrade.c third_party/tinycrypt/source/ecc.c third_party/tinycrypt/source/ecc_dsa.c third_party/tinycrypt/source/sha256.c third_party/tinycrypt/source/utils.c)
 set_target_properties(tp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -16,6 +16,9 @@ endif()
 option(TP_BUILD_HOST_TESTS "Build host-side checks; this does not build STM32 firmware" ON)
 if(TP_BUILD_HOST_TESTS)
     enable_testing()
+    add_executable(test_auto_calibration tests/test_auto_calibration.c)
+    target_link_libraries(test_auto_calibration PRIVATE tp_core)
+    add_test(NAME auto_calibration COMMAND test_auto_calibration)
     add_executable(test_freemodbus_frame tests/test_freemodbus_frame.c protocol/freemodbus/frame.c
         third_party/FreeModbus/mb.c third_party/FreeModbus/rtu/mbrtu.c
         third_party/FreeModbus/rtu/mbcrc.c third_party/FreeModbus/functions/mbfuncholding.c

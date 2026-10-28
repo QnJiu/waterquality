@@ -13,6 +13,7 @@ typedef struct {
     uint32_t now;
     bool ready, fail_write;
     unsigned safe_calls;
+    uint16_t resource_faults;
 } fixture;
 static tp_result transfer(void *p,const uint8_t *tx,uint8_t *rx,size_t n) {
     fixture *f=p; memset(rx,0,n);
@@ -38,8 +39,12 @@ static bool interlock(void *p) { (void)p; return true; }
 static void safe(void *p) {
     fixture *f=p; f->safe_calls++; (void)tp_adc_reader_cancel(&f->reader);
 }
+static uint16_t resources(void *p) { return ((fixture *)p)->resource_faults; }
 static tp_result preflight(void *p,uint16_t *faults) {
-    *faults=tp_adc_reader_ready(&((fixture *)p)->reader) ? 0 : TP_PREFLIGHT_ADC;
+    tp_preflight_io io={p,interlock,temp,resources,100};
+    tp_result result=tp_preflight_check(&io,faults);
+    if (result==TP_INVALID) return result;
+    if (!tp_adc_reader_ready(&((fixture *)p)->reader)) *faults |= TP_PREFLIGHT_ADC;
     return *faults ? TP_IO_ERROR : TP_OK;
 }
 static tp_result recover(void *p) {
@@ -70,6 +75,14 @@ int main(void) {
     assert(tp_service_attach_preflight(&s,&f,preflight)==TP_OK);
     assert(tp_service_attach_adc_recovery(&s,&f,recover)==TP_OK);
     tp_modbus m={&s,1,tp_service_read_holding,tp_service_write_holding};
+    /* Known faults survive an unexpected resource bit through the service register. */
+    f.resource_faults=TP_PREFLIGHT_LEAK|0x4000;
+    assert(command(&m,1)==(6|0x80));
+    uint16_t faults=0;
+    assert(tp_service_read_holding(&s,19,1,&faults)==TP_OK);
+    assert(faults==(TP_PREFLIGHT_LEAK|TP_PREFLIGHT_RESOURCE_UNKNOWN));
+    assert(c.state==TP_IDLE && f.safe_calls>0);
+    f.resource_faults=0;
     assert(command(&m,1)==6); tp_service_tick(&s,0,false,0);
     assert(f.adc.pending && command(&m,8)==(6|0x80));
     assert(command(&m,10)==(6|0x80) && c.state==TP_RUNNING);

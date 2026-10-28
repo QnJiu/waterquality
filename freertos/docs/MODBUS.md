@@ -64,6 +64,8 @@
 
 ```text
 python tools/tp_modbus.py --port COM3 status
+python tools/tp_modbus.py --port COM3 get-config --output config.json
+python tools/tp_modbus.py --port COM3 set-config config.json
 python tools/tp_modbus.py --port COM3 schedule daily 3600 480 480
 python tools/tp_modbus.py --port COM3 command save
 python tools/tp_modbus.py --port COM3 command start
@@ -73,3 +75,5 @@ python tools/tp_modbus.py --port COM3 log --sequence 1
 ```
 
 `--baud`、`--address`、`--timeout` 可按设备配置调整。`schedule` 写入 RAM，需执行 `command save` 并读取状态确认保存成功；启动和保存的响应表示请求已接受，实际结果应查看状态。日志返回原始 `value_bits`；完成事件可将其按 IEEE 754 float 解码。工具按单个请求同步运行，不自动重试写命令。需要实际设备、已配置的板级入口及适配 RS485 的串口。
+
+`get-config` 导出地址 20–46 的完整 JSON，编辑后用 `set-config` 一次写入整组标定、PID、温度上限、周期和从站地址。设备负责校验参数范围，写入后仍需保存。此文件是读取时的快照，写入会覆盖整组参数；多人或多个上位机操作时先协调，避免覆盖之后的修改。运行模式、每日时间和 UTC 偏移使用 `schedule` 单独配置。更改从站地址保存并重启后，使用新的 `--address` 连接。

@@ -1,5 +1,7 @@
 """Small Modbus RTU client for the TP teaching firmware (requires pyserial)."""
 import argparse
+import json
+import math
 import struct
 import sys
 import time
@@ -16,6 +18,11 @@ def crc16(data):
 
 def frame(payload):
     return payload + struct.pack('<H', crc16(payload))
+
+
+FLOAT_FIELDS = ('slope', 'intercept', 'turbidity_factor', 'min_signal',
+                'max_concentration', 'kp', 'ki', 'kd', 'deadband_c',
+                'output_max', 'integral_max', 'max_temperature_c')
 
 
 class ModbusError(Exception):
@@ -82,6 +89,36 @@ class Client:
         request = struct.pack('>BHHB5H', 16, 1, 5, 10, *values)
         self.exchange(request, 0)
 
+    def get_config(self):
+        words = self.read(20, 27)
+        result = {name: float32(words[2*i], words[2*i+1])
+                  for i, name in enumerate(FLOAT_FIELDS)}
+        result['period_seconds'] = (words[24] << 16) | words[25]
+        result['slave_address'] = words[26]
+        return result
+
+    def set_config(self, config):
+        if not isinstance(config, dict) or set(config) != set(FLOAT_FIELDS) | {'period_seconds', 'slave_address'}:
+            raise ValueError('config must contain exactly the documented fields')
+        words = []
+        for name in FLOAT_FIELDS:
+            value = config[name]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError('invalid numeric value for ' + name)
+            try:
+                packed = struct.pack('>f', value)
+            except (OverflowError, struct.error):
+                raise ValueError('float out of range for ' + name) from None
+            if not math.isfinite(struct.unpack('>f', packed)[0]):
+                raise ValueError('float out of range for ' + name)
+            words.extend(struct.unpack('>HH', packed))
+        seconds, address = config['period_seconds'], config['slave_address']
+        if type(seconds) is not int or not 1 <= seconds <= 2147483 or type(address) is not int or not 1 <= address <= 247:
+            raise ValueError('invalid period_seconds or slave_address')
+        words.extend((seconds >> 16, seconds & 65535, address))
+        request = struct.pack('>BHHB27H', 16, 20, 27, 54, *words)
+        self.exchange(request, 0)
+
     def log(self, sequence=None):
         if sequence is not None and not 0 <= sequence <= 0xffffffff:
             raise ValueError('invalid event sequence')
@@ -114,6 +151,10 @@ def main(argv=None):
     p.add_argument('--timeout', type=float, default=2.0)
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('status')
+    get_config = sub.add_parser('get-config')
+    get_config.add_argument('--output', help='save JSON as UTF-8')
+    config = sub.add_parser('set-config')
+    config.add_argument('file', help='complete JSON configuration file')
     log = sub.add_parser('log')
     log.add_argument('--sequence', type=int, help='omit for latest event')
     cmd = sub.add_parser('command')
@@ -134,6 +175,17 @@ def main(argv=None):
             elif args.action == 'schedule':
                 client.schedule(['controlled', 'periodic', 'daily'].index(args.mode), args.seconds, args.minute, args.utc_offset)
                 print('Schedule updated in RAM; use command save and check status to persist.')
+            elif args.action == 'get-config':
+                text = json.dumps(client.get_config(), indent=2, allow_nan=False)
+                if args.output:
+                    with open(args.output, 'w', encoding='utf-8') as f:
+                        f.write(text + '\n')
+                else:
+                    print(text)
+            elif args.action == 'set-config':
+                with open(args.file, encoding='utf-8-sig') as f:
+                    client.set_config(json.load(f))
+                print('Configuration updated in RAM; use command save and check status to persist.')
             elif args.action == 'log':
                 print(client.log(args.sequence))
             else:

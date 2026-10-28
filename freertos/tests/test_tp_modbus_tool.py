@@ -29,6 +29,21 @@ class Tests(unittest.TestCase):
         m.Client(p, 1).command(2)
         self.assertEqual(p.sent, m.frame(bytes.fromhex('010600000002')))
 
+    def test_config_round_trip_and_full_write(self):
+        values = [1., -2., .5, .01, 10., 1., 0., 0., 0., 1., 10., 100.]
+        raw = b''.join(struct.pack('>f', v) for v in values) + struct.pack('>3H', 0, 3600, 1)
+        p = Port(m.frame(bytes([1, 3, len(raw)]) + raw))
+        config = m.Client(p, 1).get_config()
+        self.assertAlmostEqual(config['min_signal'], .01)
+        self.assertEqual(config['period_seconds'], 3600)
+        p = Port(m.frame(bytes.fromhex('01100014001b')))
+        m.Client(p, 1).set_config(config)
+        self.assertEqual(p.sent, m.frame(bytes.fromhex('01100014001b36') + raw))
+        config['kp'] = float('nan')
+        with self.assertRaises(ValueError): m.Client(p, 1).set_config(config)
+        del config['kp']
+        with self.assertRaises(ValueError): m.Client(p, 1).set_config(config)
+
     def test_log_query(self):
         words = [3, 0, 7, 2, 0, 1, 0, 0, 0, 42, 0x3f80, 0]
         response = m.frame(bytes.fromhex('011000320003')) + m.frame(bytes([1, 3, 24]) + struct.pack('>12H', *words))

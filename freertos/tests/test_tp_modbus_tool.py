@@ -44,6 +44,13 @@ class Tests(unittest.TestCase):
         del config['kp']
         with self.assertRaises(ValueError): m.Client(p, 1).set_config(config)
 
+    def test_calibration_request(self):
+        values = [1, 1, 0, 0, 1, .1, 0, 5, .01]
+        p = Port(m.frame(bytes.fromhex('011000460012')))
+        m.Client(p, 1).calibrate(values)
+        self.assertEqual(p.sent, m.frame(bytes.fromhex('01100046001224') + struct.pack('>9f', *values)))
+        with self.assertRaises(ValueError): m.Client(p, 1).calibrate([float('nan')]*9)
+
     def test_log_query(self):
         words = [3, 0, 7, 2, 0, 1, 0, 0, 0, 42, 0x3f80, 0]
         response = m.frame(bytes.fromhex('011000320003')) + m.frame(bytes([1, 3, 24]) + struct.pack('>12H', *words))

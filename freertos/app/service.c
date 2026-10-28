@@ -98,6 +98,18 @@ static tp_result set_config_words(tp_service *s, const uint16_t *v) {
     if (tp_config_validate(&c)!=TP_OK) return TP_INVALID;
     apply_config(s,&c); s->save_status=1; return TP_OK;
 }
+/* Apply both standards atomically; the normal configuration save remains explicit. */
+static tp_result calibrate_words(tp_service *s, const uint16_t *v) {
+    if (!s->request_save || s->controller->state==TP_RUNNING || s->save_status==2)
+        return TP_INVALID;
+    tp_calibration_point low={word_float(v),word_float(v+2),word_float(v+4),word_float(v+6)};
+    tp_calibration_point high={word_float(v+8),word_float(v+10),word_float(v+12),word_float(v+14)};
+    tp_config candidate=s->config;
+    if (tp_calibrate_two_point(&s->config.calibration,&low,&high,word_float(v+16),
+                               &candidate.calibration)!=TP_OK || tp_config_validate(&candidate)!=TP_OK)
+        return TP_INVALID;
+    apply_config(s,&candidate); s->save_status=1; return TP_OK;
+}
 tp_result tp_service_enter_maintenance(tp_service *s) {
     if (!s || !s->controller || !s->controller->hal.safe_outputs) return TP_INVALID;
     if (s->maintenance) return TP_OK;
@@ -176,7 +188,9 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
         tp_result r=s->request_log(s->log_ctx,v[0]==0,join(v[1],v[2]));
         if(r!=TP_OK) return r;
         memset(&s->log_event,0,sizeof(s->log_event)); s->log_status=2; return TP_OK;
-    }    if (address==20 && count==27) return set_config_words(s,v);
+    }
+    if (address==20 && count==27) return set_config_words(s,v);
+    if (address==70 && count==18) return calibrate_words(s,v);
     /* The schedule block must be written in one FC16 request; no partial changes. */
     if (address != 1 || count != 5 || v[0] > TP_MODE_DAILY || s->save_status == 2) return TP_INVALID;
     uint32_t seconds = join(v[1], v[2]);

@@ -119,6 +119,15 @@ class Client:
         request = struct.pack('>BHHB27H', 16, 20, 27, 54, *words)
         self.exchange(request, 0)
 
+    def calibrate(self, values):
+        if len(values) != 9 or not all(math.isfinite(x) for x in values):
+            raise ValueError('calibration requires nine finite numbers')
+        try:
+            data = struct.pack('>9f', *values)
+        except (OverflowError, struct.error):
+            raise ValueError('calibration value is outside float32 range') from None
+        self.exchange(struct.pack('>BHHB', 16, 70, 18, 36) + data, 0)
+
     def log(self, sequence=None):
         if sequence is not None and not 0 <= sequence <= 0xffffffff:
             raise ValueError('invalid event sequence')
@@ -151,6 +160,9 @@ def main(argv=None):
     p.add_argument('--timeout', type=float, default=2.0)
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('status')
+    calibrate = sub.add_parser('calibrate')
+    calibrate.add_argument('values', type=float, nargs=9, metavar='VALUE',
+                           help='low blank/reacted/turbidity/concentration, high blank/reacted/turbidity/concentration, minimum delta')
     get_config = sub.add_parser('get-config')
     get_config.add_argument('--output', help='save JSON as UTF-8')
     config = sub.add_parser('set-config')
@@ -175,6 +187,9 @@ def main(argv=None):
             elif args.action == 'schedule':
                 client.schedule(['controlled', 'periodic', 'daily'].index(args.mode), args.seconds, args.minute, args.utc_offset)
                 print('Schedule updated in RAM; use command save and check status to persist.')
+            elif args.action == 'calibrate':
+                client.calibrate(args.values)
+                print('Calibration updated in RAM; inspect get-config, then save if appropriate.')
             elif args.action == 'get-config':
                 text = json.dumps(client.get_config(), indent=2, allow_nan=False)
                 if args.output:

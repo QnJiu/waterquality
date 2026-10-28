@@ -1,6 +1,9 @@
 #include "tp_service.h"
 #include <assert.h>
 #include <stdio.h>
+#include <math.h>
+#include <string.h>
+static void set_float(uint16_t *p,float f) { uint32_t b; memcpy(&b,&f,4); p[0]=(uint16_t)(b>>16); p[1]=(uint16_t)b; }
 static tp_config captured;
 static tp_result save(void *ctx,const tp_config *cfg) { (void)ctx; captured=*cfg; return TP_OK; }
 int main(void) {
@@ -29,5 +32,18 @@ int main(void) {
     tp_service_save_complete(&s,TP_IO_ERROR); assert(s.save_status==4);
     command=4; assert(tp_service_write_holding(&s,0,1,&command)==TP_OK);
     tp_service_save_complete(&s,TP_OK); assert(s.save_status==3);
+    uint16_t standards[18]; const float points[]={1,1,0,0,1,0.1f,0,5,0.01f};
+    for (unsigned i=0;i<9;i++) set_float(standards+2*i,points[i]);
+    assert(tp_service_write_holding(&s,70,18,standards)==TP_OK);
+    assert(fabsf(s.config.calibration.slope-5)<0.0001f && c.calibration.slope==s.config.calibration.slope);
+    set_float(standards+10,1); /* identical optical readings must leave configuration untouched */
+    assert(tp_service_write_holding(&s,70,18,standards)==TP_INVALID);
+    assert(fabsf(s.config.calibration.slope-5)<0.0001f);
+    set_float(standards+10,0.1f); c.state=TP_RUNNING;
+    assert(tp_service_write_holding(&s,70,18,standards)==TP_INVALID);
+    c.state=TP_IDLE; command=4; assert(tp_service_write_holding(&s,0,1,&command)==TP_OK);
+    assert(fabsf(captured.calibration.slope-5)<0.0001f);
+    assert(tp_service_write_holding(&s,70,18,standards)==TP_INVALID);
+    tp_service_save_complete(&s,TP_OK);
     puts("configuration service checks passed"); return 0;
 }

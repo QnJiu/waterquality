@@ -4,16 +4,12 @@
 static void frame(void *ctx,const uint8_t *data,size_t len) {
     tp_sub_link *l=ctx;
     if(l->role==TP_SUB_LINK_MASTER) {
-        l->frame_result=tp_sub_poll_receive(&l->poll,l->now_ms,data,len);
-        if(l->frame_result==TP_OK && l->last_byte_timed) {
-            tp_sub_master *m=&l->poll.master;
-            if((uint32_t)(l->last_byte_ms-m->deadline_start)>=m->response_timeout_ms) {
-                m->have_status=false; l->frame_result=TP_INVALID;
-            } else {
-                m->last_success=l->last_byte_ms;
-                tp_sub_master_tick(m,l->now_ms);
-            }
-        }
+        /* A queued frame met its deadline if its last byte arrived in time.
+         * Freshness still uses the current time, so old data cannot revive. */
+        uint32_t received=l->last_byte_timed ? l->last_byte_ms : l->now_ms;
+        l->frame_result=tp_sub_poll_receive(&l->poll,received,data,len);
+        if(l->frame_result==TP_OK && l->last_byte_timed)
+            tp_sub_master_tick(&l->poll.master,l->now_ms);
         return;
     }
     /* Validate before reading sensors or sending a response. */

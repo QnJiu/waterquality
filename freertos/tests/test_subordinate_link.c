@@ -65,6 +65,17 @@ int main(void) {
     assert(tp_sub_link_healthy(&timed,11));
     assert(!tp_sub_link_healthy(&timed,12));
 
+    /* The response arrived before its deadline, despite delayed processing. */
+    endpoint queued={0}; tp_sub_link late_processing;
+    assert(tp_sub_link_master_init(&late_processing,&queued,send,115200,10,50,20,100,8)==TP_OK);
+    assert(tp_sub_link_tick(&late_processing,0,0)==TP_OK);
+    assert(tp_sub_reply(queued.bytes,queued.len,&ok,reply)==TP_OK); queued.len=0;
+    for(size_t i=0;i<sizeof(reply);i++)
+        assert(tp_sub_link_byte_at(&late_processing,reply[i],100+(uint32_t)i*100,10,25)==TP_OK);
+    assert(tp_sub_link_tick(&late_processing,4000,25)==TP_OK);
+    assert(tp_sub_link_healthy(&late_processing,25));
+    assert(!tp_sub_link_healthy(&late_processing,110));
+
     /* A later byte closes the previous frame; retain the previous timestamp. */
     assert(tp_sub_link_tick(&timed,50000,50)==TP_OK);
     assert(tp_sub_reply(delayed.bytes,delayed.len,&ok,reply)==TP_OK); delayed.len=0;

@@ -12,7 +12,7 @@ typedef struct {
     uint8_t regs[4];
     uint32_t now;
     bool ready, fail_write;
-    unsigned safe_calls;
+    unsigned safe_calls, powerdowns;
     uint16_t resource_faults;
 } fixture;
 static tp_result transfer(void *p,const uint8_t *tx,uint8_t *rx,size_t n) {
@@ -23,7 +23,8 @@ static tp_result transfer(void *p,const uint8_t *tx,uint8_t *rx,size_t n) {
     } else if (n==5 && tx[0]==0x23) memcpy(rx+1,f->regs,4);
     else if (n==2 && tx[0]==0x40) f->regs[0]=tx[1];
     else if (n==4 && tx[0]==0x10) { rx[3]=42; }
-    else if (n!=1 || (tx[0]!=0x02 && tx[0]!=0x08)) return TP_IO_ERROR;
+    else if (n==1 && tx[0]==0x02) f->powerdowns++;
+    else if (n!=1 || tx[0]!=0x08) return TP_IO_ERROR;
     return TP_OK;
 }
 static tp_result ready(void *p,bool *r) { *r=((fixture *)p)->ready; return TP_OK; }
@@ -110,6 +111,21 @@ int main(void) {
     assert(c.awaiting_advance && fabsf(c.readings[TP_READ_BLANK]-0.042f)<0.00001f);
     assert(command(&m,5)==6); tp_service_tick(&s,62,false,0);
     assert(c.state==TP_COMPLETE && f.safe_calls>=4);
+    /* Stopping an active conversion powers it down and allows a fresh run. */
+    f.ready=false; f.now=70; assert(command(&m,1)==6);
+    tp_service_tick(&s,70,false,0);
+    assert(f.reader.active && f.adc.pending);
+    unsigned previous_powerdowns=f.powerdowns;
+    assert(command(&m,2)==6);
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_STOP);
+    assert(!f.reader.active && !f.adc.pending && tp_adc_reader_ready(&f.reader));
+    assert(f.powerdowns==previous_powerdowns+1);
+    assert(command(&m,3)==6 && c.state==TP_IDLE);
+    f.ready=true; f.now=71; assert(command(&m,1)==6);
+    tp_service_tick(&s,71,false,0); f.now=72; tp_service_tick(&s,72,false,0);
+    assert(c.awaiting_advance && fabsf(c.readings[TP_READ_BLANK]-0.042f)<0.00001f);
+    assert(command(&m,5)==6); tp_service_tick(&s,73,false,0);
+    assert(c.state==TP_COMPLETE);
     /* Exercise the combined command through an actual Modbus frame. */
     f.ready=false; f.now=100; assert(command(&m,1)==6);
     tp_service_tick(&s,100,false,0); f.now=150; tp_service_tick(&s,150,false,0);

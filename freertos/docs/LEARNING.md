@@ -26,7 +26,7 @@ ctest --test-dir build --output-on-failure
 
 不同硬件的管脚、传感器、反应参数和标定数据需要按实物配置。默认 F407 固件是心跳示例，业务入口需单独配置；F030 浅睡眠和 RTC 定时 STOP 均为可选，尚未实机验证。ESP32 局域网升级网关见 `examples/esp32_gateway/README.md`；阿里云状态上报和可选升级示例见 `examples/esp32_cloud/README.md`，均需实际设备联调。软件实现和实机验证的详细状态见 `docs/STATUS.md`。
 
-每日定时模式需要先设置 RTC。通过 Modbus FC16 写入 UTC 秒数，并查询校时状态，具体地址见 `docs/MODBUS.md`；校时只允许在设备未运行时操作。
+每日定时模式需要先设置 RTC。可用 `python tools/tp_modbus.py --port COM3 set-clock <UTC秒数>` 设置，然后用 `clock-status` 查询结果；具体地址见 `docs/MODBUS.md`；校时只允许在设备未运行时操作。
 
 ## 3. 故障后如何操作
 

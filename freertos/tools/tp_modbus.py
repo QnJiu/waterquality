@@ -89,6 +89,21 @@ class Client:
         request = struct.pack('>BHHB5H', 16, 1, 5, 10, *values)
         self.exchange(request, 0)
 
+    def set_clock(self, seconds):
+        if type(seconds) is not int or not 946684800 <= seconds < 4102444800:
+            raise ValueError('UTC seconds must be between 2000 and 2099')
+        self.exchange(struct.pack('>BHHBI', 16, 123, 2, 4, seconds), 0)
+
+    def clock_status(self):
+        status = self.read(122, 1)[0]
+        names = ('unavailable', 'idle', 'pending', 'verified', 'failed')
+        if status >= len(names):
+            raise ModbusError('invalid clock status')
+        valid, high, low = self.read(125, 3)
+        if valid not in (0, 1):
+            raise ModbusError('invalid clock availability')
+        return {'state': names[status], 'utc_seconds': ((high << 16) | low) if valid else None}
+
     def get_config(self):
         words = self.read(20, 27)
         result = {name: float32(words[2*i], words[2*i+1])
@@ -195,6 +210,9 @@ def main(argv=None):
     p.add_argument('--timeout', type=float, default=2.0)
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('status')
+    sub.add_parser('clock-status', help='show RTC time and last setting result')
+    clock = sub.add_parser('set-clock', help='set RTC using UTC Unix seconds')
+    clock.add_argument('utc_seconds', type=int)
     sub.add_parser('auto-cal-status', help='show automatic calibration progress and error')
     sub.add_parser('auto-standard-status', help='show automatic standard check progress and result')
     calibrate = sub.add_parser('calibrate')
@@ -222,7 +240,12 @@ def main(argv=None):
         import serial
         with serial.Serial(args.port, args.baud, bytesize=8, parity='N', stopbits=1, timeout=0.1, write_timeout=args.timeout) as port:
             client = Client(port, args.address, args.timeout)
-            if args.action == 'command':
+            if args.action == 'set-clock':
+                client.set_clock(args.utc_seconds)
+                print('Clock request accepted; use clock-status to check completion.')
+            elif args.action == 'clock-status':
+                print(json.dumps(client.clock_status()))
+            elif args.action == 'command':
                 client.command(['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start', 'self-check'].index(args.name) + 1)
                 print('Command accepted; check status for completion.')
             elif args.action == 'auto-standard-status':

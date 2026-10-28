@@ -160,10 +160,19 @@ int main(void) {
     uint16_t time_words[2]={0x6553,0xf100}, clock_word=99; /* 1700000000 UTC */
     assert(tp_service_read_holding(&s,122,1,&clock_word)==TP_OK && clock_word==0);
     assert(tp_service_write_holding(&s,123,2,time_words)==TP_INVALID);
+    uint16_t time_snapshot[3];
+    tp_service_tick(&s,1,true,1700000000LL);
+    assert(tp_service_read_holding(&s,125,3,time_snapshot)==TP_OK && time_snapshot[0]==1 &&
+           time_snapshot[1]==0x6553 && time_snapshot[2]==0xf100);
+    tp_service_tick(&s,2,false,1700000000LL);
+    assert(tp_service_read_holding(&s,125,3,time_snapshot)==TP_OK && !time_snapshot[0] &&
+           !time_snapshot[1] && !time_snapshot[2]);
     assert(tp_service_attach_clock(&s,NULL,set_clock,clock_status)==TP_OK);
     assert(tp_service_write_holding(&s,123,1,time_words)==TP_INVALID);
     assert(tp_service_write_holding(&s,123,2,time_words)==TP_OK && clock_request==1700000000u);
     assert(tp_service_read_holding(&s,122,1,&clock_word)==TP_OK && clock_word==2);
+    tp_service_tick(&s,3,true,1700000000LL);
+    assert(tp_service_read_holding(&s,125,3,time_snapshot)==TP_OK && time_snapshot[0]==0);
     assert(tp_service_write_holding(&s,123,2,time_words)==TP_BUSY);
     assert(tp_service_write_holding(&s,0,1,&begin)==TP_BUSY);
     clock_state=3;

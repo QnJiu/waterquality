@@ -44,6 +44,8 @@ typedef struct {
     float standard_check_actual;
     void *recover_ctx;
     tp_result (*recover_adc)(void *);
+    bool clock_valid;
+    uint32_t clock_utc;
     void *clock_ctx;
     tp_result (*set_clock)(void *,uint32_t);
     uint8_t (*clock_status)(void *);

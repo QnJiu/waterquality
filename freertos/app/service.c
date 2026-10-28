@@ -225,6 +225,9 @@ tp_result tp_service_enter_maintenance(tp_service *s) {
 void tp_service_tick(tp_service *s, uint32_t now, bool rtc_valid, int64_t utc) {
     if (!s || !s->controller) return;
     s->now_ms = now;
+    s->clock_valid=rtc_valid && utc>=946684800LL && utc<4102444800LL &&
+                   (!s->clock_status || s->clock_status(s->clock_ctx)!=2);
+    s->clock_utc=s->clock_valid ? (uint32_t)utc : 0;
     bool busy = s->maintenance || s->controller->state == TP_RUNNING || s->controller->state == TP_FAILED ||
                 (s->clock_status && s->clock_status(s->clock_ctx)==2);
     if (tp_schedule_poll(&s->schedule, now, rtc_valid, utc, busy)) (void)start(s);
@@ -265,6 +268,12 @@ tp_result tp_service_attach_log_stats(tp_service *s,void *ctx,void (*snapshot)(v
 }
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values) {
     tp_service *clock_service=ctx;
+    if (clock_service && clock_service->controller && values && count && address>=125 && (uint32_t)address+count<=128) {
+        uint16_t words[3]={clock_service->clock_valid ? 1u : 0u,
+                           (uint16_t)(clock_service->clock_utc>>16), (uint16_t)clock_service->clock_utc};
+        for (uint16_t i=0;i<count;i++) values[i]=words[address-125+i];
+        return TP_OK;
+    }
     if (clock_service && clock_service->controller && values && address==122 && count==1) {
         values[0]=clock_service->clock_status ? clock_service->clock_status(clock_service->clock_ctx) : 0;
         return TP_OK;
@@ -372,7 +381,9 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
     if (address==123 && count==2) {
         if (!s->set_clock) return TP_INVALID;
         if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s) || standard_running(s)) return TP_BUSY;
-        return s->set_clock(s->clock_ctx,join(v[0],v[1]));
+        tp_result r=s->set_clock(s->clock_ctx,join(v[0],v[1]));
+        if (r==TP_OK) { s->clock_valid=false; s->clock_utc=0; }
+        return r;
     }
     if(address==50 && count==3) {
         if(!s->request_log || v[0]>1 || (v[0]==0 && (v[1] || v[2]))) return TP_INVALID;

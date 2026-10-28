@@ -32,6 +32,8 @@ def parse_status(frame, address):
     if len(frame) != 25 or frame[1] != 3 or frame[2] != 20:
         raise ValueError("unexpected Modbus response")
     state, fault, step, start_result, concentration, valid, save_status, waiting_next, preflight_faults = struct.unpack(">HHHHfHHHH", frame[3:-2])
+    if valid not in (0, 1) or waiting_next not in (0, 1) or save_status > 4:
+        raise ValueError("invalid status snapshot")
     return {"state": state, "fault": fault, "step": step,
             "start_result": start_result, "result_valid": bool(valid),
             "save_status": save_status, "waiting_next": waiting_next,

@@ -1,6 +1,6 @@
 # ESP32 读取状态并上报阿里云（教学示例）
 
-ESP32 使用 MicroPython 经 RS485 读取 F407 Modbus 地址 10–19，然后通过 TLS MQTT 发布阿里云物模型属性。通信出错时等待 5 秒并重连；失败时不发送旧数据。寄存器含义见 `docs/MODBUS.md`。
+ESP32 使用 MicroPython 经 RS485 读取 F407 Modbus 地址 10–19，然后通过 TLS MQTT 发布阿里云物模型属性。通信出错或状态标志不符合寄存器定义时等待 5 秒并重连；失败时不发送旧数据。寄存器含义见 `docs/MODBUS.md`。
 
 1. 给 ESP32 安装支持 `ssl.SSLContext`、`UART.flush()` 的 MicroPython 版本及新版 `umqtt.simple`，复制 `main.py`、`modbus_status.py`、`cloud.py`、`config.example.py` 到板上，将最后一个文件改名 `config.py`。
 2. ESP32 TX/RX 经 3.3 V RS485 收发器连接 F407 USART3 RS485；DE 与 /RE 同接 `RS485_DE`，高电平发送，低电平接收。按收发器接线连接 A、B 和信号地，总线上只能有一个 Modbus 主站。F407 需启用并配置业务入口及 USART3，通信参数 115200 8N1。

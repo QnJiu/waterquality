@@ -66,6 +66,14 @@ class StatusTest(unittest.TestCase):
         payload = struct.pack('>BBBHHHHfHHHH', 1, 3, 20, 3, 2, 0, 0, 12.0, 0, 0, 0, 32768)
         self.assertIsNone(mod.parse_status(response(payload), 1)['concentration_mg_l'])
 
+    def test_rejects_invalid_status_flags(self):
+        for valid, save, waiting in ((2, 0, 0), (0, 5, 0), (0, 0, 2)):
+            payload = struct.pack('>BBBHHHHfHHHH', 1, 3, 20,
+                                  0, 0, 0, 0, 1.0, valid, save, waiting, 0)
+            with self.subTest(valid=valid, save=save, waiting=waiting):
+                with self.assertRaisesRegex(ValueError, 'status snapshot'):
+                    mod.parse_status(response(payload), 1)
+
     def test_exception_crc_and_timeout(self):
         with self.assertRaisesRegex(ValueError, 'exception 2'):
             mod.parse_status(response(bytes([1, 0x83, 2])), 1)

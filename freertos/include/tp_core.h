@@ -79,6 +79,8 @@ tp_result tp_start(tp_controller *c, const tp_step *recipe, size_t count, uint32
 tp_result tp_advance(tp_controller *c, uint32_t now_ms);
 void tp_tick(tp_controller *c, uint32_t now);
 void tp_stop(tp_controller *c);
+/* Sensor and overtemperature faults require a valid, below-limit temperature;
+ * other device checks belong to the service preflight callback. */
 tp_result tp_clear_fault(tp_controller *c);
 /* Returns NaN if intermediate arithmetic overflows. */
 float tp_pid_update(tp_pid *pid, float target, float measured, float dt_seconds);

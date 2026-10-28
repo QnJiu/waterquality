@@ -71,7 +71,14 @@ tp_result tp_advance(tp_controller *c, uint32_t now) {
 }
 void tp_stop(tp_controller *c) { if (c && c->hal.safe_outputs && c->state != TP_FAILED) fail(c, TP_FAULT_STOP); }
 tp_result tp_clear_fault(tp_controller *c) {
-    if (!c || c->state != TP_FAILED || !c->hal.interlocks_ok(c->hal.ctx)) return TP_INVALID;
+    if (!c || c->state != TP_FAILED || !c->hal.interlocks_ok || !c->hal.safe_outputs ||
+        !c->hal.interlocks_ok(c->hal.ctx)) return TP_INVALID;
+    if (c->fault == TP_FAULT_SENSOR || c->fault == TP_FAULT_OVERTEMP) {
+        float temp;
+        if (!c->hal.read_temperature || !isfinite(c->max_temperature_c) ||
+            c->hal.read_temperature(c->hal.ctx, &temp) != TP_OK || !isfinite(temp) ||
+            temp >= c->max_temperature_c) return TP_IO_ERROR;
+    }
     c->hal.safe_outputs(c->hal.ctx); c->fault = TP_FAULT_NONE; c->state = TP_IDLE; return TP_OK;
 }
 void tp_tick(tp_controller *c, uint32_t now) {

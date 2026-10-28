@@ -29,7 +29,7 @@ void tp_freertos_stage_transport_step(tp_freertos_stage_transport *t,uint32_t no
         tp_result r=t->installing ? tp_stage_session_install_step(t->session) :
                                    tp_stage_session_install_begin(t->session);
         if(!t->installing && r==TP_OK) { t->installing=true; return; }
-        if(r!=TP_BUSY) { reset(t); t->io.finished(t->io.ctx,r); }
+        if(r!=TP_BUSY && r!=TP_LOCK_BUSY) { reset(t); t->io.finished(t->io.ctx,r); }
         return;
     }
     for(unsigned i=0;i<BYTE_BUDGET;i++) {

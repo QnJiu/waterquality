@@ -50,6 +50,7 @@ static tp_result stage_write(void *v,uint8_t bank,uint32_t off,const void *p,siz
 }
 #include "tp_freertos_stage_transport.h"
 typedef struct { uint8_t in[2048]; size_t len,pos; bool disconnect,fail_send; unsigned sent,finished; tp_result result; } link;
+static tp_result waiting_for_maintenance(void *v) { return ((gate *)v)->safe ? TP_OK : TP_LOCK_BUSY; }
 static tp_result receive_byte(void *v,uint8_t *b) {
     link *l=v; if(l->disconnect) return TP_IO_ERROR;
     if(l->pos==l->len) return TP_BUSY; *b=l->in[l->pos++]; return TP_OK;
@@ -89,7 +90,7 @@ int main(void) {
     assert(tp_boot_provision(&u.boot,0,1)==TP_OK);
     tp_download_io storage={{&stage_meta,read_meta,erase_meta,write_meta},&f,stage_erase,source_read,stage_write,NULL};
     uint32_t capacities[2]={3,3}; gate g={0}; tp_stage_session s;
-    assert(tp_stage_session_init(&s,&u,&storage,capacities,&g,take_lock,release_lock,make_safe)==TP_OK);
+    assert(tp_stage_session_init(&s,&u,&storage,capacities,&g,take_lock,release_lock,waiting_for_maintenance)==TP_OK);
     link l={0}; tp_stage_transport_io io={&l,receive_byte,send_bytes,done}; tp_freertos_stage_transport t;
     assert(tp_freertos_stage_transport_start(&t,&s,&io,20,100,1,1024,1)==TP_OK);
     request(&l,TP_UP_CMD_BEGIN,b1,116); drain(&t,&l,0xfffffff0u); assert(g.locked && l.sent==1);

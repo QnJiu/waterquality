@@ -27,7 +27,7 @@ tp_result tp_stage_session_init(tp_stage_session *,tp_secure_upgrade *,const tp_
 tp_result tp_stage_session_execute(void *,const tp_upgrade_commands *,tp_upgrade_command,
     const uint8_t *,size_t,tp_upgrade_reply *);
 /* Explicit install starts only after verified reception. Maintenance may return
- * BUSY while outputs are made safe; the session remains locked for retry. */
+ * BUSY or LOCK_BUSY while outputs are made safe; the session remains locked for retry. */
 tp_result tp_stage_session_install_begin(tp_stage_session *);
 tp_result tp_stage_session_install_step(tp_stage_session *);
 /* Abort releases ownership, preserving durable progress for later resumption. */

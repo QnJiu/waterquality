@@ -5,15 +5,32 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
 set(KERNEL ${ROOT}/third_party/FreeRTOS-Kernel)
 set(DEVICE ${ROOT}/third_party/STM32F0-CMSIS)
-add_executable(tp_f030.elf main.c
+option(TP_F030_SUBORDINATE "Build the subordinate reference entry" OFF)
+set(TP_F030_INPUT_CONFIG "" CACHE FILEPATH "Board input callback implementation")
+if(TP_F030_SUBORDINATE)
+    set(ENTRY main_subordinate.c tp_f030_subordinate.c
+        ${ROOT}/app/subordinate_app.c ${ROOT}/app/subordinate_node.c
+        ${ROOT}/app/door.c ${ROOT}/app/door_service.c
+        ${ROOT}/drivers/pn532.c ${ROOT}/drivers/pn532_scan.c
+        ${ROOT}/protocol/rtu_receiver.c ${ROOT}/protocol/subordinate.c
+        ${ROOT}/protocol/subordinate_poll.c ${ROOT}/protocol/subordinate_link.c)
+    if(TP_F030_INPUT_CONFIG)
+        list(APPEND ENTRY "${TP_F030_INPUT_CONFIG}")
+    else()
+        list(APPEND ENTRY tp_f030_unconfigured.c)
+    endif()
+else()
+    set(ENTRY main.c)
+endif()
+add_executable(tp_f030.elf ${ENTRY}
     ${DEVICE}/Source/startup_stm32f030x8.s ${DEVICE}/Source/system_stm32f0xx.c
     ${KERNEL}/tasks.c ${KERNEL}/queue.c ${KERNEL}/list.c
     ${KERNEL}/portable/GCC/ARM_CM0/port.c ${KERNEL}/portable/MemMang/heap_4.c)
-target_include_directories(tp_f030.elf PRIVATE ${CMAKE_CURRENT_LIST_DIR}
+target_include_directories(tp_f030.elf PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${ROOT}/include
     ${KERNEL}/include ${KERNEL}/portable/GCC/ARM_CM0 ${DEVICE}/Include
     ${ROOT}/third_party/CMSIS-Core/Include)
 target_compile_definitions(tp_f030.elf PRIVATE STM32F030x8)
-target_compile_options(tp_f030.elf PRIVATE -mcpu=cortex-m0 -mthumb -ffunction-sections -fdata-sections)
+target_compile_options(tp_f030.elf PRIVATE -mcpu=cortex-m0 -mthumb -Os -ffunction-sections -fdata-sections)
 target_link_options(tp_f030.elf PRIVATE -mcpu=cortex-m0 -mthumb --specs=nosys.specs
     -T${CMAKE_CURRENT_LIST_DIR}/stm32f030c8.ld -Wl,--gc-sections
     -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/tp_f030.map)

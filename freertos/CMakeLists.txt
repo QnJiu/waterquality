@@ -29,6 +29,10 @@ if(TP_BUILD_HOST_TESTS)
     target_include_directories(test_freertos_subordinate PRIVATE tests/freertos_stub)
     target_link_libraries(test_freertos_subordinate PRIVATE tp_core)
     add_test(NAME freertos_subordinate COMMAND test_freertos_subordinate)
+    add_executable(test_f030_subordinate tests/test_f030_subordinate.c)
+    target_include_directories(test_f030_subordinate PRIVATE tests/f030_stub firmware_f030)
+    target_link_libraries(test_f030_subordinate PRIVATE tp_core)
+    add_test(NAME f030_subordinate COMMAND test_f030_subordinate)
 endif()
 
 

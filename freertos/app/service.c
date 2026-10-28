@@ -68,6 +68,11 @@ tp_result tp_service_attach_preflight(tp_service *s,void *ctx,tp_result (*check)
        s->controller->state==TP_RUNNING) return TP_INVALID;
     s->preflight_ctx=ctx; s->preflight=check; s->preflight_faults=TP_PREFLIGHT_NOT_RUN; return TP_OK;
 }
+tp_result tp_service_attach_adc_recovery(tp_service *s,void *ctx,tp_result (*recover)(void *)) {
+    if (!s || !s->controller || !s->controller->hal.safe_outputs || !recover ||
+        s->recover_adc || s->controller->state==TP_RUNNING) return TP_INVALID;
+    s->recover_ctx=ctx; s->recover_adc=recover; return TP_OK;
+}
 static void apply_config(tp_service *s, const tp_config *cfg) {
     if (s->schedule.mode != (tp_mode)cfg->mode ||
         s->schedule.period_ms != cfg->period_seconds * 1000u ||
@@ -237,6 +242,11 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
         case 5: return s->maintenance ? TP_BUSY : tp_advance(s->controller, s->now_ms);
         case 6: return start_auto_cal(s);
         case 7: return apply_auto_cal(s);
+        case 8:
+            if (!s->recover_adc) return TP_INVALID;
+            if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s)) return TP_BUSY;
+            s->controller->hal.safe_outputs(s->controller->hal.ctx);
+            return s->recover_adc(s->recover_ctx);
         case 4:
             if (!s->request_save || s->save_status==2 || s->controller->state==TP_RUNNING) return TP_BUSY;
             if (s->request_save(s->save_ctx,&s->config)!=TP_OK) { s->save_status=4; return TP_IO_ERROR; }

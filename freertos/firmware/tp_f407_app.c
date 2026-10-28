@@ -29,6 +29,11 @@ static tp_result preflight(void *p,uint16_t *faults) {
     if (!tp_adc_reader_ready(&a->reader)) *faults |= TP_PREFLIGHT_ADC;
     return *faults ? TP_IO_ERROR : TP_OK;
 }
+static tp_result recover_adc(void *p) {
+    tp_f407_app *a=p;
+    if (a->reader.active || a->adc.pending) return TP_BUSY;
+    return tp_ads1220_recover(&a->adc);
+}
 static void safe(void *p) {
     tp_f407_app *a=p;
     tp_f407_heater_off(&a->heater); tp_f407_pump_stop(&a->pump); tp_f407_valves_safe(&a->valves);
@@ -104,6 +109,7 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     }
     INIT(tp_service_init(&a->service,&a->controller,o->recipe,o->recipe_len,0));
     INIT(tp_service_attach_preflight(&a->service,a,preflight));
+    INIT(tp_service_attach_adc_recovery(&a->service,a,recover_adc));
     INIT(tp_service_attach_log(&a->service,a,request_log));
     tp_runtime_io io={a,send,now,comm_error,record_event,poll_log,control_progress};
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));

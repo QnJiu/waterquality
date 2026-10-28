@@ -35,7 +35,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(p.sent, m.frame(bytes.fromhex('010600000002')))
 
     def test_auto_calibration_commands_and_status(self):
-        for code in (6, 7):
+        for code in (6, 7, 8):
             payload = bytes([1, 6, 0, 0, 0, code])
             p = Port(m.frame(payload))
             m.Client(p, 1).command(code)
@@ -46,7 +46,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(p.sent, m.frame(bytes.fromhex('0103005a0002')))
         p = Port(m.frame(bytes.fromhex('01030400630004')))
         self.assertEqual(m.Client(p, 1).auto_calibration_status()['state'], 'unknown')
-        with self.assertRaises(ValueError): m.Client(Port(b''), 1).command(8)
+        with self.assertRaises(ValueError): m.Client(Port(b''), 1).command(9)
 
     def test_auto_calibration_cli(self):
         class SerialPort(Port):

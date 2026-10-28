@@ -33,6 +33,8 @@ typedef struct {
     void *preflight_ctx;
     tp_result (*preflight)(void *,uint16_t *);
     uint16_t preflight_faults;
+    void *recover_ctx;
+    tp_result (*recover_adc)(void *);
 } tp_service;
 tp_result tp_service_init(tp_service *s, tp_controller *controller,
                           const tp_step *recipe, size_t recipe_len, uint32_t now_ms);
@@ -48,6 +50,9 @@ tp_result tp_service_attach_auto_calibration(tp_service *s,
     float low_concentration, float high_concentration, float min_delta);
 /* Optional nonblocking startup check; invoked for every actual start request. */
 tp_result tp_service_attach_preflight(tp_service *,void *,tp_result (*)(void *,uint16_t *));
+/* Optional bounded ADC recovery, called only by the owner with outputs safe.
+ * The callback must not start a conversion or clear a controller fault. */
+tp_result tp_service_attach_adc_recovery(tp_service *,void *,tp_result (*)(void *));
 /* One asynchronous query at a time; callback copies the request without waiting.
  * Complete only from the service owner task. TP_INVALID means not found. */
 tp_result tp_service_attach_log(tp_service *,void *ctx,tp_result (*request)(void *,bool,uint32_t));

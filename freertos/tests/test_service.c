@@ -70,6 +70,36 @@ int main(void) {
     tp_service_tick(&schedule_service,12000,false,0);
     assert(schedule_service.schedule.last_period_ms==12000);
     assert(schedule_controller.state==TP_COMPLETE);
+    /* Stop at a scheduled instant latches a fault and consumes that trigger.
+     * Clearing the fault must not replay it; the next period may run normally. */
+    tp_controller stop_controller; tp_service stop_service;
+    tp_init(&stop_controller,&hal,NULL,NULL,100);
+    assert(tp_service_init(&stop_service,&stop_controller,end_recipe,1,0)==TP_OK);
+    uint16_t periodic_stop[]={TP_MODE_PERIODIC,0,1,0,0}, stop_at_due=2, clear_after_stop=3;
+    assert(tp_service_write_holding(&stop_service,1,5,periodic_stop)==TP_OK);
+    assert(tp_service_write_holding(&stop_service,0,1,&stop_at_due)==TP_OK);
+    tp_service_tick(&stop_service,1000,false,0);
+    assert(stop_controller.state==TP_FAILED && stop_controller.fault==TP_FAULT_STOP);
+    assert(stop_service.schedule.last_period_ms==1000);
+    assert(tp_service_write_holding(&stop_service,0,1,&clear_after_stop)==TP_OK);
+    tp_service_tick(&stop_service,1001,false,0);
+    assert(stop_controller.state==TP_IDLE);
+    tp_service_tick(&stop_service,2000,false,0);
+    assert(stop_controller.state==TP_COMPLETE);
+    /* The same protection applies to a daily trigger in its target minute. */
+    tp_init(&stop_controller,&hal,NULL,NULL,100);
+    assert(tp_service_init(&stop_service,&stop_controller,end_recipe,1,0)==TP_OK);
+    uint16_t daily_stop[]={TP_MODE_DAILY,0,1,1,0};
+    assert(tp_service_write_holding(&stop_service,1,5,daily_stop)==TP_OK);
+    assert(tp_service_write_holding(&stop_service,0,1,&stop_at_due)==TP_OK);
+    tp_service_tick(&stop_service,1000,true,946684860LL);
+    assert(stop_controller.state==TP_FAILED && stop_service.schedule.daily_fired);
+    assert(tp_service_write_holding(&stop_service,0,1,&clear_after_stop)==TP_OK);
+    tp_service_tick(&stop_service,2000,true,946684861LL);
+    assert(stop_controller.state==TP_IDLE);
+    tp_service_tick(&stop_service,3000,true,946771260LL);
+    assert(stop_controller.state==TP_COMPLETE);
+    safe_count=0;
     /* A failed manual or scheduled start must not leave an old result valid. */
     tp_controller result_controller; tp_service result_service;
     tp_init(&result_controller,&hal,NULL,NULL,100);

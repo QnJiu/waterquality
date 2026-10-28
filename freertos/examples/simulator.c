@@ -196,11 +196,12 @@ int main(int argc,char **argv) {
     bool stop_rinse=argc==2 && !strcmp(argv[1],"stop-rinse");
     bool recover=argc==2 && !strcmp(argv[1],"recover");
     bool recover_sensor=argc==2 && !strcmp(argv[1],"recover-sensor");
+    bool controlled=argc==2 && !strcmp(argv[1],"controlled");
     bool periodic=argc==2 && !strcmp(argv[1],"periodic");
     bool daily=argc==2 && !strcmp(argv[1],"daily");
     bool journal_mode=argc==2 && !strcmp(argv[1],"journal");
-    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover && !recover_sensor && !periodic && !daily && !journal_mode)) {
-        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|recover-sensor|periodic|daily|calibration|journal]\n"); return 2;
+    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover && !recover_sensor && !controlled && !periodic && !daily && !journal_mode)) {
+        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|recover-sensor|controlled|periodic|daily|calibration|journal]\n"); return 2;
     }
     plant x={.temperature=20,.interlock=true,.adc_ready=true};
     tp_hal hal={&x,valves,pump,pump_poll,temperature,heater,adc,interlock,safe};
@@ -223,7 +224,9 @@ int main(int argc,char **argv) {
         printf("mode=%s: waiting for t=60000 ms trigger\n",periodic ? "periodic" : "daily");
     } else if(command(&modbus,1)!=TP_OK) return 1;
     size_t last=(size_t)-1;
-    unsigned completed=0;
+    unsigned completed=0, advances=0;
+    uint32_t waiting_since=0;
+    bool waiting=false;
     /* Periodic mode demonstrates two complete measurements, not just the first trigger. */
     for(x.now=0;x.now<(periodic ? 180000u : 120000u) &&
         (controller.state==TP_RUNNING || (automatic &&
@@ -232,7 +235,18 @@ int main(int argc,char **argv) {
         if((fault_interlock || recover) && x.pump_active) x.interlock=false;
         if((fault_sensor || recover_sensor) && recipe[controller.index].kind==TP_STEP_READ) x.sensor_error=true;
         if(stop_rinse && x.pump_active && x.valves==RINSE && command(&modbus,2)!=TP_OK) return 1;
-        if(controller.awaiting_advance && (automatic || command(&modbus,5)!=TP_OK)) return 1;
+        if(controller.awaiting_advance) {
+            if(automatic) return 1;
+            if(controlled && !waiting) {
+                waiting=true; waiting_since=x.now;
+                printf("waiting before step %lu for command 5\n",(unsigned long)controller.index);
+            }
+            if(!controlled || x.now-waiting_since>=500) {
+                if(command(&modbus,5)!=TP_OK) return 1;
+                if(controlled) printf("command 5: continue\n");
+                waiting=false; advances++;
+            }
+        }
         tp_run_state before=controller.state;
         tp_service_tick(&service,x.now,daily,946684800LL+(int64_t)(x.now/1000u));
         if(periodic && before==TP_RUNNING && controller.state==TP_COMPLETE) {
@@ -301,6 +315,7 @@ int main(int argc,char **argv) {
         x.pump_count==3 && x.pump_valves[2]==RINSE ? 0 : 1;
     if(journal_mode && verify_journal(&service,&modbus,&memory,&journal_io,controller.result_mg_l)) return 1;
     if(periodic && completed!=2) return 1;
+    if(controlled && !advances) return 1;
     if(x.pump_count!=4 || x.pump_valves[0]!=SAMPLE || x.pump_valves[1]!=REAGENT ||
        x.pump_valves[2]!=RINSE || x.pump_valves[3]!=DRAIN) return 1;
     return controller.state==TP_COMPLETE && controller.result_valid &&

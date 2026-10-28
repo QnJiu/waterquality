@@ -2,6 +2,9 @@
 #include "tp_f030_board_inputs.h"
 #include "stm32f0xx.h"
 #include "tp_f030_reference_lock.h"
+#ifdef TP_F030_STATUS_OUTPUT
+#include "tp_f030_status_output.h"
+#endif
 #ifdef TP_F030_STOP_SLEEP
 #include "tp_f030_stop.h"
 #endif
@@ -36,6 +39,9 @@ void tp_platform_assert(const char *file,int line) {
     (void)file; (void)line;
     __disable_irq();
     tp_f030_reference_lock_emergency_off();
+#ifdef TP_F030_STATUS_OUTPUT
+    tp_f030_status_output_fault();
+#endif
     for(;;) { __NOP(); }
 }
 void vApplicationMallocFailedHook(void) { tp_platform_assert(__FILE__,__LINE__); }

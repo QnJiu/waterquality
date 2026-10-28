@@ -8,6 +8,10 @@
 #include "tp_f030_reference_inputs.h"
 #endif
 
+#ifdef TP_F030_STATUS_OUTPUT
+#include "tp_f030_status_output.h"
+#endif
+
 #define RX_EVENTS 32u
 #define RX_ERRORS (USART_ISR_PE | USART_ISR_FE | USART_ISR_NE | USART_ISR_ORE)
 #define RX_FLAGS (USART_ISR_RXNE | RX_ERRORS)
@@ -220,6 +224,9 @@ static void start_reader(tp_f030_subordinate *s) {
 static void run(void *ctx) {
     tp_f030_subordinate *s=ctx;
     hardware_start();
+#ifdef TP_F030_STATUS_OUTPUT
+    tp_f030_status_output_init();
+#endif
     start_reader(s);
 #ifdef TP_F030_WAKE_INPUT
     tp_f030_wake_input_start(s);
@@ -232,6 +239,9 @@ static void run(void *ctx) {
         tp_f030_reference_inputs_button_tick((uint32_t)xTaskGetTickCount());
 #endif
         service_once(s);
+#ifdef TP_F030_STATUS_OUTPUT
+        tp_f030_status_output_update(&s->app.node);
+#endif
         (void)ulTaskNotifyTake(pdTRUE,idle_wait(s,(uint32_t)xTaskGetTickCount()));
     }
 }

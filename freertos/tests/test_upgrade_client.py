@@ -233,6 +233,19 @@ class Tests(unittest.TestCase):
         with self.assertRaisesRegex(ConnectionError, "result is unknown"):
             u.upload(Disconnected(b"data", bytes(32)), b"manifest", bytes(32), b"data")
 
+    def test_finish_serial_error_reports_unknown_result(self):
+        class BrokenSerial(FakeClient):
+            def command(self, cmd, payload=b""):
+                if cmd == u.FINISH:
+                    self.state["phase"] = 3  # The request may already have been received.
+                    raise OSError("serial read failed")
+                return super().command(cmd, payload)
+
+        client = BrokenSerial(b"data", bytes(32))
+        with self.assertRaisesRegex(OSError, "upgrade result is unknown"):
+            u.upload(client, b"manifest", bytes(32), b"data")
+        self.assertEqual(client.state["phase"], 3)
+
     def test_mismatched_identity_does_not_write(self):
         client = FakeClient(b"data", bytes(32))
         with self.assertRaises(u.ProtocolError):

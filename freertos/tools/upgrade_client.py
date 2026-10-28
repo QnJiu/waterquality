@@ -195,6 +195,9 @@ def upload(client, manifest, manifest_id, image, retries=3):
         except ConnectionError as exc:
             raise ConnectionError("connection lost after finish request; upgrade result is unknown. "
                                   "Check the device version and boot status after reconnecting") from exc
+        except OSError as exc:
+            raise OSError("communication failed during finish; upgrade result is unknown. "
+                          "Check the device version and boot status after reconnecting") from exc
         if result != OK:
             raise ProtocolError("finish failed: %d" % result)
         state = match_state(state, manifest_id, image)

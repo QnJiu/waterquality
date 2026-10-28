@@ -110,14 +110,33 @@ int main(void) {
     f.source[0]^=1;
     assert(tp_stage_commands_execute(&commands,NULL,TP_UP_CMD_FINISH,NULL,0,&reply)==TP_INVALID);
     f.source[0]^=1;
+    /* A completed image must not be cancelled, including after reconnect. */
+    tp_stage_receiver completed;
+    assert(tp_stage_receiver_cancel_manifest(&completed,&u.boot,&storage,image.capacity,
+        c.public_key,c.product_id,b1,116)==TP_INVALID);
+    assert(f.erases==2);
     /* A cancelled session releases the shared upgrade lock. */
     init(&stage_meta,&unused); f.erases=0;
     gate cancel_gate={0}; tp_stage_session cancel_session; tp_upgrade_reply cancel_reply;
     assert(tp_stage_session_init(&cancel_session,&u,&storage,image.capacity,&cancel_gate,take_lock,release_lock,make_safe)==TP_OK);
+    assert(tp_stage_session_execute(&cancel_session,NULL,TP_UP_CMD_CANCEL,b1,116,&cancel_reply)==TP_INVALID);
+    assert(!cancel_gate.locked && f.erases==0);
     assert(tp_stage_session_execute(&cancel_session,NULL,TP_UP_CMD_BEGIN,b1,116,&cancel_reply)==TP_OK);
     assert(cancel_gate.locked);
     assert(tp_stage_session_execute(&cancel_session,NULL,TP_UP_CMD_CANCEL,NULL,0,&cancel_reply)==TP_OK);
     assert(!cancel_gate.locked && cancel_reply.state_available && cancel_reply.state.phase==TP_DOWNLOAD_CANCELLED);
+    /* Reconnect and cancel with the signed manifest, without erasing the image. */
+    assert(tp_stage_session_execute(&cancel_session,NULL,TP_UP_CMD_BEGIN,b1,116,&cancel_reply)==TP_OK);
+    unsigned before_cancel=f.erases;
+    tp_stage_session_abort(&cancel_session);
+    b1[52]^=1;
+    assert(tp_stage_session_execute(&cancel_session,NULL,TP_UP_CMD_CANCEL,b1,116,&cancel_reply)==TP_INVALID);
+    assert(!cancel_gate.locked && f.erases==before_cancel);
+    b1[52]^=1;
+    assert(tp_stage_session_execute(&cancel_session,NULL,TP_UP_CMD_CANCEL,b1,116,&cancel_reply)==TP_OK);
+    assert(!cancel_gate.locked && cancel_reply.state.phase==TP_DOWNLOAD_CANCELLED && f.erases==before_cancel);
+    assert(tp_stage_session_execute(&cancel_session,NULL,TP_UP_CMD_CANCEL,b1,116,&cancel_reply)==TP_OK);
+    assert(!cancel_gate.locked && f.erases==before_cancel);
     /* Receive and install through one lock-owned session. */
     init(&stage_meta,&unused); f.erases=0;
     gate g={0}; tp_stage_session session;

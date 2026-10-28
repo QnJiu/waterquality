@@ -26,7 +26,8 @@ tp_result tp_stage_session_execute(void *ctx,const tp_upgrade_commands *unused,t
     if(!reply) return TP_INVALID;
     memset(reply,0,sizeof(*reply)); reply->result=TP_INVALID;
     if(!s || !s->upgrade || !s->lock || s->installing || (n && !data)) return TP_INVALID;
-    if(cmd==TP_UP_CMD_BEGIN) {
+    bool cancel_lock=cmd==TP_UP_CMD_CANCEL && !s->locked;
+    if(cmd==TP_UP_CMD_BEGIN || cancel_lock) {
         if(n!=TP_SIGNED_MANIFEST_SIZE) return TP_INVALID;
         if(!s->locked) {
             if(!s->lock(s->ctx)) { reply->result=TP_LOCK_BUSY; return TP_LOCK_BUSY; }
@@ -38,7 +39,7 @@ tp_result tp_stage_session_execute(void *ctx,const tp_upgrade_commands *unused,t
         if(r==TP_OK) memcpy(s->manifest,data,sizeof(s->manifest));
         else tp_stage_session_abort(s);
     }
-    if(cmd==TP_UP_CMD_CANCEL && r==TP_OK) tp_stage_session_abort(s);
+    if(cmd==TP_UP_CMD_CANCEL && (r==TP_OK || cancel_lock)) tp_stage_session_abort(s);
     return r;
 }
 tp_result tp_stage_session_install_begin(tp_stage_session *s) {

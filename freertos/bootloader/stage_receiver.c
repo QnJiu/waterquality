@@ -30,7 +30,7 @@ static tp_result check(tp_stage_receiver *s) {
     if(r!=TP_OK) return r;
     return same(&state.manifest,&s->manifest) ? TP_OK : TP_INVALID;
 }
-tp_result tp_stage_receiver_open(tp_stage_receiver *s,const tp_boot_io *boot,
+static tp_result init_receiver(tp_stage_receiver *s,const tp_boot_io *boot,
         const tp_download_io *storage,const uint32_t capacity[2],const uint8_t key[64],
         uint32_t product,const uint8_t *bytes,size_t n) {
     if(!s || !boot || !storage || !capacity || !key || !bytes ||
@@ -42,6 +42,23 @@ tp_result tp_stage_receiver_open(tp_stage_receiver *s,const tp_boot_io *boot,
     s->download=(tp_download_io){storage->metadata,s,erase,read_image,write_image,verify};
     tp_result r=tp_signed_manifest_authenticate(&s->signature,bytes,n,&s->manifest);
     if(r!=TP_OK || (r=eligible(s))!=TP_OK) return r;
+    return r;
+}
+tp_result tp_stage_receiver_cancel_manifest(tp_stage_receiver *s,const tp_boot_io *boot,
+        const tp_download_io *storage,const uint32_t capacity[2],const uint8_t key[64],
+        uint32_t product,const uint8_t *bytes,size_t n) {
+    tp_result r=init_receiver(s,boot,storage,capacity,key,product,bytes,n);
+    tp_download_state state;
+    if(r==TP_OK) r=tp_download_read(&s->download,&state);
+    if(r==TP_OK && !same(&state.manifest,&s->manifest)) r=TP_INVALID;
+    if(r==TP_OK) r=tp_download_cancel(&s->download);
+    return r;
+}
+tp_result tp_stage_receiver_open(tp_stage_receiver *s,const tp_boot_io *boot,
+        const tp_download_io *storage,const uint32_t capacity[2],const uint8_t key[64],
+        uint32_t product,const uint8_t *bytes,size_t n) {
+    tp_result r=init_receiver(s,boot,storage,capacity,key,product,bytes,n);
+    if(r!=TP_OK) return r;
     tp_download_state state; r=tp_download_read(&s->download,&state);
     if(r==TP_OK && state.phase!=TP_DOWNLOAD_CANCELLED && same(&state.manifest,&s->manifest)) {
         if(state.phase==TP_DOWNLOAD_VERIFIED) r=verify(s,&s->manifest);

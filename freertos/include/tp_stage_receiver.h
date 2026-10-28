@@ -17,6 +17,10 @@ typedef struct {
 tp_result tp_stage_receiver_open(tp_stage_receiver *,const tp_boot_io *,
     const tp_download_io *,const uint32_t capacity[2],const uint8_t public_key[64],
     uint32_t product_id,const uint8_t *manifest,size_t length);
+/* Reauthenticate a previous download without erasing or resuming it. */
+tp_result tp_stage_receiver_cancel_manifest(tp_stage_receiver *,const tp_boot_io *,
+    const tp_download_io *,const uint32_t capacity[2],const uint8_t public_key[64],
+    uint32_t product_id,const uint8_t *manifest,size_t length);
 tp_result tp_stage_receiver_cancel(tp_stage_receiver *);
 tp_result tp_stage_receiver_write(tp_stage_receiver *,uint32_t offset,const void *,size_t);
 /* Verify the complete image without changing boot state. */

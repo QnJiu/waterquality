@@ -38,6 +38,11 @@ tp_result tp_stage_commands_execute(void *ctx,const tp_upgrade_commands *unused,
         break;
     case TP_UP_CMD_CANCEL:
         if(!n && s->opened) r=tp_stage_receiver_cancel(&s->receiver);
+        else if(n && !s->opened) {
+            r=tp_stage_receiver_cancel_manifest(&s->receiver,&s->boot,&s->storage,
+                s->capacity,s->public_key,s->product_id,data,n);
+            if(r==TP_OK) s->opened=true; /* Include the resulting state in the reply. */
+        }
         break;
     case TP_UP_CMD_WRITE:
         if(s->opened && n>4 && n<=4+TP_DOWNLOAD_CHUNK_MAX) {

@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 
 FLAG, ESC = 0x7E, 0x7D
-STATUS, BEGIN, RESUME, WRITE, FINISH = range(1, 6)
+STATUS, BEGIN, RESUME, WRITE, FINISH, CANCEL = range(1, 7)
 OK, BUSY, INVALID, IO_ERROR, TIMEOUT, LOCK_BUSY = range(6)
 MAX_RAW = 520
 MAX_IMAGE_SIZE = 384 * 1024  # F407 reference slot
@@ -94,7 +94,7 @@ def parse_reply(data):
     if len(data) != 48:
         raise ProtocolError("invalid state length")
     phase, bank, version, size, written = struct.unpack_from("<BBIII", data, 2)
-    if phase not in (1, 2, 3) or bank > 1 or not version or not size or written > size:
+    if phase not in (1, 2, 3, 4) or bank > 1 or not version or not size or written > size:
         raise ProtocolError("invalid download state")
     return data[0], {"phase": phase, "bank": bank, "version": version,
                      "size": size, "written": written, "id": data[16:48]}
@@ -270,12 +270,26 @@ def check_files(manifest, image, expected_id=None):
     if (magic != b'TPU1' or not product or not version or not size or
             bank not in (0, 1) or manifest[17:20] != bytes(3)):
         raise ValueError("invalid TPU1 manifest fields")
-    if size != len(image) or hashlib.sha256(image).digest() != digest:
+    if image is not None and (size != len(image) or hashlib.sha256(image).digest() != digest):
         raise ValueError("image does not match the manifest size and SHA-256")
     manifest_id = hashlib.sha256(manifest[:52]).digest()
     if expected_id is not None and expected_id != manifest_id:
         raise ValueError("manifest ID does not match the manifest")
     return manifest_id
+
+
+def cancel(client, manifest, manifest_id):
+    try:
+        result, state = client.command(CANCEL, manifest)
+    except (TimeoutError, ConnectionError) as exc:
+        raise ProtocolError("cancel result unknown; reconnect and repeat the same command") from exc
+    _, _, version, size, bank, _ = struct.unpack('<4sIIIB3x32s', manifest[:52])
+    if result != OK:
+        raise ProtocolError("cancel failed: %d" % result)
+    if (state is None or state["phase"] != 4 or state["id"] != manifest_id or
+            state["bank"] != bank or state["version"] != version or state["size"] != size):
+        raise ProtocolError("cancel response does not match the manifest")
+    return state
 
 
 def main():
@@ -289,7 +303,8 @@ def main():
     manifest_source.add_argument("--manifest", type=pathlib.Path)
     manifest_source.add_argument("--manifest-url", help="HTTPS URL for the TPU1 manifest")
     parser.add_argument("--manifest-id", help="optional expected manifest ID in hex")
-    image_source = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument("--cancel", action="store_true", help="cancel an incomplete staging download")
+    image_source = parser.add_mutually_exclusive_group()
     image_source.add_argument("--image", type=pathlib.Path)
     image_source.add_argument("--image-url", help="HTTPS URL for the F407 image")
     args = parser.parse_args()
@@ -300,16 +315,25 @@ def main():
         expected_id = bytes.fromhex(args.manifest_id) if args.manifest_id is not None else None
         manifest = (download(args.manifest_url, 116, args.timeout) if args.manifest_url
                     else args.manifest.read_bytes())
+        if args.cancel and (args.image or args.image_url):
+            raise ValueError("--cancel does not take an image")
+        if not args.cancel and not (args.image or args.image_url):
+            raise ValueError("upload requires --image or --image-url")
         image = (download(args.image_url, MAX_IMAGE_SIZE, args.timeout) if args.image_url
-                 else args.image.read_bytes())
+                 else args.image.read_bytes() if args.image else None)
         manifest_id = check_files(manifest, image, expected_id)
         if args.tcp:
             host, port = args.tcp.rsplit(":", 1)
             transport = TcpTransport(host, int(port), args.timeout)
         else:
             transport = SerialTransport(args.serial, args.baud, args.timeout)
-        state = upload(Client(transport, args.timeout), manifest, manifest_id, image)
-        print("Staged bank %d, version %d, %d bytes" % (state["bank"], state["version"], state["written"]))
+        client = Client(transport, args.timeout)
+        if args.cancel:
+            state = cancel(client, manifest, manifest_id)
+            print("Cancelled bank %d, version %d" % (state["bank"], state["version"]))
+        else:
+            state = upload(client, manifest, manifest_id, image)
+            print("Staged bank %d, version %d, %d bytes" % (state["bank"], state["version"], state["written"]))
         return 0
     except (ValueError, OSError, ImportError, ProtocolError, TimeoutError) as exc:
         print("Upgrade failed: %s" % exc, file=sys.stderr)

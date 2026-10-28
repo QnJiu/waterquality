@@ -86,6 +86,22 @@ class Tests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 u.download("https://example.com/file", 5, 2)
 
+    def test_cancel_sends_only_manifest_and_checks_state(self):
+        image = b"firmware"
+        body = struct.pack("<4sIIIB3x32s", b"TPU1", 1, 2, len(image), 1,
+                           hashlib.sha256(image).digest())
+        manifest = body + bytes(64)
+        manifest_id = u.check_files(manifest, None)
+        state = {"phase": 4, "bank": 1, "version": 2, "size": len(image),
+                 "written": 0, "id": manifest_id}
+        client = unittest.mock.Mock()
+        client.command.return_value = (u.OK, state)
+        self.assertEqual(u.cancel(client, manifest, manifest_id), state)
+        client.command.assert_called_once_with(u.CANCEL, manifest)
+        client.command.return_value = (u.OK, dict(state, bank=0))
+        with self.assertRaises(u.ProtocolError):
+            u.cancel(client, manifest, manifest_id)
+
     def test_remote_files_checked_before_device_connection(self):
         image = b"firmware"
         body = struct.pack("<4sIIIB3x32s", b"TPU1", 1, 2, len(image), 1,

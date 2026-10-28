@@ -1,4 +1,5 @@
 #include "tp_f407_upgrade_service.h"
+#include "tp_event_transition.h"
 #include <string.h>
 
 static tp_result request_maintenance(void *ctx) {
@@ -26,6 +27,13 @@ static void trial_finished(void *ctx,tp_result result) {
     tp_f407_upgrade_service *s=ctx;
     if(result==TP_OK) {
         taskENTER_CRITICAL(); s->confirmed_version=s->startup_version; taskEXIT_CRITICAL();
+    }
+    if(s->upgrade.boot_at_start.phase==TP_BOOT_TRIAL) {
+        /* The log task owns persistence. Do not block the trial task or delay
+         * the board callback if the event queue is full. */
+        tp_event event={.type=TP_EVENT_UPGRADE_TRIAL,.detail=(uint16_t)result,
+                        .value=s->startup_version};
+        (void)tp_freertos_event_log_submit(&s->app->events,&event);
     }
     s->finished(s->ctx,result);
 }

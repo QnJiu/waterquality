@@ -1,11 +1,16 @@
 #include "tp_f407_upgrade_service.h"
+#include "tp_event_transition.h"
 #include <assert.h>
 #include <string.h>
 static tp_f407_upgrade_service *expected;
 static int stage,fail_at,scheduler,context;
 static tp_f407_app app;
 static bool app_ok,board_ok;
-static int app_calls,board_calls;
+static int app_calls,board_calls,logged;
+static tp_event last_event;
+tp_result tp_freertos_event_log_submit(tp_freertos_event_log *log,const tp_event *event) {
+    assert(log==&app.events); logged++; last_event=*event; return TP_OK;
+}
 bool tp_f407_app_trial_healthy(tp_f407_app *a) {
     assert(a==&app); app_calls++; return app_ok;
 }
@@ -36,8 +41,12 @@ tp_result tp_freertos_trial_start(tp_freertos_trial *t,const tp_boot_io *boot,ui
     assert(tp_service_read_holding(&app.service,119,3,version)==TP_OK);
     assert(version[0]==0 && version[1]==0 && version[2]==0);
     f(ctx,TP_IO_ERROR);
+    assert(last_event.type==TP_EVENT_UPGRADE_TRIAL && last_event.detail==TP_IO_ERROR &&
+           last_event.value==0x12345678 && !last_event.utc_valid);
     assert(tp_service_read_holding(&app.service,119,3,version)==TP_OK && version[0]==0);
-    f(ctx,TP_OK);
+    int before=logged; f(ctx,TP_OK);
+    assert(logged==before+1 && last_event.type==TP_EVENT_UPGRADE_TRIAL &&
+           last_event.detail==TP_OK && last_event.value==0x12345678);
     assert(tp_service_read_holding(&app.service,119,3,version)==TP_OK);
     assert(version[0]==1 && version[1]==0x1234 && version[2]==0x5678);
     stage=2;

@@ -6,7 +6,8 @@
  * in mg/L; detail bit 0 marks validity. Failure detail holds tp_fault. */
 typedef enum { TP_EVENT_STARTED=1, TP_EVENT_COMPLETED=2, TP_EVENT_FAILED=3,
                TP_EVENT_CLEARED=4, TP_EVENT_BOOT=5,
-               TP_EVENT_AUTO_CAL=6, TP_EVENT_AUTO_STANDARD=7, TP_EVENT_PREFLIGHT=8 } tp_event_type;
+               TP_EVENT_AUTO_CAL=6, TP_EVENT_AUTO_STANDARD=7, TP_EVENT_PREFLIGHT=8,
+               TP_EVENT_UPGRADE_TRIAL=9 } tp_event_type;
 /* Produce at most one event per externally observable state transition. */
 bool tp_event_transition(tp_run_state before,const tp_controller *after,tp_event *event);
 /* Capture before processing one command, tick or maintenance request, then

@@ -1,5 +1,8 @@
 #ifndef LL_GPIO_H
 #define LL_GPIO_H
+#define LL_GPIO_PIN_6 64u
+#define LL_GPIO_PIN_7 128u
+#define LL_GPIO_AF_8 8u
 #define LL_GPIO_PIN_2 4u
 #define LL_GPIO_PIN_3 8u
 #define LL_GPIO_AF_7 7u

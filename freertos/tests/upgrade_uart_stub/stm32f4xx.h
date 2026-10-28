@@ -1,7 +1,7 @@
 #ifndef STM32F4XX_H
 #define STM32F4XX_H
 #include <stdint.h>
-typedef struct { uint32_t AHB1ENR, APB1ENR, CFGR; } RCC_TypeDef;
+typedef struct { uint32_t AHB1ENR, APB1ENR, APB2ENR, CFGR; } RCC_TypeDef;
 typedef struct { uint32_t SR,DR,CR1,CR2,CR3,BRR; } USART_TypeDef;
 typedef struct { int unused; } GPIO_TypeDef;
 typedef struct { uint32_t VTOR; } SCB_Type;
@@ -13,8 +13,14 @@ extern GPIO_TypeDef fake_gpio;
 extern uint32_t SystemCoreClock;
 #define RCC (&fake_rcc)
 #define USART2 (&fake_usart)
+#define USART6 (&fake_usart)
+#define GPIOC (&fake_gpio)
 #define GPIOA (&fake_gpio)
 #define RCC_AHB1ENR_GPIOAEN 1u
+#define RCC_AHB1ENR_GPIOCEN 4u
+#define RCC_APB2ENR_USART6EN 32u
+#define RCC_CFGR_PPRE2 0xe000u
+#define USART6_IRQn 71
 #define RCC_APB1ENR_USART2EN 1u
 #define RCC_CFGR_SWS 0xcu
 #define RCC_CFGR_HPRE 0xf0u

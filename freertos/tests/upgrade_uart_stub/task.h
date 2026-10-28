@@ -3,6 +3,7 @@
 #include "FreeRTOS.h"
 typedef void *TaskHandle_t;
 #define taskSCHEDULER_NOT_STARTED 0
+#define taskSCHEDULER_RUNNING 1
 BaseType_t xTaskGetSchedulerState(void);
 TickType_t xTaskGetTickCount(void);
 TickType_t xTaskGetTickCountFromISR(void);

@@ -71,11 +71,11 @@ static tp_result adc(void *ctx,uint8_t channel,float *value) {
 }
 static bool interlocks(void *ctx) { (void)ctx; return true; }
 static void safe(void *ctx) { (void)valves(ctx,0); }
-typedef struct { size_t length; uint8_t bytes[32]; } response;
+typedef struct { unsigned port; size_t length; uint8_t bytes[32]; } response;
 static tp_result send_response(void *ctx,unsigned port,const uint8_t *data,size_t len) {
     (void)ctx;
-    if (port || len>sizeof(((response *)0)->bytes)) return TP_IO_ERROR;
-    response reply={.length=len}; memcpy(reply.bytes,data,len);
+    if (port>=2 || len>sizeof(((response *)0)->bytes)) return TP_IO_ERROR;
+    response reply={.port=port,.length=len}; memcpy(reply.bytes,data,len);
     return xQueueSend(responses,&reply,0)==pdPASS ? TP_OK : TP_IO_ERROR;
 }
 static uint16_t crc(const uint8_t *data,size_t len) {
@@ -87,7 +87,7 @@ static int exchange(uint8_t *request,size_t length,response *reply) {
     uint16_t c=crc(request,length-2); request[length-2]=(uint8_t)c; request[length-1]=(uint8_t)(c>>8);
     return tp_runtime_submit(&runtime,0,request,length)==TP_OK &&
         xQueueReceive(responses,reply,pdMS_TO_TICKS(1000))==pdPASS &&
-        reply->length>=5 && crc(reply->bytes,reply->length-2)==
+        reply->port==0 && reply->length>=5 && crc(reply->bytes,reply->length-2)==
             (uint16_t)(reply->bytes[reply->length-2] | (uint16_t)reply->bytes[reply->length-1]<<8);
 }
 static int command(uint8_t value) {
@@ -150,8 +150,29 @@ static int query_last_result(float expected) {
     }
     return 0;
 }
+static int check_two_ports(void) {
+    uint8_t requests[2][8]={{1,3,0,10,0,1,0,0},{2,3,0,20,0,1,0,0}};
+    for (unsigned port=0;port<2;port++) {
+        uint16_t c=crc(requests[port],6);
+        requests[port][6]=(uint8_t)c; requests[port][7]=(uint8_t)(c>>8);
+        if (tp_runtime_submit(&runtime,port,requests[port],8)!=TP_OK) return 0;
+    }
+    unsigned seen=0;
+    for (unsigned i=0;i<2;i++) {
+        response reply;
+        if (xQueueReceive(responses,&reply,pdMS_TO_TICKS(1000))!=pdPASS ||
+            reply.port>=2 || (seen & (1u<<reply.port)) || reply.length!=7 ||
+            reply.bytes[0]!=reply.port+1 || reply.bytes[1]!=3 || reply.bytes[2]!=2 ||
+            reply.bytes[3]!=(reply.port==0 ? 0 : 0x3f) ||
+            reply.bytes[4]!=(reply.port==0 ? 0 : 0x80) ||
+            crc(reply.bytes,5)!=(uint16_t)(reply.bytes[5] | (uint16_t)reply.bytes[6]<<8)) return 0;
+        seen |= 1u<<reply.port;
+    }
+    return seen==3;
+}
 static void check(void *arg) {
     (void)arg; uint16_t values[9];
+    if (!check_two_ports()) goto failed;
     if (!command(1)) goto failed;
     /* Each completed step must wait for a separate advance command. */
     for(uint16_t next=1;next<=5;next++) {
@@ -185,7 +206,7 @@ int main(void) {
         .interlocks_ok=interlocks,.safe_outputs=safe};
     tp_calibration calibration={1,0,0,0.01f,10};
     tp_pid pid={.output_max=1,.integral_max=20};
-    const uint8_t address=1;
+    const uint8_t addresses[]={1,2};
     const tp_config config={.calibration={1,0,0,0.01f,10},.output_max=1,
         .integral_max=20,.max_temperature_c=80,.period_seconds=3600,.slave_address=1};
     memset(slots,0xff,sizeof(slots));
@@ -197,7 +218,7 @@ int main(void) {
     if (!responses || tp_service_init(&service,&controller,recipe,sizeof(recipe)/sizeof(recipe[0]),0)!=TP_OK ||
         tp_service_attach_log(&service,NULL,request_log)!=TP_OK ||
         tp_freertos_event_log_start(&events,&log_io,4096,1)!=TP_OK ||
-        tp_runtime_init(&runtime,&service,&io,&address,1,10)!=TP_OK ||
+        tp_runtime_init(&runtime,&service,&io,addresses,2,10)!=TP_OK ||
         tp_runtime_attach_storage(&runtime,&store,&config)!=TP_OK ||
         tp_runtime_start(&runtime,4096,2)!=TP_OK ||
         xTaskCreate(check,"check",4096,NULL,1,NULL)!=pdPASS) return 1;

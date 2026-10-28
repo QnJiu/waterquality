@@ -118,7 +118,7 @@ int main(int argc,char **argv) {
         if(fault_sensor && recipe[controller.index].kind==TP_STEP_READ) x.sensor_error=true;
         if(stop_rinse && x.pump_active && x.valves==RINSE && command(&modbus,2)!=TP_OK) return 1;
         if(controller.awaiting_advance && (automatic || command(&modbus,5)!=TP_OK)) return 1;
-        tp_service_tick(&service,x.now,daily,(int64_t)(x.now/1000u));
+        tp_service_tick(&service,x.now,daily,946684800LL+(int64_t)(x.now/1000u));
         if(automatic && ((x.now<60000 && controller.state!=TP_IDLE) ||
                          (x.now==60000 && controller.state!=TP_RUNNING))) return 1;
         if(controller.index!=last && controller.state==TP_RUNNING) {

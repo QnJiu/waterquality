@@ -89,7 +89,7 @@ int main(void) {
     tp_service_tick(&s,5000,false,0); assert(c.state==TP_IDLE && s.schedule.last_period_ms==5000);
     uint16_t daily[]={TP_MODE_DAILY,0,1,1,0};
     assert(tp_service_write_holding(&s,1,5,daily)==TP_OK);
-    tp_service_tick(&s,6000,true,60); assert(c.state==TP_IDLE && s.schedule.daily_fired);
+    tp_service_tick(&s,6000,true,946684860LL); assert(c.state==TP_IDLE && s.schedule.daily_fired);
     tp_init(&c,&hal,NULL,NULL,100);
     assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
     before_safe=safe_count; assert(tp_service_enter_maintenance(&s)==TP_OK);
@@ -107,8 +107,11 @@ int main(void) {
     assert(tp_service_attach_config(&s,&saved,NULL,save_config)==TP_OK);
     uint16_t restored[5]; assert(tp_service_read_holding(&s,1,5,restored)==TP_OK);
     for(unsigned i=0;i<5;i++) assert(restored[i]==persisted[i]);
-    tp_service_tick(&s,6000,false,21600); assert(c.state==TP_IDLE);
-    tp_service_tick(&s,7000,true,21600); assert(c.state==TP_RUNNING);
+    tp_service_tick(&s,6000,false,946706400LL); assert(c.state==TP_IDLE);
+    /* Invalid calendar values must neither start nor consume the daily event. */
+    tp_service_tick(&s,6100,true,21600); assert(c.state==TP_IDLE && !s.schedule.daily_fired);
+    tp_service_tick(&s,6200,true,4102466400LL); assert(c.state==TP_IDLE && !s.schedule.daily_fired);
+    tp_service_tick(&s,7000,true,946706400LL); assert(c.state==TP_RUNNING);
     tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,5000)==TP_OK);
     saved.mode=TP_MODE_PERIODIC; saved.period_seconds=2;
     assert(tp_service_attach_config(&s,&saved,NULL,save_config)==TP_OK);

@@ -1,4 +1,5 @@
 """Small teaching GUI for the TP Modbus RTU client (requires pyserial)."""
+import math
 import queue
 from datetime import datetime, timezone
 import time
@@ -50,11 +51,16 @@ def read_clock_status(client):
     return '时钟：%s  %s' % (names.get(snapshot['state'], '未知'), clock)
 
 
-def read_latest_event(client):
-    event = client.log()
+def read_event(client, sequence=None):
+    event = client.log(sequence)
     timestamp = str(event['utc']) + ' UTC秒' if event['utc'] is not None else '无时间'
-    return ('序号：%d  类型：%d  详情：%d  时间：%s  原始值：0x%08X' %
+    text = ('序号：%d  类型：%d  详情：%d  时间：%s  原始值：0x%08X' %
             (event['sequence'], event['type'], event['detail'], timestamp, event['value_bits']))
+    if event['type'] == 2 and event['detail'] == 1:
+        value = event['value_bits']
+        concentration = float32(value >> 16, value & 0xffff)
+        text += '  浓度：%.3f mg/L' % concentration if math.isfinite(concentration) else '  浓度无效'
+    return text
 
 
 CONFIG_LABELS = {
@@ -91,6 +97,7 @@ class App:
         self.cal_status = tk.StringVar(value='标定及核查状态尚未读取')
         self.clock_status = tk.StringVar(value='时钟状态尚未读取')
         self.event_status = tk.StringVar(value='事件尚未读取')
+        self.event_sequence = tk.StringVar(value='')
         frame = ttk.Frame(root, padding=12)
         frame.grid(sticky='nsew')
         row = ttk.Frame(frame); row.grid(sticky='w')
@@ -126,10 +133,22 @@ class App:
         ttk.Button(clock, text='用电脑时间校时', command=lambda: self.start('set_clock')).pack(side='left', padx=4)
         ttk.Label(clock, textvariable=self.clock_status).pack(side='left', padx=4)
         event = ttk.Frame(frame); event.grid(sticky='w', pady=(8, 0))
-        ttk.Button(event, text='读取最新事件', command=lambda: self.start('event')).pack(side='left')
+        ttk.Label(event, text='事件序号（留空读取最新）').pack(side='left')
+        ttk.Entry(event, textvariable=self.event_sequence, width=10).pack(side='left', padx=4)
+        ttk.Button(event, text='读取事件', command=self.read_event).pack(side='left')
         ttk.Label(event, textvariable=self.event_status).pack(side='left', padx=4)
         ttk.Label(frame, textvariable=self.message, foreground='blue').grid(sticky='w')
         root.after(100, self.poll)
+
+    def read_event(self):
+        text = self.event_sequence.get().strip()
+        try:
+            sequence = int(text) if text else None
+            if sequence is not None and not 0 <= sequence <= 0xffffffff:
+                raise ValueError
+        except ValueError:
+            self.message.set('事件序号须为 0 到 4294967295 的整数'); return
+        self.start('event', sequence)
 
     def set_mode(self):
         try:
@@ -193,7 +212,7 @@ class App:
                     elif operation == 'clock_status':
                         result = read_clock_status(client)
                     elif operation == 'event':
-                        result = read_latest_event(client)
+                        result = read_event(client, value)
                     elif operation == 'config_read':
                         result = (client.get_config(), (port, str(baud), str(address)))
                     elif operation == 'config_write':
@@ -244,7 +263,7 @@ class App:
                 self.message.set('参数已读取；写入后需保存并确认保存状态')
             elif operation == 'event':
                 self.event_status.set(result)
-                self.message.set('最新事件已读取')
+                self.message.set('事件已读取')
             else:
                 self.message.set(result)
         self.root.after(100, self.poll)

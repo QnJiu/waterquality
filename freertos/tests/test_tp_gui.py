@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
-from tp_gui import read_status, read_calibration_status, read_clock_status, read_latest_event, parse_config, CONFIG_LABELS
+from tp_gui import read_status, read_calibration_status, read_clock_status, read_event, parse_config, CONFIG_LABELS
 
 
 def words(value):
@@ -86,19 +86,38 @@ class ClockStatusTest(unittest.TestCase):
 class EventTest(unittest.TestCase):
     def test_latest_event_including_missing_timestamp(self):
         class Client:
-            def log(self):
+            def log(self, sequence):
                 return {'sequence': 42, 'type': 2, 'detail': 3, 'utc': None,
                         'value_bits': 0x3f800000}
-        text = read_latest_event(Client())
+        text = read_event(Client())
         for item in ('序号：42', '类型：2', '详情：3', '无时间', '0x3F800000'):
             self.assertIn(item, text)
 
+    def test_historical_measurement_is_decoded(self):
+        class Client:
+            def log(self, sequence):
+                self.sequence = sequence
+                return {'sequence': sequence, 'type': 2, 'detail': 1, 'utc': 1700000000,
+                        'value_bits': 0x3f800000}
+        client = Client()
+        text = read_event(client, 17)
+        self.assertEqual(client.sequence, 17)
+        self.assertIn('序号：17', text)
+        self.assertIn('浓度：1.000 mg/L', text)
+
+    def test_other_events_do_not_claim_measurements(self):
+        class Client:
+            def log(self, sequence):
+                return {'sequence': 1, 'type': 3, 'detail': 1, 'utc': None,
+                        'value_bits': 0x3f800000}
+        self.assertNotIn('浓度：', read_event(Client()))
+
     def test_query_failure_is_propagated(self):
         class Client:
-            def log(self):
+            def log(self, sequence):
                 raise ValueError('日志为空')
         with self.assertRaisesRegex(ValueError, '日志为空'):
-            read_latest_event(Client())
+            read_event(Client())
 
 
 class ConfigInputTest(unittest.TestCase):

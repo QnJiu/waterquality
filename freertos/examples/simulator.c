@@ -196,19 +196,20 @@ int main(int argc,char **argv) {
     if(recover_sensor) {
         if(controller.state!=TP_FAILED || controller.fault!=TP_FAULT_SENSOR ||
            x.valves || x.heater!=0 || x.pump_active || x.adc_ready) return 1;
-        /* Clearing fails while ADC configuration is invalid; recovery also fails
-         * while the simulated physical problem is present. */
-        if(command(&modbus,3)==TP_OK || command(&modbus,8)==TP_OK) return 1;
+        /* Recovery must keep the fault latched while the physical problem
+         * persists. Command 11 then restores ADC, checks inputs and clears it. */
+        if(command(&modbus,3)==TP_OK || command(&modbus,11)==TP_OK ||
+           controller.state!=TP_FAILED || x.adc_ready) return 1;
         x.sensor_error=false;
-        if(command(&modbus,8)!=TP_OK || command(&modbus,3)!=TP_OK ||
-           command(&modbus,1)!=TP_OK) return 1;
+        if(command(&modbus,11)!=TP_OK || controller.state!=TP_IDLE ||
+           !x.adc_ready || command(&modbus,1)!=TP_OK) return 1;
         x.pump_count=0;
         for(;x.now<60000 && controller.state==TP_RUNNING;x.now+=50) {
             x.temperature+=(x.heater*2.0f-(x.temperature-20)*0.02f)*0.05f;
             if(controller.awaiting_advance && command(&modbus,5)!=TP_OK) return 1;
             tp_service_tick(&service,x.now,false,0);
         }
-        printf("sensor recovery: ADC restored, fault cleared, measurement restarted\n");
+        printf("sensor recovery: command 11 restored ADC and cleared fault; measurement restarted\n");
     }
     if(recover) {
         if(controller.state!=TP_FAILED || controller.fault!=TP_FAULT_INTERLOCK ||

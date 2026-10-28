@@ -49,5 +49,34 @@ int main(void) {
     assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && !inputs.leak_fault);
     fake_exti.PR=8; EXTI2_3_IRQHandler(); fake_exti.PR=0;
     assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && inputs.leak_fault);
+    /* A held button at startup must never acknowledge the latched fault. */
+    fake_gpio.IDR=0; tp_f030_reference_inputs_button_tick(0);
+    tp_f030_reference_inputs_button_tick(5000);
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && inputs.leak_fault);
+    /* A stable release arms it, then a two-second hold acknowledges once. */
+    fake_gpio.IDR=16; tp_f030_reference_inputs_button_tick(5100);
+    tp_f030_reference_inputs_button_tick(5200);
+    fake_gpio.IDR=0; tp_f030_reference_inputs_button_tick(5300);
+    tp_f030_reference_inputs_button_tick(7299);
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && inputs.leak_fault);
+    tp_f030_reference_inputs_button_tick(7300);
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && !inputs.leak_fault);
+    /* A new leak while held is not automatically cleared. */
+    fake_exti.PR=8; EXTI2_3_IRQHandler(); fake_exti.PR=0;
+    tp_f030_reference_inputs_button_tick(10000);
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && inputs.leak_fault);
+    /* A press while wet fails; drying without another press cannot clear it. */
+    fake_gpio.IDR=16; tp_f030_reference_inputs_button_tick(10100);
+    tp_f030_reference_inputs_button_tick(10200);
+    fake_gpio.IDR=8; tp_f030_reference_inputs_button_tick(10300);
+    tp_f030_reference_inputs_button_tick(12300);
+    fake_gpio.IDR=0; tp_f030_reference_inputs_button_tick(15000);
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && inputs.leak_fault);
+    /* Tick wrap is safe for both release and press timers. */
+    fake_gpio.IDR=16; tp_f030_reference_inputs_button_tick(UINT32_MAX-50u);
+    tp_f030_reference_inputs_button_tick(49);
+    fake_gpio.IDR=0; tp_f030_reference_inputs_button_tick(50);
+    tp_f030_reference_inputs_button_tick(2050);
+    assert(tp_f030_board_inputs(NULL,&inputs)==TP_OK && !inputs.leak_fault);
     return 0;
 }

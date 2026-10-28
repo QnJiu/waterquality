@@ -6,9 +6,15 @@
 #define REAGENT (1u<<1)
 #define DROPLET (1u<<2)
 #define LEAK (1u<<3)
+#define ACK_BUTTON (1u<<4)
+#define ACK_RELEASE_MS 100u
+#define ACK_HOLD_MS 2000u
 #define INPUT_LINES (LEVEL | REAGENT | DROPLET | LEAK)
 static tp_f030_subordinate *owner;
 static volatile bool leak_latched;
+/* Button must first be released stably; one attempt per long press. */
+static bool release_timing, armed, press_timing;
+static uint32_t button_since;
 
 void tp_f030_reference_inputs_start(tp_f030_subordinate *s) {
     if(!s || !s->task || owner) return;
@@ -16,8 +22,8 @@ void tp_f030_reference_inputs_start(tp_f030_subordinate *s) {
     RCC->APB2ENR|=RCC_APB2ENR_SYSCFGEN;
     (void)RCC->AHBENR; (void)RCC->APB2ENR;
     EXTI->IMR &= ~INPUT_LINES;
-    GPIOA->MODER &= ~((3u<<0)|(3u<<2)|(3u<<6));
-    GPIOA->PUPDR=(GPIOA->PUPDR & ~((3u<<0)|(3u<<2)|(3u<<6))) | (1u<<0)|(1u<<2)|(1u<<6);
+    GPIOA->MODER &= ~((3u<<0)|(3u<<2)|(3u<<6)|(3u<<8));
+    GPIOA->PUPDR=(GPIOA->PUPDR & ~((3u<<0)|(3u<<2)|(3u<<6)|(3u<<8))) | (1u<<0)|(1u<<2)|(1u<<6)|(1u<<8);
     GPIOB->MODER &= ~(3u<<4);
     GPIOB->PUPDR=(GPIOB->PUPDR & ~(3u<<4)) | (1u<<4);
     SYSCFG->EXTICR[0]=(SYSCFG->EXTICR[0] & ~0xffffu) | SYSCFG_EXTICR1_EXTI2_PB;
@@ -40,6 +46,25 @@ tp_result tp_f030_reference_inputs_acknowledge_leak(void) {
     leak_latched=false;
     taskEXIT_CRITICAL();
     return TP_OK;
+}
+void tp_f030_reference_inputs_button_tick(uint32_t now_ms) {
+    if (!owner) return;
+    if (GPIOA->IDR & ACK_BUTTON) {
+        press_timing=false;
+        if (!armed) {
+            if (!release_timing) { release_timing=true; button_since=now_ms; }
+            else if ((uint32_t)(now_ms-button_since)>=ACK_RELEASE_MS) armed=true;
+        }
+    } else {
+        release_timing=false;
+        if (armed) {
+            if (!press_timing) { press_timing=true; button_since=now_ms; }
+            else if ((uint32_t)(now_ms-button_since)>=ACK_HOLD_MS) {
+                armed=false; press_timing=false;
+                (void)tp_f030_reference_inputs_acknowledge_leak();
+            }
+        }
+    }
 }
 tp_result tp_f030_board_inputs(void *ctx,tp_sub_inputs *out) {
     (void)ctx;

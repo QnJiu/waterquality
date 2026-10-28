@@ -192,6 +192,9 @@ static void run(void *ctx) {
     tp_f030_reference_inputs_start(s);
 #endif
     for(;;) {
+#ifdef TP_F030_REFERENCE_INPUTS
+        tp_f030_reference_inputs_button_tick((uint32_t)xTaskGetTickCount());
+#endif
         service_once(s);
         (void)ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(1));
     }

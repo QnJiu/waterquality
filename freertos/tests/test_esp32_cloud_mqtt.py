@@ -116,7 +116,29 @@ class CloudTest(unittest.TestCase):
         notice.callback(topic, payload)
         self.assertIsNone(notice.pending)
 
+    def test_pending_version_saved_and_restored(self):
+        import tempfile
+        notice = load('ota_notice', 'ota_notice.py')
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(pathlib.Path(directory) / 'pending')
+            self.assertIsNone(notice.load_pending(path))
+            notice.save_pending(path, '12')
+            self.assertEqual(notice.load_pending(path), '12')
+            notice.save_pending(path, '13')
+            self.assertEqual(notice.load_pending(path), '13')
+            notice.clear_pending(path)
+            self.assertIsNone(notice.load_pending(path))
+            pathlib.Path(path).write_text('garbled')
+            self.assertIsNone(notice.load_pending(path))
+            with self.assertRaises(ValueError): notice.save_pending(path, '01')
+
     def test_main_reports_only_confirmed_version(self):
+        self.check_main_confirmed_version(False)
+
+    def test_main_recovers_pending_confirmation_after_restart(self):
+        self.check_main_confirmed_version(True)
+
+    def check_main_confirmed_version(self, pending):
         class Pin:
             OUT = 1
             def __init__(self, *args, **kwargs): pass
@@ -140,12 +162,17 @@ class CloudTest(unittest.TestCase):
         cfg = types.SimpleNamespace(PUBLISH_INTERVAL_S=1, UART_ID=2, UART_TX=17,
                                     UART_RX=16, RS485_DE=4, OTA_ENABLED=True,
                                     OTA_TOPIC='/ota/device/upgrade/p/d', OTA_INFORM_TOPIC='/ota/device/inform/p/d',
+                                    OTA_PROGRESS_TOPIC='/ota/device/progress/p/d',
                                     MQTT_TOPIC='/sys/p/d/thing/event/property/post', MODBUS_ADDRESS=1)
+        notice = load('ota_notice', 'ota_notice.py')
+        removed = []
+        notice.load_pending = lambda path: '12' if pending else None
+        notice.clear_pending = lambda path: removed.append(path)
         modules = {'network': types.ModuleType('network'), 'ntptime': types.ModuleType('ntptime'),
                    'machine': types.SimpleNamespace(UART=lambda *a, **kw: object(), Pin=Pin),
                    'umqtt': types.ModuleType('umqtt'), 'umqtt.simple': mqtt, 'config': cfg,
                    'modbus_status': load('modbus_status', 'modbus_status.py'), 'cloud': cloud,
-                   'ota_notice': load('ota_notice', 'ota_notice.py')}
+                   'ota_notice': notice}
         with patch.dict(sys.modules, modules):
             main = load('esp32_cloud_main_run', 'main.py')
             client, versions = Client(), iter([None, 12, 12])
@@ -158,6 +185,9 @@ class CloudTest(unittest.TestCase):
             with self.assertRaises(KeyboardInterrupt): main.main()
         reports = [message for topic, message in client.sent if topic == b'/ota/device/inform/p/d']
         self.assertEqual([m['params']['version'] for m in reports], ['12'])
+        progress = [m['params']['step'] for t, m in client.sent if t == b'/ota/device/progress/p/d']
+        self.assertEqual(progress, ['100'] if pending else [])
+        self.assertEqual(len(removed), int(pending))
 
     def test_ota_progress_after_staging_and_confirmation(self):
         self.check_ota_progress(False)
@@ -197,6 +227,9 @@ class CloudTest(unittest.TestCase):
                                     OTA_INFORM_TOPIC='/ota/device/inform/p/d', OTA_PROGRESS_TOPIC='/ota/device/progress/p/d',
                                     MQTT_TOPIC='status', MODBUS_ADDRESS=1)
         notice = load('ota_notice', 'ota_notice.py')
+        notice.load_pending = lambda path: None
+        notice.save_pending = lambda path, version: None
+        notice.clear_pending = lambda path: None
         class FinishUnknown(TimeoutError): pass
         def stage(*args):
             if uncertain: raise FinishUnknown('response lost')

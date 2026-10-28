@@ -8,7 +8,7 @@ from umqtt.simple import MQTTClient, MQTTException
 import config
 from modbus_status import read_status, read_temperature, read_confirmed_version
 from cloud import publish_status, publish_version, publish_progress
-from ota_notice import UpgradeNotice
+from ota_notice import UpgradeNotice, load_pending, save_pending, clear_pending
 
 
 def connect_wifi():
@@ -52,7 +52,8 @@ def main():
     message_id = 0
     notice = UpgradeNotice(config.OTA_TOPIC) if config.OTA_ENABLED else None
     progress = None
-    awaiting_version = None
+    state_file = getattr(config, "OTA_STATE_FILE", "ota_pending.txt")
+    awaiting_version = load_pending(state_file) if notice else None
     while True:
         client = None
         try:
@@ -87,6 +88,8 @@ def main():
                             last_version = version
                         if awaiting_version == str(version):
                             publish_progress(client, config.OTA_PROGRESS_TOPIC, 100, "Firmware confirmed")
+                            clear_pending(state_file)
+                            notice.completed_version = awaiting_version
                             awaiting_version = None
                     next_publish = time.ticks_add(time.ticks_ms(), config.PUBLISH_INTERVAL_S * 1000)
                 time.sleep_ms(1000)
@@ -100,7 +103,11 @@ def main():
             from ota_client import ProtocolError, FinishUnknown
             url, version = notice.pending
             notice.pending = None
+            saved = False
             try:
+                save_pending(state_file, version)
+                saved = True
+                awaiting_version = version
                 result = stage_bundle(url, version, config, UART, Pin, time)
                 notice.completed_version = version
                 awaiting_version = version
@@ -112,7 +119,12 @@ def main():
                 progress = (1, "Finish response lost; awaiting firmware confirmation")
                 print("OTA result unknown:", exc)
             except (OSError, ValueError, ProtocolError) as exc:
-                awaiting_version = None
+                if saved:
+                    try:
+                        clear_pending(state_file)
+                        awaiting_version = None
+                    except OSError as cleanup_error:
+                        print("Cannot clear saved OTA version:", cleanup_error)
                 progress = (-1, "Download or staging failed")
                 print("OTA staging failed:", exc)
         time.sleep_ms(5000)

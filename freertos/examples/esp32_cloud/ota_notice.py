@@ -1,6 +1,55 @@
 """Receive an Alibaba OTA notice and stage a signed bundle on F407."""
 import json
+import os
 import struct
+
+
+def valid_version(version):
+    return (isinstance(version, str) and version.isdigit() and len(version) <= 10
+            and not version.startswith("0") and int(version) <= 0xffffffff)
+
+
+def load_pending(path):
+    try:
+        with open(path, "r") as source:
+            version = source.read(11)
+    except OSError:
+        return None
+    if not valid_version(version):
+        print("Invalid saved OTA version; wait for a new notice")
+        return None
+    return version
+
+
+def save_pending(path, version):
+    if not valid_version(version):
+        raise ValueError("invalid OTA version")
+    # Write before touching the old record, then replace it.  On filesystems
+    # without overwrite-rename, removal leaves a small interruption window.
+    temp = path + ".tmp"
+    with open(temp, "w") as target:
+        target.write(version)
+        target.flush()
+    try:
+        os.rename(temp, path)
+    except OSError:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        os.rename(temp, path)
+
+
+def clear_pending(path):
+    try:
+        os.remove(path)
+    except OSError:
+        # Missing is harmless; leave other errors visible to the caller.
+        try:
+            os.stat(path)
+        except OSError:
+            return
+        raise
 
 
 class UpgradeNotice:
@@ -17,9 +66,7 @@ class UpgradeNotice:
             data = message["data"]
             url, version = data["url"], data["version"]
             if (not isinstance(url, str) or not url.startswith("https://") or
-                    not isinstance(version, str) or not version.isdigit() or
-                    len(version) > 10 or version.startswith("0") or
-                    int(version) > 0xffffffff or version == self.completed_version):
+                    not valid_version(version) or version == self.completed_version):
                 return
             self.pending = (url, version)
         except (ValueError, TypeError, KeyError):

@@ -25,3 +25,6 @@ OTA_UART_ID = 1
 OTA_UART_TX = 25
 OTA_UART_RX = 26
 OTA_CA_FILE = "ota-ca.pem"
+
+# Retain the target version across ESP32 restarts.
+OTA_STATE_FILE = "ota_pending.txt"

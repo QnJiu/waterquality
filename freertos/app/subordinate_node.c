@@ -5,8 +5,9 @@ static tp_result send(void *ctx,const uint8_t *data,size_t length) {
     tp_sub_node *n=ctx;
     return n->io.send(n->io.ctx,data,length);
 }
-static tp_result snapshot(void *ctx,tp_sub_status *status) {
-    tp_sub_node *n=ctx; tp_sub_inputs input={0};
+tp_result tp_sub_node_snapshot(tp_sub_node *n,tp_sub_status *status) {
+    if(!n || !status || !n->link.initialized) return TP_INVALID;
+    tp_sub_inputs input={0};
     tp_result r=n->io.read_inputs(n->io.ctx,&input);
     status->droplet_count=n->droplets;
     status->faults=0;
@@ -15,6 +16,9 @@ static tp_result snapshot(void *ctx,tp_sub_status *status) {
     if(r==TP_OK && input.level_fault) status->faults|=TP_SUB_LEVEL_FAULT;
     if(r==TP_OK && input.leak_fault) status->faults|=TP_SUB_LEAK_FAULT;
     return TP_OK;
+}
+static tp_result snapshot(void *ctx,tp_sub_status *status) {
+    return tp_sub_node_snapshot(ctx,status);
 }
 tp_result tp_sub_node_init(tp_sub_node *n,const tp_sub_node_io *io,uint32_t baud,uint8_t bits) {
     if(!n || !io || !io->send || !io->read_inputs) return TP_INVALID;

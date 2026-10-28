@@ -32,7 +32,12 @@ static tp_result heater(void *p,float value) { ((plant *)p)->heater=value; retur
 static tp_result adc(void *p,uint8_t channel,float *value) {
     static const float samples[]={1.0f,0.5f,0.1f};
     if(((plant *)p)->sensor_error || channel>=3) return TP_IO_ERROR;
-    *value=samples[channel]; return TP_OK;
+    plant *x=p;
+    /* For calibration the selected standard determines the reacted signal. */
+    if (x->valves==16 || x->valves==32) {
+        *value=channel==0 ? 1.0f : (channel==1 ? (x->valves==16 ? 1.0f : 0.1f) : 0.0f);
+    } else *value=samples[channel];
+    return TP_OK;
 }
 static bool interlock(void *p) { return ((plant *)p)->interlock; }
 static void safe(void *p) {
@@ -86,7 +91,58 @@ static const tp_step recipe[]={
     {.kind=TP_STEP_END}
 };
 
+
+/* Two illustrative standard sources. Real selection and chemistry are board-specific. */
+static const tp_step low_standard[]={
+    {.kind=TP_STEP_VALVES,.arg.valves={16}},
+    {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_BLANK,0,1}},
+    {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_REACTED,1,1}},
+    {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_TURBIDITY,2,1}},
+    {.kind=TP_STEP_END}
+};
+static const tp_step high_standard[]={
+    {.kind=TP_STEP_VALVES,.arg.valves={32}},
+    {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_BLANK,0,1}},
+    {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_REACTED,1,1}},
+    {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_TURBIDITY,2,1}},
+    {.kind=TP_STEP_END}
+};
+static tp_result save_example(void *ctx,const tp_config *config) {
+    (void)ctx; (void)config; return TP_OK;
+}
+static int calibration_example(void) {
+    plant x={.temperature=20,.interlock=true};
+    tp_hal hal={&x,valves,pump,pump_poll,temperature,heater,adc,interlock,safe};
+    tp_config cfg={.calibration={1,0,0,0.01f,10},.kp=0.2f,.ki=0.02f,
+        .output_max=1,.integral_max=20,.max_temperature_c=80,.period_seconds=60,.slave_address=1};
+    tp_pid pid={.kp=cfg.kp,.ki=cfg.ki,.output_max=cfg.output_max,.integral_max=cfg.integral_max};
+    tp_controller controller; tp_init(&controller,&hal,&cfg.calibration,&pid,80);
+    tp_service service;
+    size_t n=sizeof(low_standard)/sizeof(low_standard[0]);
+    if(tp_service_init(&service,&controller,recipe,sizeof(recipe)/sizeof(recipe[0]),0)!=TP_OK ||
+       tp_service_attach_config(&service,&cfg,&x,save_example)!=TP_OK ||
+       tp_service_attach_preflight(&service,&x,preflight)!=TP_OK ||
+       tp_service_attach_auto_calibration(&service,low_standard,n,high_standard,n,0,5,0.01f)!=TP_OK ||
+       tp_service_attach_auto_standard(&service,high_standard,n,5,0.01f)!=TP_OK) return 1;
+    tp_modbus modbus={&service,1,tp_service_read_holding,tp_service_write_holding};
+    if(command(&modbus,6)!=TP_OK) return 1;
+    for(x.now=0;x.now<5000 && service.auto_cal.state!=TP_AUTO_CAL_COMPLETE;x.now+=50)
+        tp_service_tick(&service,x.now,false,0);
+    if(service.auto_cal.state!=TP_AUTO_CAL_COMPLETE || command(&modbus,7)!=TP_OK ||
+       fabsf(controller.calibration.slope-5)>0.001f) return 1;
+    printf("two-point calibration applied: slope=%.3f intercept=%.3f (not saved)\n",
+           (double)controller.calibration.slope,(double)controller.calibration.intercept);
+    if(command(&modbus,9)!=TP_OK) return 1;
+    for(;x.now<10000 && service.auto_standard.state!=TP_STANDARD_COMPLETE;x.now+=50)
+        tp_service_tick(&service,x.now,false,0);
+    printf("standard check: actual=%.3f passed=%d\n",
+           (double)service.auto_standard.actual,service.auto_standard.passed);
+    return service.auto_standard.state==TP_STANDARD_COMPLETE && service.auto_standard.passed &&
+        !x.valves && !x.pump_active && x.heater==0 && x.safe_count==3 ? 0 : 1;
+}
+
 int main(int argc,char **argv) {
+    if(argc==2 && !strcmp(argv[1],"calibration")) return calibration_example();
     bool fault_interlock=argc==2 && !strcmp(argv[1],"interlock");
     bool fault_sensor=argc==2 && !strcmp(argv[1],"sensor");
     bool stop_rinse=argc==2 && !strcmp(argv[1],"stop-rinse");
@@ -94,7 +150,7 @@ int main(int argc,char **argv) {
     bool periodic=argc==2 && !strcmp(argv[1],"periodic");
     bool daily=argc==2 && !strcmp(argv[1],"daily");
     if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover && !periodic && !daily)) {
-        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|periodic|daily]\n"); return 2;
+        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|periodic|daily|calibration]\n"); return 2;
     }
     plant x={.temperature=20,.interlock=true};
     tp_hal hal={&x,valves,pump,pump_poll,temperature,heater,adc,interlock,safe};

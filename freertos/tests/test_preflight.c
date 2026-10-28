@@ -12,6 +12,8 @@ int main(void) {
     assert(tp_preflight_check(&io,&mask)==TP_IO_ERROR && mask==(TP_PREFLIGHT_INTERLOCK|TP_PREFLIGHT_OVERTEMPERATURE|TP_PREFLIGHT_REAGENT|TP_PREFLIGHT_LEVEL));
     f.ok=true; f.temp=NAN; f.faults=0x4000;
     assert(tp_preflight_check(&io,&mask)==TP_IO_ERROR && mask==(TP_PREFLIGHT_TEMPERATURE_SENSOR|TP_PREFLIGHT_RESOURCE_UNKNOWN));
+    f.temp=20; f.faults=TP_PREFLIGHT_LEAK|0x4000;
+    assert(tp_preflight_check(&io,&mask)==TP_IO_ERROR && mask==(TP_PREFLIGHT_LEAK|TP_PREFLIGHT_RESOURCE_UNKNOWN));
     f.result=TP_IO_ERROR; f.temp=20; f.faults=0;
     assert(tp_preflight_check(&io,&mask)==TP_IO_ERROR && mask==TP_PREFLIGHT_TEMPERATURE_SENSOR);
     io.resource_faults=0; assert(tp_preflight_check(&io,&mask)==TP_INVALID);

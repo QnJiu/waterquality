@@ -41,6 +41,7 @@ class SecureUpgradeTests(unittest.TestCase):
         public = point.x.to_bytes(32, 'big') + point.y.to_bytes(32, 'big')
         old_image = b'factory image'
         old_manifest = signing.create_manifest(old_image, 0x12345678, 1, 0, key)
+        self.factory = (public, old_manifest, old_image)
         self.image = bytes(range(256)) * 3
         self.manifest = signing.create_manifest(self.image, 0x12345678, 2, 1, key)
         self.manifest_id = hashlib.sha256(self.manifest[:52]).digest()
@@ -97,6 +98,58 @@ class SecureUpgradeTests(unittest.TestCase):
         self.assertEqual(state['phase'], 3)
         self.assertEqual((self.lib.sim_secure_erases(), self.lib.sim_secure_writes()), (1, 3))
         self.assertEqual(self.lib.sim_secure_select(), 1)
+
+
+class StagedUpgradeTests(unittest.TestCase):
+    def setUp(self):
+        SecureUpgradeTests.setUp(self)
+        self.lib.sim_stage_init.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
+        public, manifest, image = self.factory
+        self.assertEqual(self.lib.sim_stage_init(public, manifest, image, len(image)), 0)
+
+    def upload(self):
+        return u.upload(u.Client(Transport(self.lib), 1), self.manifest, self.manifest_id, self.image)
+
+    def install(self):
+        self.assertEqual(self.lib.sim_stage_install_begin(), u.OK)
+        for _ in range(20):
+            result = self.lib.sim_stage_install_step()
+            if result != u.BUSY:
+                self.assertEqual(result, u.OK)
+                return
+        self.fail('installation did not finish')
+
+    def test_signed_staging_and_boot_confirmation(self):
+        self.assertEqual(self.upload()['phase'], 3)
+        self.assertEqual(self.lib.sim_secure_erases(), 0)
+        self.install()
+        self.assertEqual(self.lib.sim_stage_reboot(), 0)
+        self.assertEqual(self.lib.sim_secure_select(), 1)
+        self.assertEqual(self.lib.sim_secure_confirm(1), u.OK)
+        self.assertEqual(self.lib.sim_stage_reboot(), 0)
+        self.assertEqual(self.lib.sim_secure_select(), 1)
+
+    def test_resume_after_disconnect_and_reboot_during_install(self):
+        client = u.Client(Transport(self.lib), 1)
+        self.assertEqual(client.command(u.BEGIN, self.manifest)[0], u.OK)
+        self.assertEqual(client.command(u.WRITE, bytes(4) + self.image[:256])[0], u.OK)
+        self.lib.sim_stage_disconnect()
+        self.assertEqual(self.upload()['phase'], 3)
+        self.assertEqual(self.lib.sim_stage_erases(), 1)
+        self.assertEqual(self.lib.sim_stage_install_begin(), u.OK)
+        self.assertEqual(self.lib.sim_stage_install_step(), u.BUSY)
+        self.assertEqual(self.lib.sim_stage_reboot(), 0)
+        self.assertEqual(self.upload()['phase'], 3)
+        self.install()
+        self.assertEqual(self.lib.sim_stage_erases(), 1)
+        self.assertEqual(self.lib.sim_secure_select(), 1)
+
+    def test_tampering_rejected_before_internal_flash_erase(self):
+        self.upload()
+        self.lib.sim_stage_corrupt()
+        self.assertEqual(self.lib.sim_stage_install_begin(), u.INVALID)
+        self.assertEqual(self.lib.sim_secure_erases(), 0)
+        self.assertEqual(self.lib.sim_secure_select(), 0)
 
 
 if __name__ == '__main__':

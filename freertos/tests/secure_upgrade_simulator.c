@@ -1,6 +1,7 @@
 /* In-memory integration backend for real signed upgrades; never a production key. */
 #include "tp_secure_upgrade.h"
 #include "tp_upgrade_wire.h"
+#include "tp_stage_session.h"
 #include <string.h>
 #define CAP 1024u
 typedef struct { uint8_t slot[2][128]; } store;
@@ -72,3 +73,46 @@ int sim_secure_writes(void) { return (int)writes; }
 int sim_secure_erases(void) { return (int)erases; }
 void sim_secure_corrupt_image(uint8_t bank) { if(bank<2) images[bank][0]^=1; }
 void sim_secure_corrupt_manifest(uint8_t bank) { if(bank<2) ms.slot[bank][52]^=1; }
+
+/* Separate staging storage survives simulated reboots, just as the target
+ * FRAM and external flash do. All keys remain ephemeral test fixtures. */
+static store stage_meta;
+static uint8_t stage_image[2][CAP];
+static tp_stage_session stage;
+static bool stage_locked;
+static unsigned stage_erases;
+static tp_result stage_read(void *v,uint8_t bank,uint32_t off,void *out,size_t n) {
+    (void)v; if(bank>1 || off>CAP || n>CAP-off) return TP_INVALID;
+    memcpy(out,stage_image[bank]+off,n); return TP_OK;
+}
+static tp_result stage_erase(void *v,uint8_t bank) {
+    (void)v; if(bank!=1) return TP_INVALID;
+    memset(stage_image[bank],0xff,CAP); stage_erases++; return TP_OK;
+}
+static tp_result stage_write(void *v,uint8_t bank,uint32_t off,const void *data,size_t n) {
+    (void)v; if(bank!=1 || off>CAP || n>CAP-off) return TP_INVALID;
+    uint8_t *dst=stage_image[bank]+off; const uint8_t *src=data;
+    for(size_t i=0;i<n;i++) if((dst[i]&src[i])!=src[i]) return TP_IO_ERROR;
+    for(size_t i=0;i<n;i++) dst[i]&=src[i]; return TP_OK;
+}
+static bool stage_lock(void *v) { (void)v; if(stage_locked) return false; stage_locked=true; return true; }
+static void stage_unlock(void *v) { (void)v; stage_locked=false; }
+static tp_result stage_maintenance(void *v) { (void)v; return TP_OK; }
+static int stage_setup(void) {
+    const uint32_t capacity[2]={CAP,CAP};
+    tp_download_io storage={{&stage_meta,rd,erase,wr},NULL,stage_erase,stage_read,stage_write,NULL};
+    stage_locked=false;
+    if(tp_stage_session_init(&stage,&secure,&storage,capacity,NULL,stage_lock,stage_unlock,stage_maintenance)!=TP_OK) return -1;
+    tp_upgrade_wire_set_executor(&wire,&stage,tp_stage_session_execute);
+    return 0;
+}
+int sim_stage_init(const uint8_t *pub,const uint8_t *manifest,const uint8_t *image,size_t size) {
+    memset(&stage_meta,0xff,sizeof(stage_meta)); memset(stage_image,0xff,sizeof(stage_image)); stage_erases=0;
+    return sim_secure_init(pub,manifest,image,size)==0 ? stage_setup() : -1;
+}
+int sim_stage_reboot(void) { return setup()==0 ? stage_setup() : -1; }
+void sim_stage_disconnect(void) { tp_stage_session_abort(&stage); /* Each exchange in this simulator is a complete frame. */ }
+int sim_stage_install_begin(void) { return (int)tp_stage_session_install_begin(&stage); }
+int sim_stage_install_step(void) { return (int)tp_stage_session_install_step(&stage); }
+unsigned sim_stage_erases(void) { return stage_erases; }
+void sim_stage_corrupt(void) { stage_image[1][0]^=1; }

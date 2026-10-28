@@ -33,6 +33,10 @@ if(TP_BUILD_HOST_TESTS)
     target_include_directories(test_f030_subordinate PRIVATE tests/f030_stub firmware_f030)
     target_link_libraries(test_f030_subordinate PRIVATE tp_core)
     add_test(NAME f030_subordinate COMMAND test_f030_subordinate)
+    add_executable(test_f030_i2c tests/test_f030_i2c.c firmware_f030/tp_f030_i2c.c)
+    target_include_directories(test_f030_i2c PRIVATE tests/i2c_f030_stub firmware_f030)
+    target_link_libraries(test_f030_i2c PRIVATE tp_core)
+    add_test(NAME f030_i2c COMMAND test_f030_i2c)
 endif()
 
 

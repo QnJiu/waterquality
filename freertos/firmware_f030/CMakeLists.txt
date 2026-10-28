@@ -8,10 +8,10 @@ set(DEVICE ${ROOT}/third_party/STM32F0-CMSIS)
 option(TP_F030_SUBORDINATE "Build the subordinate reference entry" OFF)
 set(TP_F030_INPUT_CONFIG "" CACHE FILEPATH "Board input callback implementation")
 if(TP_F030_SUBORDINATE)
-    set(ENTRY main_subordinate.c tp_f030_subordinate.c
+    set(ENTRY main_subordinate.c tp_f030_subordinate.c tp_f030_i2c.c
         ${ROOT}/app/subordinate_app.c ${ROOT}/app/subordinate_node.c
         ${ROOT}/app/door.c ${ROOT}/app/door_service.c
-        ${ROOT}/drivers/pn532.c ${ROOT}/drivers/pn532_scan.c
+        ${ROOT}/drivers/pn532.c ${ROOT}/drivers/pn532_scan.c ${ROOT}/drivers/pn532_i2c.c
         ${ROOT}/protocol/rtu_receiver.c ${ROOT}/protocol/subordinate.c
         ${ROOT}/protocol/subordinate_poll.c ${ROOT}/protocol/subordinate_link.c)
     if(TP_F030_INPUT_CONFIG)

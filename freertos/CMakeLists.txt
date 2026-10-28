@@ -4,7 +4,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 add_library(tp_core STATIC app/controller.c app/preflight.c app/health.c app/event_transition.c app/clock_cache.c app/valve_policy.c app/pulse_counter.c app/heater_duty.c app/measurement.c app/schedule.c app/service.c app/door.c app/door_service.c app/subordinate_node.c app/subordinate_app.c app/adc_status.c
     drivers/ads1220.c drivers/adc_reader.c drivers/mb85rc16.c drivers/ds3231.c drivers/ntc.c drivers/pn532.c drivers/pn532_scan.c drivers/pn532_i2c.c protocol/modbus_rtu.c protocol/rtu_receiver.c protocol/rtu_port.c protocol/subordinate.c protocol/subordinate_poll.c protocol/subordinate_link.c
-    storage/config_store.c storage/event_log.c bootloader/boot.c bootloader/download.c bootloader/upgrade.c bootloader/upgrade_commands.c bootloader/upgrade_wire.c bootloader/upgrade_stream.c bootloader/image_hash.c bootloader/signed_manifest.c bootloader/signed_boot.c third_party/tinycrypt/source/ecc.c third_party/tinycrypt/source/ecc_dsa.c third_party/tinycrypt/source/sha256.c third_party/tinycrypt/source/utils.c)
+    storage/config_store.c storage/event_log.c bootloader/boot.c bootloader/download.c bootloader/upgrade.c bootloader/upgrade_commands.c bootloader/upgrade_wire.c bootloader/upgrade_stream.c bootloader/image_hash.c bootloader/signed_manifest.c bootloader/signed_boot.c bootloader/secure_upgrade.c third_party/tinycrypt/source/ecc.c third_party/tinycrypt/source/ecc_dsa.c third_party/tinycrypt/source/sha256.c third_party/tinycrypt/source/utils.c)
 set_target_properties(tp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(tp_core PUBLIC include PRIVATE third_party/tinycrypt/include)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
@@ -54,11 +54,21 @@ if(TP_BUILD_HOST_TESTS)
     target_include_directories(test_f030_pn532_door PRIVATE firmware_f030)
     target_link_libraries(test_f030_pn532_door PRIVATE tp_core)
     add_test(NAME f030_pn532_door COMMAND test_f030_pn532_door)
+    add_library(secure_upgrade_simulator SHARED tests/secure_upgrade_simulator.c)
+    target_link_libraries(secure_upgrade_simulator PRIVATE tp_core)
+    set_target_properties(secure_upgrade_simulator PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
     add_library(upgrade_simulator SHARED tests/upgrade_simulator.c)
     target_link_libraries(upgrade_simulator PRIVATE tp_core)
     set_target_properties(upgrade_simulator PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
+        execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import cryptography" RESULT_VARIABLE TP_HAVE_CRYPTO OUTPUT_QUIET ERROR_QUIET)
+        if(TP_HAVE_CRYPTO EQUAL 0)
+            add_test(NAME secure_upgrade_interop COMMAND ${CMAKE_COMMAND} -E env
+                "TP_SECURE_SIM_LIB=$<TARGET_FILE:secure_upgrade_simulator>"
+                "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_secure_upgrade_interop.py -v)
+            add_test(NAME sign_manifest_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_sign_manifest.py -v)
+        endif()
         add_test(NAME upgrade_interop COMMAND ${CMAKE_COMMAND} -E env
             "TP_UP_SIM_LIB=$<TARGET_FILE:upgrade_simulator>"
             "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_upgrade_interop.py -v)

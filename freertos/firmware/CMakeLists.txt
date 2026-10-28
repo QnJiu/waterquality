@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
 set(KERNEL ${ROOT}/third_party/FreeRTOS-Kernel)
 set(DEVICE ${ROOT}/third_party/STM32F4-CMSIS)
-add_executable(tp_f407.elf main.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_usart3_rtu.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
+add_executable(tp_f407.elf main.c tp_f407_emergency.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_usart3_rtu.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${KERNEL}/tasks.c ${KERNEL}/queue.c ${KERNEL}/list.c ${KERNEL}/timers.c
     ${KERNEL}/portable/GCC/ARM_CM4F/port.c ${KERNEL}/portable/MemMang/heap_4.c

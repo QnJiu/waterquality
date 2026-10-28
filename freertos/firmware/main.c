@@ -2,6 +2,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "stm32f4xx.h"
+#include "tp_f407_emergency.h"
 volatile uint32_t tp_scheduler_heartbeat;
 static void heartbeat(void *arg) {
     (void)arg;
@@ -10,6 +11,7 @@ static void heartbeat(void *arg) {
 void tp_platform_assert(const char *file, int line) {
     (void)file; (void)line;
     __disable_irq();
+    tp_f407_emergency_off();
     for (;;) { __NOP(); }
 }
 void vApplicationMallocFailedHook(void) { tp_platform_assert(__FILE__, __LINE__); }

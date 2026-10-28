@@ -1,6 +1,6 @@
 # STM32F407 FreeRTOS 启动骨架
 
-这是独立的交叉编译目标，暂以 STM32F407VG（1 MiB Flash、128 KiB 主 SRAM）为参考芯片；引脚、外设、外部晶振和检测配方均未配置。时钟采用复位后的 16 MHz HSI，CMSIS 启动代码初始化 FPU，FreeRTOS 使用 Cortex-M4F 硬浮点端口。固件只创建每秒递增 `tp_scheduler_heartbeat` 的任务，调试器可观察该变量。它不启动检测业务，不操作泵、阀或加热器；断言只关中断并停机，尚无执行器安全关断，不可用于控制真实仪器。
+这是独立的交叉编译目标，暂以 STM32F407VG（1 MiB Flash、128 KiB 主 SRAM）为参考芯片；引脚、外设、外部晶振和检测配方均未配置。时钟采用复位后的 16 MHz HSI，CMSIS 启动代码初始化 FPU，FreeRTOS 使用 Cortex-M4F 硬浮点端口。固件只创建每秒递增 `tp_scheduler_heartbeat` 的任务，调试器可观察该变量。它不启动检测业务，不操作泵、阀或加热器；断言会关中断，强制参考阀门、泵使能和加热输出进入关闭状态后停机；复位阶段、CPU 卡死以及独立硬件保护仍需另行处理。
 
 需要 CMake、Ninja 和 arm-none-eabi-gcc（本机使用 GCC 16.1.0）。在本目录执行：
 

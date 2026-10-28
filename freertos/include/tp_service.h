@@ -55,7 +55,9 @@ typedef struct {
 tp_result tp_service_init(tp_service *s, tp_controller *controller,
                           const tp_step *recipe, size_t recipe_len, uint32_t now_ms);
 /* request_save must copy the configuration into a worker queue without blocking.
- * Completion is reported back in the owner task with tp_service_save_complete. */
+ * Completion is reported back in the owner task with tp_service_save_complete.
+ * Reattachment is rejected while running, saving, calibrating, checking a
+ * standard, or in upgrade maintenance. Call only from the owner task. */
 tp_result tp_service_attach_config(tp_service *s, const tp_config *cfg,
     void *ctx, tp_result (*request_save)(void *, const tp_config *));
 void tp_service_save_complete(tp_service *s, tp_result result);

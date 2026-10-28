@@ -129,8 +129,9 @@ static void apply_config(tp_service *s, const tp_config *cfg) {
 }
 tp_result tp_service_attach_config(tp_service *s, const tp_config *cfg,
     void *ctx, tp_result (*request_save)(void *, const tp_config *)) {
-    if (!s || !s->controller || !request_save || s->controller->state == TP_RUNNING ||
-        tp_config_validate(cfg) != TP_OK) return TP_INVALID;
+    if (!s || !s->controller || !request_save || tp_config_validate(cfg) != TP_OK) return TP_INVALID;
+    if (s->controller->state == TP_RUNNING || s->maintenance || s->save_status == 2 ||
+        calibration_running(s) || standard_running(s)) return TP_BUSY;
     apply_config(s,cfg); s->save_ctx=ctx; s->request_save=request_save; s->save_status=1;
     return TP_OK;
 }

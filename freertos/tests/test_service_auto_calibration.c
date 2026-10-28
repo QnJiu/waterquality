@@ -86,6 +86,7 @@ int main(void) {
         s.auto_standard.state=kind ? TP_STANDARD_RUNNING : TP_STANDARD_IDLE;
         unsigned saves=f.saves, safes=f.safe;
         uint16_t save_cmd=4, recovery_cmd=8, cal_cmd=6, apply_cmd=7;
+        assert(tp_service_attach_config(&s,&cfg,&f,save)==TP_BUSY);
         assert(tp_service_write_holding(&s,0,1,&save_cmd)==TP_BUSY);
         assert(tp_service_write_holding(&s,0,1,&recovery_cmd)==TP_BUSY);
         assert(tp_service_write_holding(&s,0,1,&cal_cmd)==TP_BUSY);
@@ -112,6 +113,7 @@ int main(void) {
     exchange(&m,6,0,9,r); assert(r[1]==6);
     assert(tp_service_enter_maintenance(&s)==TP_OK);
     assert(s.auto_standard.state==TP_STANDARD_CANCELLED && c.fault==TP_FAULT_STOP);
+    assert(tp_service_attach_config(&s,&cfg,&f,save)==TP_BUSY);
     /* At a scheduled boundary, the automatic workflow still owns a completed
      * controller until it publishes its result. Do not attempt a normal start. */
     for (unsigned kind=0; kind<2; kind++) {

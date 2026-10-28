@@ -127,7 +127,10 @@ int main(void) {
     assert(tp_service_write_holding(&s,1,5,persisted)==TP_OK);
     uint16_t save=4; assert(tp_service_write_holding(&s,0,1,&save)==TP_OK);
     assert(saved.mode==TP_MODE_DAILY && saved.period_seconds==120 && saved.daily_minute==60 && saved.utc_offset_minutes==-300);
+    assert(tp_service_attach_config(&s,&cfg,NULL,save_config)==TP_BUSY);
+    assert(s.save_status==2 && s.config.mode==TP_MODE_DAILY);
     tp_service_save_complete(&s,TP_OK);
+    assert(s.save_status==3);
     tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,5000)==TP_OK);
     assert(tp_service_attach_config(&s,&saved,NULL,save_config)==TP_OK);
     uint16_t restored[5]; assert(tp_service_read_holding(&s,1,5,restored)==TP_OK);

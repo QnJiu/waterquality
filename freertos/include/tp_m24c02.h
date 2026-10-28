@@ -17,4 +17,7 @@ tp_result tp_m24c02_init(tp_m24c02 *dev, const tp_i2c_io *bus, uint8_t address7,
 tp_result tp_m24c02_read(tp_m24c02 *dev, uint16_t offset, void *data, size_t size);
 /* Each page is committed separately. On error, earlier pages may have changed. */
 tp_result tp_m24c02_write(tp_m24c02 *dev, uint16_t offset, const void *data, size_t size);
+/* Uses all 256 bytes as two 128-byte configuration slots. The device and
+ * its I2C context must outlive the store; accesses must be serialized. */
+tp_store_io tp_m24c02_store(tp_m24c02 *dev);
 #endif

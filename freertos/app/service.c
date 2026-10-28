@@ -247,6 +247,10 @@ static uint16_t read_one(const tp_service *s, uint16_t a) {
     default: return 0;
     }
 }
+tp_result tp_service_attach_version(tp_service *s,void *ctx,uint32_t (*snapshot)(void *)) {
+    if (!s || !s->controller || !snapshot || s->confirmed_version) return TP_INVALID;
+    s->version_ctx=ctx; s->confirmed_version=snapshot; return TP_OK;
+}
 tp_result tp_service_attach_log_stats(tp_service *s,void *ctx,void (*snapshot)(void *,uint32_t[4])) {
     if (!s || !s->controller || !snapshot || s->log_stats) return TP_INVALID;
     s->log_stats_ctx=ctx; s->log_stats=snapshot; return TP_OK;
@@ -279,6 +283,12 @@ tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, u
         (uint32_t)address+count<=47 && count) {
         uint16_t words[27]; config_words(&s->config,words);
         for (uint16_t i=0;i<count;i++) values[i]=words[address-20+i];
+        return TP_OK;
+    }
+    if (s && s->controller && values && count && address>=119 && (uint32_t)address+count<=122) {
+        uint32_t version=s->confirmed_version ? s->confirmed_version(s->version_ctx) : 0;
+        uint16_t words[3]={version ? 1 : 0,(uint16_t)(version>>16),(uint16_t)version};
+        for (uint16_t i=0;i<count;i++) values[i]=words[address-119+i];
         return TP_OK;
     }
     if (s && s->controller && values && count && address>=110 && (uint32_t)address+count<=119) {

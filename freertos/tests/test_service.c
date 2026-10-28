@@ -27,6 +27,9 @@ int main(void) {
     tp_init(&c,&hal,NULL,NULL,100);
     tp_step recipe[]={ {.kind=TP_STEP_WAIT,.timeout_ms=1000,.arg.wait={1000}}, {.kind=TP_STEP_END} };
     tp_service s; assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    uint16_t version[3];
+    assert(tp_service_read_holding(&s,119,3,version)==TP_OK);
+    assert(version[0]==0 && version[1]==0 && version[2]==0);
     uint16_t config[]={1,0,1,0,0};
     assert(tp_service_write_holding(&s,1,5,config)==TP_OK);
     tp_service_tick(&s,999,false,0); assert(c.state==TP_IDLE);

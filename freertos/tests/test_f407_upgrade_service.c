@@ -18,7 +18,8 @@ BaseType_t xTaskGetSchedulerState(void) { return scheduler; }
 tp_result tp_f407_upgrade_init(tp_f407_upgrade *u,const tp_f407_upgrade_options *o) {
     assert(u==&expected->upgrade && o->product_id==42 && stage==0); stage=1;
     if(fail_at==1) return TP_IO_ERROR;
-    u->running_bank=1; return TP_OK;
+    u->running_bank=1; u->boot_at_start.phase=TP_BOOT_TRIAL;
+    u->boot_at_start.candidate_version=0x12345678; return TP_OK;
 }
 tp_result tp_freertos_trial_start(tp_freertos_trial *t,const tp_boot_io *boot,uint8_t bank,
     uint32_t stable,uint32_t gap,uint32_t period,uint32_t timeout,uint16_t stack,
@@ -31,7 +32,15 @@ tp_result tp_freertos_trial_start(tp_freertos_trial *t,const tp_boot_io *boot,ui
     app_ok=true; board_ok=false; assert(!h(ctx));
     board_ok=true; assert(h(ctx));
     assert(app_calls==3 && board_calls==3); app_calls=board_calls=0;
-    f(ctx,TP_OK); stage=2;
+    uint16_t version[3];
+    assert(tp_service_read_holding(&app.service,119,3,version)==TP_OK);
+    assert(version[0]==0 && version[1]==0 && version[2]==0);
+    f(ctx,TP_IO_ERROR);
+    assert(tp_service_read_holding(&app.service,119,3,version)==TP_OK && version[0]==0);
+    f(ctx,TP_OK);
+    assert(tp_service_read_holding(&app.service,119,3,version)==TP_OK);
+    assert(version[0]==1 && version[1]==0x1234 && version[2]==0x5678);
+    stage=2;
     return fail_at==2 ? TP_IO_ERROR : TP_OK;
 }
 tp_result tp_f407_upgrade_uart_init_guarded(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
@@ -54,7 +63,11 @@ int main(void) {
     o.app=NULL; assert(tp_f407_upgrade_service_start(&s,&o)==TP_INVALID); o.app=&app;
     scheduler=1; assert(tp_f407_upgrade_service_start(&s,&o)==TP_INVALID && stage==0); scheduler=0;
     o.healthy=NULL; assert(tp_f407_upgrade_service_start(&s,&o)==TP_INVALID && stage==0); o.healthy=health;
-    for(int i=1;i<=3;i++) { stage=0; fail_at=i; assert(tp_f407_upgrade_service_start(&s,&o)==TP_IO_ERROR && stage==i); }
+    for(int i=1;i<=3;i++) {
+        memset(&app.service,0,sizeof(app.service)); app.service.controller=&app.controller;
+        stage=0; fail_at=i; assert(tp_f407_upgrade_service_start(&s,&o)==TP_IO_ERROR && stage==i);
+    }
+    memset(&app.service,0,sizeof(app.service)); app.service.controller=&app.controller;
     stage=0; fail_at=0; assert(tp_f407_upgrade_service_start(&s,&o)==TP_OK && stage==3);
     tp_staged_guard guard;
     assert(tp_f407_upgrade_staged_init(NULL,&guard)==TP_INVALID);

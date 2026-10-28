@@ -32,6 +32,6 @@ tp_result tp_f407_upgrade_init(tp_f407_upgrade *u,const tp_f407_upgrade_options 
     if(r!=TP_OK) return r;
     if((state.phase==TP_BOOT_TRIAL ? state.candidate_bank : state.active_bank)!=bank)
         return TP_INVALID;
-    u->running_bank=bank;
+    u->running_bank=bank; u->boot_at_start=state;
     return TP_OK;
 }

@@ -30,6 +30,7 @@ typedef struct {
     tp_freertos_trial trial;
     tp_f407_upgrade_uart uart;
     tp_f407_app *app;
+    uint32_t confirmed_version, startup_version; /* critical section protected */
     void *ctx;
     bool (*try_lock)(void *);
     void (*unlock)(void *);

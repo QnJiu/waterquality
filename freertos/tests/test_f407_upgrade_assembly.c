@@ -26,6 +26,7 @@ int main(void) {
     tp_f407_upgrade u; assert(tp_f407_upgrade_init(&u,&options)==TP_INVALID); /* blank */
     assert(tp_boot_provision(&boot,0,1)==TP_OK);
     assert(tp_f407_upgrade_init(&u,&options)==TP_OK && u.running_bank==0);
+    assert(u.boot_at_start.phase==TP_BOOT_IDLE && u.boot_at_start.active_version==1);
     assert(tp_f407_image_erase(&u.image,0)==TP_INVALID && f.erases==0);
     assert(tp_f407_image_erase(&u.image,1)==TP_OK && f.erases==3);
     options.running_vector=TP_F407_IMAGE0_BASE+512; assert(tp_f407_upgrade_init(&u,&options)==TP_INVALID);
@@ -35,6 +36,7 @@ int main(void) {
     uint8_t bank; assert(tp_boot_select(&boot,&bank)==TP_OK && bank==1);
     assert(tp_f407_upgrade_init(&u,&options)==TP_INVALID);
     options.running_vector=TP_F407_IMAGE1_BASE; assert(tp_f407_upgrade_init(&u,&options)==TP_OK && u.running_bank==1);
+    assert(u.boot_at_start.phase==TP_BOOT_TRIAL && u.boot_at_start.candidate_version==2);
     assert(tp_f407_image_erase(&u.image,1)==TP_INVALID && f.erases==3);
     f.error=true; assert(tp_f407_upgrade_init(&u,&options)==TP_IO_ERROR);
     return 0;

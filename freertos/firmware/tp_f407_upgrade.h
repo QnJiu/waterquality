@@ -19,6 +19,7 @@ typedef struct {
     tp_f407_image_flash image;
     tp_secure_upgrade secure;
     uint8_t running_bank;
+    tp_boot_state boot_at_start;
 } tp_f407_upgrade;
 /* Initialize once, before concurrent access. Object and I/O contexts must
  * remain alive and must not be moved. An error leaves the object unusable.

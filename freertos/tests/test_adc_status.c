@@ -20,10 +20,13 @@ int main(void) {
     tp_adc_reader reader; tp_adc_status s; uint16_t values[6];
     assert(tp_ads1220_init(&a, &io, regs, 50) == TP_OK);
     assert(tp_adc_reader_init(&reader, &a, &ch, 1) == TP_OK);
+    assert(tp_adc_reader_ready(&reader) && !tp_adc_reader_ready(NULL));
     assert(tp_adc_status_init(&s, &reader, 0, 100, 0xfffffff0u) == TP_OK);
     tp_adc_status_poll(&s, 0xfffffff0u); assert(s.sampling && !s.status);
+    assert(!tp_adc_reader_ready(&reader));
     f.ready = true; f.raw = 1234; tp_adc_status_poll(&s, 0xfffffff1u);
     assert(s.status == 1 && s.sequence == 1 && s.microvolts == 1234);
+    assert(tp_adc_reader_ready(&reader));
     assert(tp_adc_status_read(&s, 0, 6, values) == TP_OK);
     assert(values[0] == 1 && values[3] == 1 && values[4] == 0 && values[5] == 1234);
     tp_modbus modbus = {&s, 1, tp_adc_status_read, NULL};
@@ -37,5 +40,6 @@ int main(void) {
     tp_adc_status_poll(&s, 85); assert(s.sampling);
     f.ready = false; tp_adc_status_poll(&s, 135);
     assert(s.status == 2 && s.result == TP_TIMEOUT && s.microvolts == 0 && s.sequence == 1);
+    assert(!tp_adc_reader_ready(&reader)); /* Clear-fault alone cannot restore the ADC. */
     return 0;
 }

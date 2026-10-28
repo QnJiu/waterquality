@@ -30,3 +30,8 @@ tp_result tp_adc_reader_cancel(tp_adc_reader *r) {
     if (!r->active) return TP_OK;
     tp_result result = tp_ads1220_cancel(r->adc); r->active = false; return result;
 }
+
+bool tp_adc_reader_ready(const tp_adc_reader *r) {
+    return r && r->adc && r->adc->configured && !r->adc->pending && !r->active &&
+           r->channels && r->count>0 && r->count<=TP_ADC_MAX_CHANNELS;
+}

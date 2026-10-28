@@ -19,4 +19,6 @@ tp_result tp_adc_reader_init(tp_adc_reader *r, tp_ads1220 *adc,
  * ADC endpoints are reported as sensor faults rather than accepted measurements. */
 tp_result tp_adc_reader_read(tp_adc_reader *r, uint8_t channel, uint32_t now_ms, float *volts);
 tp_result tp_adc_reader_cancel(tp_adc_reader *r);
+/* A software readiness check only; it does not probe the converter or wiring. */
+bool tp_adc_reader_ready(const tp_adc_reader *r);
 #endif

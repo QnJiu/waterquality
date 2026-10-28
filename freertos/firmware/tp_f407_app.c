@@ -24,7 +24,10 @@ static uint16_t resource_faults(void *p) {
 static tp_result preflight(void *p,uint16_t *faults) {
     tp_f407_app *a=p;
     tp_preflight_io io={a,interlocks,temperature,resource_faults,a->controller.max_temperature_c};
-    return tp_preflight_check(&io,faults);
+    tp_result r=tp_preflight_check(&io,faults);
+    if (r==TP_INVALID) return r;
+    if (!tp_adc_reader_ready(&a->reader)) *faults |= TP_PREFLIGHT_ADC;
+    return *faults ? TP_IO_ERROR : TP_OK;
 }
 static void safe(void *p) {
     tp_f407_app *a=p;

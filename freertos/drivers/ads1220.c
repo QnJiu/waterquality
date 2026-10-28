@@ -17,7 +17,21 @@ tp_result tp_ads1220_init(tp_ads1220 *a, const tp_ads1220_io *io,
     uint8_t rd[5] = { 0x23u, 0xffu, 0xffu, 0xffu, 0xffu };
     if (a->io.transfer(a->io.ctx, rd, rx, sizeof(rd)) != TP_OK ||
         memcmp(rx + 1, regs, 4) != 0) return TP_IO_ERROR;
-    memcpy(a->registers, regs, 4); a->configured = true; return TP_OK;
+    memcpy(a->registers, regs, 4); a->configured = true; a->baseline_valid = true; return TP_OK;
+}
+tp_result tp_ads1220_recover(tp_ads1220 *a) {
+    if (!a || !a->io.transfer || !a->io.data_ready || !a->timeout_ms || !a->baseline_valid) return TP_INVALID;
+    if (a->pending) return TP_BUSY;
+    /* Keep the last verified settings even if an attempted recovery fails. */
+    tp_ads1220_io io = a->io;
+    uint8_t regs[4]; memcpy(regs, a->registers, sizeof(regs));
+    uint32_t timeout = a->timeout_ms;
+    a->configured = false;
+    if (command(a, 0x02u) != TP_OK) return TP_IO_ERROR;
+    tp_ads1220 candidate;
+    tp_result result = tp_ads1220_init(&candidate, &io, regs, timeout);
+    if (result == TP_OK) *a = candidate;
+    return result;
 }
 tp_result tp_ads1220_start(tp_ads1220 *a, uint8_t mux, uint32_t now) {
     if (!a || !a->configured || mux > 14u) return TP_INVALID;

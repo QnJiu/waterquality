@@ -6,7 +6,7 @@ import ssl
 from machine import UART, Pin
 from umqtt.simple import MQTTClient, MQTTException
 import config
-from modbus_status import read_status, read_confirmed_version
+from modbus_status import read_status, read_temperature, read_confirmed_version
 from cloud import publish_status, publish_version, publish_progress
 from ota_notice import UpgradeNotice
 
@@ -74,6 +74,7 @@ def main():
                         break
                 if time.ticks_diff(time.ticks_ms(), next_publish) >= 0:
                     status = read_status(uart, direction, config.MODBUS_ADDRESS, time)
+                    status['temperature_c'] = read_temperature(uart, direction, config.MODBUS_ADDRESS, time)
                     message_id += 1
                     publish_status(client, config.MQTT_TOPIC, status, message_id)
                     if notice:

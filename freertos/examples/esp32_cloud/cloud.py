@@ -14,6 +14,12 @@ def property_message(status, message_id):
         "WaitingNext": status["waiting_next"],
         "PreflightFaults": status["preflight_faults"],
     }
+    temperature = status["temperature_c"]
+    properties["TemperatureValid"] = int(temperature is not None)
+    if temperature is not None:
+        if not math.isfinite(temperature):
+            raise ValueError("invalid temperature")
+        properties["Temperature"] = temperature
     if status["result_valid"]:
         value = status["concentration_mg_l"]
         if not math.isfinite(value):

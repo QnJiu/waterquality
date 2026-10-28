@@ -1,5 +1,6 @@
 """Read the teaching controller's status over Modbus RTU (MicroPython)."""
 import struct
+import math
 
 
 def crc16(data):
@@ -76,6 +77,24 @@ def read_frame(uart, direction, address, clock, start, count, timeout_ms):
 def read_status(uart, direction, address, clock, timeout_ms=1000):
     return parse_status(read_frame(uart, direction, address, clock, 10, 10, timeout_ms), address)
 
+
+def parse_temperature(frame, address):
+    if len(frame) < 5 or crc16(frame[:-2]) != struct.unpack("<H", frame[-2:])[0]:
+        raise ValueError("invalid Modbus frame or CRC")
+    if frame[0] != address:
+        raise ValueError("wrong Modbus address")
+    if frame[1] == 0x83 and len(frame) == 5:
+        raise ValueError("Modbus exception %d" % frame[2])
+    if len(frame) != 11 or frame[1] != 3 or frame[2] != 6:
+        raise ValueError("unexpected temperature response")
+    valid, value = struct.unpack(">Hf", frame[3:-2])
+    if valid not in (0, 1) or (valid and not math.isfinite(value)):
+        raise ValueError("invalid temperature snapshot")
+    return value if valid else None
+
+
+def read_temperature(uart, direction, address, clock, timeout_ms=1000):
+    return parse_temperature(read_frame(uart, direction, address, clock, 128, 3, timeout_ms), address)
 
 def parse_confirmed_version(frame, address):
     if len(frame) < 5 or crc16(frame[:-2]) != struct.unpack("<H", frame[-2:])[0]:

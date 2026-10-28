@@ -50,6 +50,18 @@ class StatusTest(unittest.TestCase):
         self.assertEqual((status['save_status'], status['waiting_next'], status['preflight_faults']), (3, 1, 128))
         self.assertAlmostEqual(status['concentration_mg_l'], 0.301, places=5)
 
+    def test_temperature_snapshot(self):
+        uart, direction = UART(response(struct.pack('>BBBHf', 1, 3, 6, 1, 23.5))), Direction()
+        self.assertEqual(mod.read_temperature(uart, direction, 1, Clock()), 23.5)
+        self.assertEqual(uart.written, mod.request(1, 128, 3))
+        self.assertEqual(direction.levels, [1, 0])
+        self.assertIsNone(mod.parse_temperature(response(struct.pack('>BBBHf', 1, 3, 6, 0, 0.0)), 1))
+        for valid, value in ((2, 20.0), (1, float('nan'))):
+            with self.assertRaisesRegex(ValueError, 'snapshot'):
+                mod.parse_temperature(response(struct.pack('>BBBHf', 1, 3, 6, valid, value)), 1)
+        with self.assertRaisesRegex(ValueError, 'CRC'):
+            mod.parse_temperature(b'\x01\x03\x06' + bytes(8), 1)
+
     def test_confirmed_version_is_read_from_separate_registers(self):
         payload = struct.pack('>BBBHHH', 1, 3, 6, 1, 0x1234, 0x5678)
         uart, direction = UART(response(payload)), Direction()

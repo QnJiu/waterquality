@@ -24,7 +24,7 @@ class CloudTest(unittest.TestCase):
     def setUp(self):
         self.status = {'state': 2, 'fault': 0, 'step': 15, 'start_result': 0,
                        'result_valid': True, 'concentration_mg_l': 0.3,
-                       'save_status': 3, 'waiting_next': 1, 'preflight_faults': 128}
+                       'save_status': 3, 'waiting_next': 1, 'preflight_faults': 128, 'temperature_c': 23.5}
 
     def test_property_message(self):
         class Client:
@@ -41,6 +41,16 @@ class CloudTest(unittest.TestCase):
         self.assertEqual(client.message['params']['SaveStatus'], 3)
         self.assertEqual(client.message['params']['WaitingNext'], 1)
         self.assertEqual(client.message['params']['PreflightFaults'], 128)
+        self.assertEqual(client.message['params']['TemperatureValid'], 1)
+        self.assertEqual(client.message['params']['Temperature'], 23.5)
+
+    def test_unavailable_temperature(self):
+        self.status['temperature_c'] = None
+        params = json.loads(cloud.property_message(self.status, 1))['params']
+        self.assertEqual(params['TemperatureValid'], 0)
+        self.assertNotIn('Temperature', params)
+        self.status['temperature_c'] = float('nan')
+        with self.assertRaises(ValueError): cloud.property_message(self.status, 1)
 
     def test_invalid_or_nonfinite_concentration(self):
         self.status['result_valid'] = False
@@ -143,6 +153,7 @@ class CloudTest(unittest.TestCase):
             main.connect_wifi = lambda: types.SimpleNamespace(isconnected=lambda: True)
             main.connect_mqtt = lambda: client
             main.read_status = lambda *a: self.status
+            main.read_temperature = lambda *a: 23.5
             main.read_confirmed_version = lambda *a: next(versions)
             with self.assertRaises(KeyboardInterrupt): main.main()
         reports = [message for topic, message in client.sent if topic == b'/ota/device/inform/p/d']
@@ -193,6 +204,7 @@ class CloudTest(unittest.TestCase):
             main.connect_wifi = lambda: types.SimpleNamespace(isconnected=lambda: True)
             main.connect_mqtt = lambda: client
             main.read_status = lambda *a: self.status
+            main.read_temperature = lambda *a: 23.5
             main.read_confirmed_version = lambda *a: next(versions)
             with self.assertRaises(KeyboardInterrupt): main.main()
         reports = [m['params']['step'] for t, m in client.sent if t == b'/ota/device/progress/p/d']

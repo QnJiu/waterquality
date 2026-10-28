@@ -1,6 +1,7 @@
 #include "tp_service.h"
 #include <assert.h>
 #include <float.h>
+#include <math.h>
 #include <stdio.h>
 typedef struct { unsigned valves, pumps, heat_calls, safe; bool interlock; float temperature, output; } fake;
 static tp_result valves(void *ctx, uint32_t mask) { fake *f=ctx; assert(mask==3); f->valves++; return TP_OK; }
@@ -81,5 +82,18 @@ int main(void) {
     assert(tp_start(&c3,overflow,2,0)==TP_OK);
     tp_tick(&c3,0);
     assert(c3.state==TP_FAILED && c3.fault==TP_FAULT_IO && h.safe==1 && h.heat_calls==0);
+    /* Temperature remains a safety input during a non-heating wait. */
+    fake j={.interlock=true,.temperature=20};
+    tp_hal hal4={&j,valves,pump,poll,temp,heat,adc,interlock,safe};
+    tp_controller c4; tp_init(&c4,&hal4,NULL,&pid,100);
+    const tp_step wait_recipe[]={ {.kind=TP_STEP_WAIT,.timeout_ms=1000,.arg.wait={1000}},
+        {.kind=TP_STEP_END} };
+    assert(tp_start(&c4,wait_recipe,2,0)==TP_OK); tp_tick(&c4,0);
+    j.temperature=100; tp_tick(&c4,200);
+    assert(c4.state==TP_FAILED && c4.fault==TP_FAULT_OVERTEMP && j.safe==1 && !j.heat_calls);
+    j.temperature=20; assert(tp_clear_fault(&c4)==TP_OK);
+    assert(tp_start(&c4,wait_recipe,2,300)==TP_OK); tp_tick(&c4,300);
+    j.temperature=NAN; tp_tick(&c4,500);
+    assert(c4.state==TP_FAILED && c4.fault==TP_FAULT_SENSOR && j.safe==3);
     puts("controlled stepping checks passed"); return 0;
 }

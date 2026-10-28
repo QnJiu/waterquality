@@ -101,16 +101,20 @@ void tp_tick(tp_controller *c, uint32_t now) {
         }
     }
     float temp = 0;
-    if (c->heating && expired(now, c->last_pid_ms, TP_PID_PERIOD_MS)) {
+    /* Temperature is a safety input throughout the run, including when the
+     * heater is off. The same periodic read drives PID while heating. */
+    if (expired(now, c->last_pid_ms, TP_PID_PERIOD_MS)) {
         tp_result r = c->hal.read_temperature(c->hal.ctx, &temp);
         if (r != TP_OK || !isfinite(temp)) { fail(c, TP_FAULT_SENSOR); return; }
         if (temp >= c->max_temperature_c) { fail(c, TP_FAULT_OVERTEMP); return; }
         float dt = (float)(uint32_t)(now - c->last_pid_ms) / 1000.0f;
         c->last_pid_ms = now;
-        float output = tp_pid_update(&c->pid, c->target_c, temp, dt);
-        if (!isfinite(output)) { fail(c, TP_FAULT_IO); return; }
-        if (c->hal.set_heater(c->hal.ctx, output) != TP_OK) {
-            fail(c, TP_FAULT_IO); return;
+        if (c->heating) {
+            float output = tp_pid_update(&c->pid, c->target_c, temp, dt);
+            if (!isfinite(output)) { fail(c, TP_FAULT_IO); return; }
+            if (c->hal.set_heater(c->hal.ctx, output) != TP_OK) {
+                fail(c, TP_FAULT_IO); return;
+            }
         }
     }
     if (c->awaiting_advance) {

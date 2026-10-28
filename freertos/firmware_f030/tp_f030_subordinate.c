@@ -109,10 +109,13 @@ static void service_once(tp_f030_subordinate *s) {
     taskEXIT_CRITICAL();
     tp_sub_node_droplets(&s->app.node,droplets);
     if(droplets_lost) tp_sub_node_count_error(&s->app.node);
-    if(authorized && s->app.door)
-        (void)tp_door_service_authorize(s->app.door,(uint32_t)xTaskGetTickCount(),authorization_id,approved);
     if(s->app.door) {
-        s->app.door_result=tp_door_service_tick(s->app.door,(uint32_t)xTaskGetTickCount());
+        uint32_t door_now=(uint32_t)xTaskGetTickCount();
+        s->app.door_result=tp_door_service_tick(s->app.door,door_now);
+        if(authorized && (s->app.door_result==TP_OK || s->app.door_result==TP_BUSY)) {
+            (void)tp_door_service_authorize(s->app.door,door_now,authorization_id,approved);
+            if(s->app.door->door.state==TP_DOOR_FAULT) s->app.door_result=TP_IO_ERROR;
+        }
         if(s->app.door_result!=TP_OK && s->app.door_result!=TP_BUSY && !s->door_fault_reported) {
             s->door_fault_reported=true;
             if(s->door_fault_handler) s->door_fault_handler(s->door_fault_ctx);

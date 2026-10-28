@@ -11,7 +11,8 @@ static tp_f030_rx_event queue[32];
 static unsigned head, count;
 static uint32_t clock_ms;
 static BaseType_t scheduler=taskSCHEDULER_NOT_STARTED;
-static bool unlocked;
+static bool unlocked, fail_open;
+static unsigned open_commands;
 static unsigned door_faults;
 static void door_fault(void *ctx) { assert(ctx==&door_faults); door_faults++; }
 QueueHandle_t xQueueCreate(unsigned length,size_t size) {
@@ -39,7 +40,7 @@ void vTaskNotifyGiveFromISR(TaskHandle_t t,BaseType_t *wake) { assert(t); (void)
 BaseType_t xTaskNotifyGive(TaskHandle_t t) { assert(t); return pdPASS; }
 uint32_t ulTaskNotifyTake(BaseType_t clear,TickType_t wait) { (void)clear; (void)wait; return 0; }
 static tp_result inputs(void *ctx,tp_sub_inputs *out) { (void)ctx; *out=(tp_sub_inputs){0}; return TP_OK; }
-static tp_result lock_output(void *ctx,bool open) { (void)ctx; unlocked=open; return TP_OK; }
+static tp_result lock_output(void *ctx,bool open) { (void)ctx; if(open) { open_commands++; if(fail_open) return TP_IO_ERROR; } unlocked=open; return TP_OK; }
 static tp_result reader_send(void *ctx,const uint8_t *data,size_t n) { (void)ctx; (void)data; (void)n; return TP_OK; }
 static tp_result reader_receive(void *ctx,uint8_t *data,size_t cap,size_t *n) {
     (void)ctx; (void)data; (void)cap; (void)n; return TP_BUSY;
@@ -143,9 +144,25 @@ int main(void) {
     assert(tp_door_observe(&door.door,65,card,sizeof(card),&new_request,&id)==TP_OK && new_request);
     assert(tp_f030_subordinate_authorize(&s,id,true)==TP_OK);
     clock_ms=165; service_once(&s); assert(!unlocked && !door.door.auth_pending);
-    clock_ms=1040; service_once(&s); assert(door_faults==1 && door.door.state==TP_DOOR_FAULT);
+    /* A fresh authorization arriving at the reader deadline must not open the lock. */
+    clock_ms=1039;
+    assert(tp_door_observe(&door.door,clock_ms,card,sizeof(card),&new_request,&id)==TP_OK && new_request);
+    assert(tp_f030_subordinate_authorize(&s,id,true)==TP_OK);
+    unsigned opens_before_timeout=open_commands;
+    clock_ms=1040; service_once(&s);
+    assert(door_faults==1 && door.door.state==TP_DOOR_FAULT && !unlocked);
+    assert(open_commands==opens_before_timeout);
     service_once(&s); assert(door_faults==1);
     assert(tp_f030_subordinate_on_door_fault(&s,door_fault,&door_faults)==TP_INVALID);
+
+    /* Output failure during authorization is reported in this same service pass. */
+    assert(tp_door_service_init(&door,&reader,&output,NULL,request,1000,50,1,20,100,20)==TP_OK);
+    s.door_fault_reported=false; clock_ms=1100;
+    assert(tp_door_observe(&door.door,clock_ms,card,sizeof(card),&new_request,&id)==TP_OK && new_request);
+    assert(tp_f030_subordinate_authorize(&s,id,true)==TP_OK);
+    fail_open=true; service_once(&s); fail_open=false;
+    assert(door_faults==2 && door.door.state==TP_DOOR_FAULT && !unlocked);
+    assert(s.app.door_result==TP_IO_ERROR);
 
     timer_high=65536u; fake_tim.CNT=7; fake_tim.SR=TIM_SR_UIF;
     assert(time_us()==131079u); TIM3_IRQHandler(); fake_tim.SR=0;

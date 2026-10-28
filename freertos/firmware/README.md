@@ -149,6 +149,22 @@ Flash 回调可通过 `tp_f407_flash_controller_init` 获得；升级 FRAM 总�
 
 自动标液核查可由板级选项 `auto_standard` 指向长期有效的 `tp_f407_auto_standard_options`，提供配方、标准液浓度及绝对容差；初始化检查配方驱动限制，再接入控制服务。选项为空时功能不可用。标准液切换由提供的配方完成，需结合实际管路配置。
 
+### 有线升级和暂存 OTA 的组合入口
+
+`tp_f407_ota_reference` 将已有的有线升级服务与 W25Q128 暂存服务按顺序启动，可直接作为 `tp_f407_app_options.start_services`：
+
+```c
+static tp_f407_ota_reference ota; /* 生命周期覆盖整个应用 */
+/* 板级代码填写 ota.upgrade.options 的存储、身份、健康及完成回调，
+ * 并填写 ota.stage_options 的超时、任务栈和优先级。 */
+ota.stage_ctx = board_context;
+ota.stage_finished = board_stage_finished;
+options->services_ctx = &ota;
+options->start_services = tp_f407_ota_reference_start;
+```
+
+需要包含 `tp_f407_ota_reference.h`。有线升级使用 USART2；暂存接收使用 USART6 和 SPI1，连接网络网关后可接收 OTA 镜像。两个服务共享升级锁和维护状态，任一初始化失败均返回错误；此时必须安全停机并复位，不能启动已部分创建的任务。板级仍须提供独立升级 FRAM 总线、公钥和产品身份、结果回调，以及适用于单 Bank Flash 擦写的安全输出和看门狗策略；业务 FRAM 的参考总线应与升级 FRAM 分离。具体参数参见相关头文件和各服务说明，组合接口不会自动烧录或初始化启动元数据。该装配尚未实机验证。
+
 ### 教学装配示例
 
 `tp_f407_teaching_config.c` 展示检测步骤、阀门互斥、ADC 通道、参数及安全回调，也配置了低、高两套标准液演示配方，供自动两点标定和标液核查调用。标准液选择、反应条件及浓度均为教学示例，不是实际仪器方法。构建时可以传入 `-DTP_F407_BOARD_CONFIG=<该文件的绝对路径>`，同时启用 `-DTP_F407_BUSINESS=ON`，检查示例是否能与业务固件一起编译。默认示例返回 `TP_INVALID`，启动入口会关断输出并停机；互锁也不通过，资源状态未知。

@@ -2,6 +2,9 @@
 #include "tp_f030_board_inputs.h"
 #include "stm32f0xx.h"
 #include "tp_f030_reference_lock.h"
+#ifdef TP_F030_STOP_SLEEP
+#include "tp_f030_stop.h"
+#endif
 #ifdef TP_F030_DOOR_CONFIG
 #include "tp_f030_i2c.h"
 #include "tp_f030_pn532_door.h"
@@ -65,6 +68,10 @@ int main(void) {
         tp_f030_startup_result=tp_f030_subordinate_set_door_recovery(&subordinate,NULL,recover_door);
         if(tp_f030_startup_result!=TP_OK) tp_platform_assert(__FILE__,__LINE__);
     }
+#endif
+#ifdef TP_F030_STOP_SLEEP
+    /* An unavailable LSE leaves the normal 1 ms tick running. */
+    (void)tp_f030_stop_init();
 #endif
     vTaskStartScheduler();
     tp_platform_assert(__FILE__,__LINE__);

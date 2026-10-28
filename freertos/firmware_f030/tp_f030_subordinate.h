@@ -48,6 +48,8 @@ tp_result tp_f030_subordinate_on_door_fault(tp_f030_subordinate *,void (*handler
 tp_result tp_f030_subordinate_set_door_recovery(tp_f030_subordinate *,void *,tp_result (*)(void *));
 /* Queue a recovery attempt; TP_OK means queued. Task context only. */
 tp_result tp_f030_subordinate_recover_door(tp_f030_subordinate *);
+/* STOP owner only, with interrupts masked and TIM3 stopped. */
+void tp_f030_subordinate_add_sleep_us(uint32_t elapsed_us);
 /* Call from an ISR after the scheduler starts. wake is passed to portYIELD_FROM_ISR. */
 void tp_f030_subordinate_droplet_from_isr(tp_f030_subordinate *,BaseType_t *wake);
 /* Task context only, after scheduler start. TP_OK means queued, not accepted. */

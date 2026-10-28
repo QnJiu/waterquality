@@ -252,6 +252,7 @@ int main(void) {
     timer_high=65536u; fake_tim.CNT=7; fake_tim.SR=TIM_SR_UIF;
     assert(time_us()==131079u); TIM3_IRQHandler(); fake_tim.SR=0;
     assert(time_us()==131079u);
+    tp_f030_subordinate_add_sleep_us(2929u); assert(time_us()==134008u);
     timer_high=0xffff0000u; fake_tim.CNT=7; fake_tim.SR=TIM_SR_UIF;
     assert(time_us()==7u); TIM3_IRQHandler(); fake_tim.SR=0; assert(time_us()==7u);
     return 0;

@@ -26,6 +26,9 @@ extern uint32_t SystemCoreClock;
 #else
 #define configUSE_IDLE_HOOK                     0
 #endif
+#ifdef TP_F030_STOP_SLEEP
+#define configUSE_TICKLESS_IDLE                2
+#endif
 #define configUSE_TICK_HOOK                     0
 #define configUSE_TIMERS                        0
 #define configTIMER_TASK_PRIORITY               2

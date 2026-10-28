@@ -21,6 +21,9 @@ static uint32_t time_us(void) {
     if(TIM3->SR & TIM_SR_UIF) { high+=65536u; low=TIM3->CNT; }
     return high+low;
 }
+void tp_f030_subordinate_add_sleep_us(uint32_t elapsed_us) {
+    timer_high+=elapsed_us;
+}
 void TIM3_IRQHandler(void) {
     if(TIM3->SR & TIM_SR_UIF) { TIM3->SR=~TIM_SR_UIF; timer_high+=65536u; }
 }

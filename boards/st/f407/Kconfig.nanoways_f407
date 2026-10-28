@@ -1,0 +1,5 @@
+# Copyright (c) 2024 nanoWAys
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_NANOWAYS_F407
+	select SOC_STM32F407XE

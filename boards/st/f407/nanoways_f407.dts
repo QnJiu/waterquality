@@ -1,0 +1,523 @@
+/*
+ * Copyright (c) 2024 nanoWAys
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * ============================================================================
+ * nanoWAys 总磷水质分析仪 — STM32F407VETx 板级设备树
+ * ============================================================================
+ *
+ * 【什么是设备树 (Device Tree)?】
+ * 设备树是一个描述硬件拓扑的数据结构，它在编译时定义，运行时由 Zephyr 内核解析。
+ * 类比：设备树就像是给操作系统的一份"硬件清单"——告诉内核有哪些外设、各自
+ * 接在哪些引脚上、时钟怎么配、用了什么驱动。这种机制让你不需要硬编码硬件信息，
+ * 同一套代码换个板子只需换设备树即可。
+ *
+ * 【文件在 Zephyr 构建系统中的地位】
+ * 本文件会被编译进 build/zephyr/zephyr.dts（最终合并后的完整设备树），
+ * 同时生成 build/zephyr/devicetree_generated.h 头文件，其中将每个节点
+ * 的标签 (label: 如 y1, usart1, led1) 转换为 C 宏定义，供代码通过
+ * DEVICE_DT_GET() 或 GPIO_DT_SPEC_GET() 等 API 引用。
+ *
+ * 【节点标签 (Node Label) 机制 —— 新手最容易困惑的地方】
+ * 语法 `label: node-name { ... };` 中的 label 是 C 代码的入口点：
+ *   - `y1: y1 { gpios = <&gpioe 5 GPIO_ACTIVE_LOW>; };`
+ *     这里的 y1 是节点标签，编译后在 C 中产生 DT_NODELABEL(y1) 宏。
+ *   - `&gpioe` 中的 e 来自芯片 dtsi 文件 (stm32f407Xe.dtsi) 中定义的
+ *     `gpioe: gpio@... { ... };` 标签，引用整个 GPIO 控制器节点。
+ * 总结：&label 引用节点，"node-name" 只是节点名，label 才是代码入口。
+ *
+ * 【开发板 vs SoC vs 引脚控制文件】
+ * - stm32f407Xe.dtsi      — SoC 级别定义（CPU 核、总线、所有外设基地址）
+ * - stm32f407v(e-g)tx-pinctrl.dtsi — 引脚复用定义（每个外设可选哪些引脚组合）
+ * - 本文件                 — 板级定义：选引脚、使能外设、配时钟、加自定义节点
+ */
+
+/dts-v1/;                       /* 设备树版本声明，必须是第一行 */
+
+/*
+ * #include 展开 SoC 基础定义
+ * stm32f407Xe.dtsi 定义了 SoC 的所有外设节点（gpioa~gpioi, usart1~6,
+ *   spi1~3, adc1~3, dac1, timers1~14 等），每个都有默认 disabled 状态。
+ * stm32f407v(e-g)tx-pinctrl.dtsi 定义了引脚复用组合（如 usart1_tx_pa9），
+ *   每个组合包含引脚号 + 复用功能 + 电气属性的宏，供 pinctrl-0 引用。
+ */
+#include <st/f4/stm32f407Xe.dtsi>
+#include <st/f4/stm32f407v(e-g)tx-pinctrl.dtsi>
+
+/* =========================================================================
+ * 根节点 "/" — 一切定义的起点
+ * ========================================================================= */
+/ {
+	/*
+	 * model: 人类可读的板子名称，显示在启动日志中。
+	 * compatible: 驱动匹配关键字。格式 "<vendor>,<device>"。
+	 *   内核启动时将 compatible 与各驱动的 compatible 列表比对，匹配则初始化。
+	 *   多个字符串表示"兼容链"——先尽量精确匹配，匹配不上可降级。
+	 */
+	model = "nanoWAys STM32F407VET6 Water Quality Analyzer";
+	compatible = "nanoways,stm32f407vet6", "st,stm32f407";
+
+	/*
+	 * =====================================================================
+	 * chosen 节点 — 系统级配置
+	 * =====================================================================
+	 * 这里的属性由 Zephyr 内核直接读取，用于确定 console 输出、shell 终端、
+	 * 代码/数据内存区域等核心设置。不是传给驱动的属性，而是内核自身的配置。
+	 *
+	 * - zephyr,console:      printk() / LOG_*() 的输出串口，也是默认 shell 终端
+	 * - zephyr,shell-uart:   shell 子系统专用的 UART（通常与 console 相同）
+	 * - zephyr,sram:         系统 SRAM 基地址和大小
+	 * - zephyr,flash:        内部 Flash 基地址和大小
+	 * - zephyr,ccm:          CCM (Core Coupled Memory) 数据紧耦合内存
+	 *                        STM32F4 特有的 64KB 高速 SRAM，仅 CPU 可访问，
+	 *                        DMA 无法访问。适合放性能关键的数据。
+	 */
+	chosen {
+		zephyr,console = &usart1;       /* 调试串口，115200-8-N-1 */
+		zephyr,shell-uart = &usart1;    /* Shell 命令行接口也用这个串口 */
+		zephyr,sram = &sram0;           /* 192KB 主 SRAM @ 0x20000000 */
+		zephyr,flash = &flash0;         /* 1MB 内部 Flash @ 0x08000000 */
+		zephyr,ccm = &ccm0;             /* 64KB CCM @ 0x10000000 */
+	};
+
+	/*
+	 * =====================================================================
+	 * valves 节点 — 19 路阀门/继电器输出
+	 * =====================================================================
+	 * compatible = "gpio-leds": 使用 Zephyr 的 gpio-leds 驱动。
+	 *   虽然叫 "leds"，但它本质上是通用 GPIO 输出驱动，同样适用于继电器、
+	 *   阀门、蜂鸣器等开关量输出设备。每个子节点代表一个独立的 GPIO 输出通道。
+	 *
+	 * GPIO_ACTIVE_LOW 含义: LOW 电平 = 设备激活 (ON)，HIGH = 关闭 (OFF)。
+	 *   硬件设计选择了低电平有效（灌电流驱动继电器模块），
+	 *   因为 STM32 的 I/O 灌电流能力 (25mA) 强于拉电流 (25mA 也够)，
+	 *   但主要是继电器模块的输入逻辑决定的。
+	 *
+	 * 使用方式 (C 代码):
+	 *   #define Y1_NODE DT_NODELABEL(y1)
+	 *   const struct gpio_dt_spec y1 = GPIO_DT_SPEC_GET(Y1_NODE, gpios);
+	 *   gpio_pin_set_dt(&y1, 1);  // 打开阀门 (输出 LOW = ON)
+	 *   gpio_pin_set_dt(&y1, 0);  // 关闭阀门 (输出 HIGH = OFF)
+	 */
+	valves {
+		compatible = "gpio-leds";
+		/*
+		 * 每个子节点的格式: <&gpiobank pin flags>
+		 * flags 常见值:
+		 *   GPIO_ACTIVE_LOW   — 低电平有效，逻辑值与物理电平自动反转
+		 *   GPIO_ACTIVE_HIGH  — 高电平有效
+		 *   GPIO_OPEN_DRAIN   — 开漏输出 (可与其他 flags 按位或)
+		 *   GPIO_PUSH_PULL    — 推挽输出 (默认)
+		 */
+		y1:  y1  { gpios = <&gpioe 5 GPIO_ACTIVE_LOW>; };  /* PE5 — 阀门 1 */
+		y2:  y2  { gpios = <&gpioe 4 GPIO_ACTIVE_LOW>; };  /* PE4 — 阀门 2 */
+		y3:  y3  { gpios = <&gpioe 3 GPIO_ACTIVE_LOW>; };  /* PE3 — 阀门 3 (推挽输出) */
+		y4:  y4  { gpios = <&gpioe 2 GPIO_ACTIVE_LOW>; };  /* PE2 — 阀门 4 */
+		y5:  y5  { gpios = <&gpioe 1 GPIO_ACTIVE_LOW>; };  /* PE1 — 阀门 5 */
+		y6:  y6  { gpios = <&gpioe 0 GPIO_ACTIVE_LOW>; };  /* PE0 — 阀门 6 */
+		y7:  y7  { gpios = <&gpiob 9 GPIO_ACTIVE_LOW>; };  /* PB9 — 阀门 7 */
+		y8:  y8  { gpios = <&gpiob 8 GPIO_ACTIVE_LOW>; };  /* PB8 — 阀门 8 */
+		y9:  y9  { gpios = <&gpiob 7 GPIO_ACTIVE_LOW>; };  /* PB7 — 阀门 9 */
+		y10: y10 { gpios = <&gpiob 6 GPIO_ACTIVE_LOW>; };  /* PB6 — 阀门 10 */
+		y11: y11 { gpios = <&gpiob 5 GPIO_ACTIVE_LOW>; };  /* PB5 — 阀门 11 */
+		y12: y12 { gpios = <&gpiob 4 GPIO_ACTIVE_LOW>; };  /* PB4 — 阀门 12 */
+		y13: y13 { gpios = <&gpiob 3 GPIO_ACTIVE_LOW>; };  /* PB3 — 阀门 13 */
+		y14: y14 { gpios = <&gpiod 7 GPIO_ACTIVE_LOW>; };  /* PD7 — 阀门 14 */
+		y15: y15 { gpios = <&gpiod 6 GPIO_ACTIVE_LOW>; };  /* PD6 — 阀门 15 */
+		y16: y16 { gpios = <&gpiod 5 GPIO_ACTIVE_LOW>; };  /* PD5 — 阀门 16 */
+		y17: y17 { gpios = <&gpiod 4 GPIO_ACTIVE_LOW>; };  /* PD4 — 阀门 17 (推挽输出) */
+		y18: y18 { gpios = <&gpiod 3 GPIO_ACTIVE_LOW>; };  /* PD3 — 阀门 18 (推挽输出) */
+		y19: y19 { gpios = <&gpiod 2 GPIO_ACTIVE_LOW>; };  /* PD2 — 阀门 19 (推挽输出) */
+	};
+
+	/*
+	 * =====================================================================
+	 * leds 节点 — 2 路状态指示灯
+	 * =====================================================================
+	 * LED 使用开漏输出 (open-drain)，低电平点亮。
+	 * 开漏模式: 引脚只能拉低，不能主动拉高；高电平靠外部上拉电阻实现。
+	 * 这样设计的典型原因：LED 的阳极接 VCC，阴极接 GPIO，电流从 VCC→
+	 * LED→GPIO→GND，GPIO 输出低电平时形成回路点亮 LED。
+	 */
+	leds {
+		compatible = "gpio-leds";
+		led1: led_1 {
+			gpios = <&gpiod 11 GPIO_ACTIVE_LOW>;  /* PD11 — 状态 LED 1 (开漏) */
+			label = "LED1";                        /* 调试标签，可用 device_get_binding() 查找 */
+		};
+		led2: led_2 {
+			gpios = <&gpiod 12 GPIO_ACTIVE_LOW>;  /* PD12 — 状态 LED 2 (开漏) */
+			label = "LED2";
+		};
+	};
+
+	/*
+	 * =====================================================================
+	 * buzzer 节点 — 蜂鸣器
+	 * =====================================================================
+	 * PC8，推挽输出，高电平有效 (HIGH=蜂鸣器响，LOW=停)。
+	 * 同样使用 gpio-leds 兼容驱动——在 Zephyr 中这是最简单的 GPIO 输出方式。
+	 * 为什么用 gpio-leds 而不是 pwm 驱动？因为蜂鸣器只做开关控制，
+	 * 不需要调音调，开/关即可满足声光报警需求，不需要占用定时器资源。
+	 */
+	buzzer: buzzer {
+		compatible = "gpio-leds";
+		bzr: bzr {
+			gpios = <&gpioc 8 GPIO_ACTIVE_HIGH>;
+			label = "Buzzer";
+		};
+	};
+
+	/*
+	 * =====================================================================
+	 * motor 节点 — 步进电机控制
+	 * =====================================================================
+	 * 两路信号控制步进电机驱动器:
+	 *   - DIR (PD14): 方向信号，HIGH=顺时针, LOW=逆时针
+	 *   - EN  (PD15): 使能信号，LOW=使能(电机上电), HIGH=禁用(电机释放)
+	 *
+	 * 步进脉冲 (STEP) 由 PWM (TIM4_CH2, PD13) 产生，见后文 timers4 节点。
+	 * 三个信号配合: EN=LOW 使能驱动器 → DIR 设方向 → PWM 发脉冲 → 电机转动
+	 */
+	motor {
+		compatible = "gpio-leds";
+		motor_dir: motor_dir {
+			gpios = <&gpiod 14 GPIO_ACTIVE_HIGH>;  /* PD14: HIGH=顺时针 (CW), LOW=逆时针 (CCW) */
+			label = "Motor DIR";
+		};
+		motor_en: motor_en {
+			gpios = <&gpiod 15 GPIO_ACTIVE_LOW>;   /* PD15: LOW=使能 (电机上电), HIGH=禁用 (释放) */
+			label = "Motor EN";
+		};
+	};
+
+	/*
+	 * =====================================================================
+	 * digital_inputs 节点 — 数字量输入
+	 * =====================================================================
+	 * compatible = "gpio-keys": 通用 GPIO 输入驱动，虽然叫 "keys" 但适用于
+	 * 任何数字量输入。子节点自动具备消抖、中断触发等能力。
+	 *
+	 * GPIO_PULL_DOWN: 内部下拉电阻使能。当外部信号悬空时，引脚被拉到低电平，
+	 *   避免浮空输入导致误触发。结合 GPIO_ACTIVE_HIGH: 高电平 = 有效信号。
+	 *
+	 * 使用方式 (C 代码，通过 gpio-keys 驱动):
+	 *   #include <zephyr/input/input.h>
+	 *   // 注册 input 回调，检测 X1/X2 的按下/释放事件
+	 *
+	 * X1 (PE6): 搅拌器位置检测 / 外部触发信号
+	 * X2 (PC13): 辅助数字输入
+	 */
+	digital_inputs {
+		compatible = "gpio-keys";
+		x1: x1 {
+			gpios = <&gpioe 6 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+			label = "X1 Input";
+		};
+		x2: x2 {
+			gpios = <&gpioc 13 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+			label = "X2 Input";
+		};
+	};
+
+	/*
+	 * =====================================================================
+	 * aliases 节点 — 快捷引用
+	 * =====================================================================
+	 * 给节点起别名，代码中可以通过 DT_ALIAS(led0) 获取对应的节点标识。
+	 * 很多 Zephyr 子系统会按约定查找特定别名的设备（如 led0 被 shell/blinky 使用）。
+	 * led0 是 "第一个用户 LED" 的约定别名。
+	 */
+	aliases {
+		led0 = &led1;           /* 将 led1 映射为系统的默认 LED0 */
+		led1 = &led2;           /* 将 led2 映射为 LED1 */
+	};
+};
+
+/* =========================================================================
+ * &flash0 — 内部 Flash 分区表
+ * =========================================================================
+ * STM32F407VETx 内部 Flash 布局:
+ *   0x08000000 ~ 0x0800FFFF  (Sector 0~3, 64KB) — Zephyr 固件 (APP)
+ *   0x08010000 ~ 0x0801FFFF  (Sector 4,   64KB) — 用户数据存储 (本分区)
+ *   0x08020000 ~ 0x080FFFFF  (Sector 5~11)      — 未使用
+ *
+ * fixed-partitions: 告诉 Flash 驱动 "Flash 被分成这若干固定区域"。
+ * #address-cells = <1>: 分区地址用 1 个 32-bit cell 表示
+ * #size-cells    = <1>: 分区大小用 1 个 32-bit cell 表示
+ *
+ * 使用方式 (C 代码):
+ *   #define STORAGE_NODE DT_NODELABEL(storage_partition)
+ *   const struct flash_area *fa;
+ *   flash_area_open(FIXED_PARTITION_ID(STORAGE_NODE), &fa);
+ */
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/*
+		 * partition@<地址>: 节点名中的地址应匹配 reg 的首地址。
+		 * reg = <offset size>: Flash 偏移 0x08010000，大小 0x10000 (64KB)。
+		 * 这个分区存储系统配置参数、校准数据和运行日志，避免擦写固件区域。
+		 */
+		storage_partition: partition@8010000 {
+			label = "storage";
+			reg = <0x08010000 0x10000>;  /* Sector 4, 64KB, 位于固件之后 */
+		};
+	};
+};
+
+/*
+ * =========================================================================
+ * 时钟树配置
+ * =========================================================================
+ * STM32F4 的时钟源有三个:
+ *   LSI — 内部低速 RC (≈32kHz),    用于 IWDG/RTC 后备时钟
+ *   LSE — 外部低速晶振 (32.768kHz), 用于 RTC 精确计时
+ *   HSE — 外部高速晶振 (8MHz),      用于 PLL 输入 → 产生 SYSCLK 和各总线时钟
+ *
+ * 时钟路径:  HSE(8MHz) → PLL(÷8×336÷2) → SYSCLK(168MHz)
+ *            ├─ AHB  (168MHz, ÷1)  ← CPU/内存/DMA
+ *            ├─ APB1 (42MHz,  ÷4)  ← UART2-5, SPI2-3, TIM2-7
+ *            └─ APB2 (84MHz,  ÷2)  ← UART1/6, SPI1, ADC1-3, TIM1/8
+ *
+ * 注意: APB1 最高 42MHz, APB2 最高 84MHz (STM32F4 硬件限制)，
+ * Timer 时钟在 APBx 预分频 >1 时会自动 ×2，所以 TIM2-7 实际是 84MHz，
+ * TIM1/8 是 168MHz。
+ */
+
+/* LSI: 内部低速 RC 振荡器 (~32kHz) — 已使能，用作 IWDG 后备时钟源 */
+&clk_lsi {
+	status = "okay";
+};
+
+/* LSE: 外部 32.768kHz 晶振 — 为 RTC 提供精确时基 */
+&clk_lse {
+	clock-frequency = <32768>;       /* 32.768kHz = 2^15，分频后正好 1Hz (1秒) */
+	status = "okay";
+};
+
+/* HSE: 外部 8MHz 晶振 — PLL 的输入时钟源 */
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(8)>; /* DT_FREQ_M(8) = 8,000,000 Hz (8MHz)，
+	                                     这是 Zephyr 设备树宏，避免手写 8000000 容易数错 0 */
+	status = "okay";
+};
+
+/*
+ * PLL (锁相环) — 将 HSE 8MHz 倍频到高速时钟
+ * 配置公式: PLL_OUT = HSE / div-m * mul-n / div-p
+ *          = 8MHz / 8 * 336 / 2 = 168MHz (STM32F407 最高主频)
+ * div-q = 7: 为 USB OTG / SDIO / RNG 提供 48MHz (336 / 7 = 48MHz)
+ */
+&pll {
+	div-m = <8>;                     /* 输入预分频: 8MHz / 8 = 1MHz 进入 PLL */
+	mul-n = <336>;                   /* 倍频系数: 1MHz × 336 = 336MHz (VCO 输出) */
+	div-p = <2>;                     /* 主输出分频: 336MHz / 2 = 168MHz = SYSCLK */
+	div-q = <7>;                     /* USB/OTG 时钟: 336MHz / 7 = 48MHz */
+	clocks = <&clk_hse>;             /* PLL 时钟源: 外部 8MHz 晶振 */
+	status = "okay";
+};
+
+/*
+ * RCC (Reset and Clock Control) — 系统时钟控制器
+ * 将 PLL 输出分配给各级总线，设置预分频器。
+ *
+ * clock-frequency = 168MHz: 告诉内核 CPU 运行频率，用于 systick/usleep 校准
+ * ahb-prescaler = 1:  AHB 时钟 = 168 / 1 = 168MHz (CPU 核心 / DMA / SRAM)
+ * apb1-prescaler = 4: APB1 时钟 = 168 / 4 = 42MHz  (低速外设: UART2-5, TIM2-7 等)
+ * apb2-prescaler = 2: APB2 时钟 = 168 / 2 = 84MHz  (高速外设: UART1/6, SPI1, ADC 等)
+ */
+&rcc {
+	clocks = <&pll>;                 /* 系统时钟源: PLL 输出 */
+	clock-frequency = <DT_FREQ_M(168)>; /* SYSCLK = 168MHz */
+	ahb-prescaler = <1>;             /* HCLK = 168MHz */
+	apb1-prescaler = <4>;            /* PCLK1 = 42MHz (max 42MHz for APB1) */
+	apb2-prescaler = <2>;            /* PCLK2 = 84MHz (max 84MHz for APB2) */
+};
+
+/* =========================================================================
+ * 串口外设
+ * =========================================================================
+ * nanoWAys 有三路 Modbus RTU 总线，都通过 UART 通信。
+ *
+ * pinctrl-0:  引脚复用配置，引用自 stm32f407v(e-g)tx-pinctrl.dtsi。
+ *             pinctrl-0 = "默认状态" 下的引脚配置，可以有 pinctrl-1 = "休眠" 等。
+ * pinctrl-names = "default": 给 pinctrl-0 起名，驱动通过名字查找配置。
+ * current-speed: 波特率 bps。Modbus RTU 常用 9600/19200/38400/115200。
+ * status = "okay": 使能此外设。SoC dtsi 中外设默认 status = "disabled"，
+ *   板级文件通过 "okay" 激活。没有这句话，外设驱动不会初始化。
+ *
+ * 三路 Modbus 职责:
+ *   USART1: 主 Modbus RTU 从站 + RS232 调试/配置命令，地址/波特率可动态配置
+ *   USART3: 辅助 Modbus RTU 从站，固定地址 101，波特率 115200
+ *   USART6: 镜像 Modbus RTU 从站，与 USART1 共享地址和波特率
+ *
+ * 并发保护: 三路共享寄存器映射，通过 k_mutex 保证互斥访问 (超时 200ms)。
+ */
+
+/* USART1: PA9(TX) + PA10(RX), 主 Modbus 从站, 115200-8-N-1 */
+&usart1 {
+	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+};
+
+/* USART3: PD8(TX) + PD9(RX), 辅助 Modbus 从站, 115200-8-N-1 */
+&usart3 {
+	pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+};
+
+/* USART6: PC6(TX) + PC7(RX), 镜像 Modbus 从站, 115200-8-N-1 */
+&usart6 {
+	pinctrl-0 = <&usart6_tx_pc6 &usart6_rx_pc7>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+};
+
+/* =========================================================================
+ * SPI2 — ADS1220 外部 24-bit ADC
+ * =========================================================================
+ * ADS1220 是 TI 的 24-bit ΔΣ ADC，通过 SPI 连接，用于高精度比色皿测量。
+ *
+ * 引脚: SCK(PB13) + MISO(PB14) + MOSI(PB15) + CS(PB12)
+ * 为什么 SPI clock 没有在此声明？
+ *   Zephyr SPI 驱动在运行时通过 spi_config 结构体设频率，不在设备树中写死。
+ *   ADS1220 支持最高 5MHz SPI clock，但实际用低速即可保证信号完整性。
+ *
+ * cs-gpios: 片选信号，SPI 驱动自动管理 CS 的拉低/拉高。
+ *   GPIO_ACTIVE_LOW = CS 低电平时芯片被选中。
+ */
+&spi2 {
+	pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
+	pinctrl-names = "default";
+	cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>;  /* PB12: ADS1220 片选 (CS), 低电平选中 */
+	status = "okay";
+};
+
+/* =========================================================================
+ * DAC1 — 数模转换输出
+ * =========================================================================
+ * 两通道:
+ *   PA4 (DAC_OUT1) — 4-20mA 电流输出 (通过外部 V-I 转换电路驱动执行器)
+ *   PA5 (DAC_OUT2) — LED 光源亮度控制 (通过模拟电压调节 LED 驱动电流)
+ *
+ * DAC 分辨率 12-bit，输出范围 0~Vref (通常 3.3V)。
+ * 使用 Zephyr DAC API: dac_write_value() 设置输出电压。
+ */
+&dac1 {
+	pinctrl-0 = <&dac_out1_pa4 &dac_out2_pa5>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/* =========================================================================
+ * ADC1 — 内部模数转换 (12-bit SAR)
+ * =========================================================================
+ * 6 路模拟输入通道，用于液位检测、温度测量等非高精度场合。
+ * （高精度比色皿测量用外部 ADS1220 ADC）
+ *
+ * 引脚分配:
+ *   PA0 (ADC_IN0)  — 通道 0
+ *   PA1 (ADC_IN1)  — 通道 1
+ *   PA7 (ADC_IN7)  — 通道 7
+ *   PB1 (ADC_IN9)  — 通道 9
+ *   另有 2 路通过 pinctrl 未列出的其他引脚连接（见 bsp_adc_internal.c）
+ *
+ * st,adc-clock-source = <SYNC>: ADC 时钟源 = 同步模式 (来自 APB2)
+ * st,adc-prescaler = <8>: ADC 时钟 = PCLK2 / 8 = 84MHz / 8 = 10.5MHz
+ *   数据手册要求 ADC 时钟 ≤ 36MHz (实际 ≤30MHz 推荐)，10.5MHz 在安全范围内。
+ *   更低的 ADC 时钟 = 更高的精度 (采样时间更充足)。
+ *
+ * 数据采集方式: adc_read_async() 配合双缓冲交替 (DMA 模式)。
+ *
+ * 注意: 如果你的 pinctrl dtsi 中没有 adc1_in9_pb1 等节点，编译时会报错。
+ * 这种情况需要在 pinctrl dtsi 中补充，或自己写 pinctrl 组。参见:
+ *   boards/st/nanoways_f407/support/ 目录下的补充引脚定义。
+ */
+&adc1 {
+	pinctrl-0 = <&adc1_in0_pa0 &adc1_in1_pa1 &adc1_in7_pa7 &adc1_in9_pb1>;
+	pinctrl-names = "default";
+	st,adc-clock-source = <SYNC>;    /* 同步时钟模式 (来自 APB2 总线时钟) */
+	st,adc-prescaler = <8>;          /* PCLK2/8 = 10.5MHz (< 36MHz 上限) */
+	status = "okay";
+};
+
+/* =========================================================================
+ * 定时器 / PWM 输出
+ * =========================================================================
+ * 三个通用定时器产生 PWM 信号，控制加热功率、LED 亮度和步进电机转速。
+ *
+ * 【PWM 频率计算】
+ * PWM 频率 = Timer时钟 / (prescaler + 1) / (period + 1)
+ * Zephyr 中 period 在运行时通过 pwm_set_dt() 指定，设备树只设 prescaler 和 status。
+ * 例如 TIM2: 84MHz / (2399+1) = 35kHz 计数频率，若 period=999 则 PWM 频率 = 35Hz。
+ *
+ * 【st,prescaler 含义】
+ * 写入 TIMx_PSC 寄存器的值。Timer 时钟先除以 (prescaler+1)，再以此频率计数到 period。
+ * prescaler 越大 → 计数频率越低 → 可实现的 PWM 周期越长（适合低频加热控制）。
+ * prescaler 越小 → 计数频率越高 → PWM 分辨率越高（适合精细的亮度控制）。
+ */
+
+/*
+ * TIM2 — 加热控制 PWM (PA15, TIM2_CH1)
+ * prescaler=2399: 计数频率 = 84MHz / 2400 = 35kHz
+ * 低频设计: 加热是慢过程，几百 Hz 的 PWM 足够，
+ * 低频还减少 MOSFET 开关损耗 (加热负载通常用大功率 MOSFET 驱动)。
+ */
+&timers2 {
+	st,prescaler = <2399>;           /* 84MHz / 2400 = 35kHz 计数频率 */
+	status = "okay";
+
+	pwm2: pwm {
+		pinctrl-0 = <&tim2_ch1_pa15>;
+		pinctrl-names = "default";
+		status = "okay";
+	};
+};
+
+/*
+ * TIM3 — LED 光源 PWM (PA6=CH1, PB0=CH3)
+ * prescaler=0: 计数频率 = 84MHz/1 = 84MHz (最高分辨率)
+ * 高频设计: LED 调光需要人眼不可察觉的闪烁频率，
+ * 84MHz 计数基础可提供足够分辨率的同时保持 >= 1kHz 的 PWM 频率。
+ * 两通道独立控制不同波长的 LED 光源亮度。
+ */
+&timers3 {
+	st,prescaler = <0>;              /* 不分频: 84MHz 全速，最高调光分辨率 */
+	status = "okay";
+
+	pwm3: pwm {
+		pinctrl-0 = <&tim3_ch1_pa6 &tim3_ch3_pb0>;
+		pinctrl-names = "default";
+		status = "okay";
+	};
+};
+
+/*
+ * TIM4 — 步进电机 STEP 脉冲 (PD13, TIM4_CH2)
+ * prescaler=69: 计数频率 = 84MHz / 70 = 1.2MHz
+ * 步进电机每个脉冲 = 一个步进角 (1.8° 即 200 步/转)，频率决定转速。
+ * 1.2MHz 最大脉冲速率远超实际需要（一般步进电机 ≤ 几 kHz），
+ * 提供足够的速度控制范围和加减速平滑度。
+ */
+&timers4 {
+	st,prescaler = <69>;             /* 84MHz / 70 = 1.2MHz 脉冲频率上限 */
+	status = "okay";
+
+	pwm4: pwm {
+		pinctrl-0 = <&tim4_ch2_pd13>;
+		pinctrl-names = "default";
+		status = "okay";
+	};
+};

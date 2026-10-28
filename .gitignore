@@ -1,0 +1,15 @@
+# Generated builds and editor artifacts
+**/build/
+**/build-*/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/Testing/
+*.o
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+*.pyc
+**/__pycache__/
+.vscode/

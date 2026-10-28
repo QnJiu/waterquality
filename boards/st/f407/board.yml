@@ -1,0 +1,6 @@
+board:
+  name: nanoways_f407
+  full_name: nanoWAys STM32F407VET6 Water Quality Analyzer
+  vendor: nanoways
+  socs:
+    - name: stm32f407xx

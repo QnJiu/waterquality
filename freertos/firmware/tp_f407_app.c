@@ -39,7 +39,13 @@ static void safe(void *p) {
     tp_f407_heater_off(&a->heater); tp_f407_pump_stop(&a->pump); tp_f407_valves_safe(&a->valves);
     if (a->reader.adc) (void)tp_adc_reader_cancel(&a->reader);
 }
-static tp_result send(void *p,unsigned port,const uint8_t *bytes,size_t len) { return tp_f407_usart3_rtu_send(&((tp_f407_app *)p)->uart,port,bytes,len); }
+static tp_result send(void *p,unsigned port,const uint8_t *bytes,size_t len) {
+    tp_f407_app *a=p;
+#ifdef TP_F407_SECOND_MODBUS
+    if (port==1) return tp_f407_usart1_rtu_send(&a->uart1,port,bytes,len);
+#endif
+    return tp_f407_usart3_rtu_send(&a->uart,port,bytes,len);
+}
 static tp_result set_clock(void *p,uint32_t utc) { return tp_freertos_clock_set(&((tp_f407_app *)p)->clock,utc); }
 static uint8_t clock_status(void *p) { return tp_freertos_clock_set_status(&((tp_f407_app *)p)->clock); }
 static bool now(void *p,int64_t *utc) { return tp_freertos_clock_now(&((tp_f407_app *)p)->clock,utc); }
@@ -141,7 +147,12 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     INIT(tp_service_attach_log(&a->service,a,request_log));
     INIT(tp_service_attach_log_stats(&a->service,a,log_stats));
     tp_runtime_io io={a,send,now,comm_error,record_event,poll_log,control_progress};
+#ifdef TP_F407_SECOND_MODBUS
+    const uint8_t addresses[]={a->config.slave_address,a->config.slave_address};
+    INIT(tp_runtime_init(&a->runtime,&a->service,&io,addresses,2,10));
+#else
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));
+#endif
     INIT(tp_runtime_attach_storage(&a->runtime,&a->store,&a->config));
     if (o->auto_calibration) {
         const tp_f407_auto_cal_options *cal=o->auto_calibration;
@@ -158,6 +169,9 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     INIT(tp_freertos_clock_start(&a->clock,&a->rtc,1000,3000,256,tskIDLE_PRIORITY+1));
     INIT(tp_service_attach_clock(&a->service,a,set_clock,clock_status));
     INIT(tp_f407_usart3_rtu_init(&a->uart,&a->runtime,0,512,tskIDLE_PRIORITY+2));
+#ifdef TP_F407_SECOND_MODBUS
+    INIT(tp_f407_usart1_rtu_init(&a->uart1,&a->runtime,1,512,tskIDLE_PRIORITY+2));
+#endif
     INIT(tp_runtime_start(&a->runtime,768,tskIDLE_PRIORITY+3));
     const uint32_t control_timeout=1000;
     INIT(tp_freertos_health_start(&a->health,&control_timeout,1,100,256,

@@ -8,6 +8,9 @@
 #include "tp_f407_heater.h"
 #include "tp_f407_temperature.h"
 #include "tp_f407_usart3_rtu.h"
+#ifdef TP_F407_SECOND_MODBUS
+#include "tp_f407_usart1_rtu.h"
+#endif
 #include "tp_freertos_clock.h"
 #include "tp_adc_reader.h"
 #include "tp_freertos_event_log.h"
@@ -67,6 +70,9 @@ struct tp_f407_app {
     tp_f407_temperature temperature; tp_freertos_clock clock;
     tp_controller controller; tp_service service; tp_freertos_runtime runtime;
     tp_f407_usart3_rtu uart; tp_freertos_health health;
+#ifdef TP_F407_SECOND_MODBUS
+    tp_f407_usart1_rtu uart1;
+#endif
     tp_trial_health trial_health; /* protected by task critical sections */
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
     uint16_t (*resource_faults)(void *); void *resource_ctx;

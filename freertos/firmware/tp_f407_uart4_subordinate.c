@@ -12,12 +12,18 @@ static tp_result send_request(void *ctx,const uint8_t *data,size_t length) {
     tp_f407_uart4_subordinate *u=ctx;
     if(!data || !length || length>sizeof(u->tx)) return TP_INVALID;
     taskENTER_CRITICAL();
-    if(u->transmitting || u->overflow || uxQueueMessagesWaiting(u->events) ||
+    if(u->transmitting || u->wake_active || u->overflow || uxQueueMessagesWaiting(u->events) ||
        (UART4->SR & RX_FLAGS)) {
         taskEXIT_CRITICAL(); return TP_BUSY;
     }
     memcpy(u->tx,data,length); u->tx_length=(uint8_t)length; u->tx_position=0;
-    u->transmitting=true; UART4->CR1 |= USART_CR1_TXEIE;
+    if(u->set_wake) {
+        u->set_wake(u->wake_ctx,true);
+        u->wake_active=true; u->wake_waiting=true;
+        u->wake_started_ms=(uint32_t)xTaskGetTickCount();
+    } else {
+        u->transmitting=true; UART4->CR1 |= USART_CR1_TXEIE;
+    }
     taskEXIT_CRITICAL();
     return TP_OK;
 }
@@ -59,6 +65,31 @@ void UART4_IRQHandler(void) {
     }
     portYIELD_FROM_ISR(wake);
 }
+/* Owner task: keep the wake line asserted through the complete exchange. */
+static void service_wakeup(tp_f407_uart4_subordinate *u, uint32_t now) {
+    if(!u->wake_active) return;
+    if(!u->subordinate.link.poll.master.pending) {
+        u->wake_waiting=false;
+        if(!u->transmitting) {
+            u->set_wake(u->wake_ctx,false);
+            u->wake_active=false;
+        }
+        return;
+    }
+    if(!u->wake_waiting || (uint32_t)(now-u->wake_started_ms)<=u->wake_delay_ms) return;
+    taskENTER_CRITICAL();
+    bool busy=u->overflow || uxQueueMessagesWaiting(u->events) || (UART4->SR & RX_FLAGS);
+    if(!busy) {
+        u->wake_waiting=false; u->transmitting=true;
+        UART4->CR1 |= USART_CR1_TXEIE;
+    }
+    taskEXIT_CRITICAL();
+    if(busy) {
+        u->wake_waiting=false;
+        (void)tp_freertos_subordinate_error(&u->subordinate,TIM5->CNT,now);
+        u->set_wake(u->wake_ctx,false); u->wake_active=false;
+    }
+}
 static void uart_task(void *ctx) {
     tp_f407_uart4_subordinate *u=ctx;
     hardware_start();
@@ -71,7 +102,7 @@ static void uart_task(void *ctx) {
         if(lost) (void)tp_freertos_subordinate_error(&u->subordinate,lost_at,(uint32_t)xTaskGetTickCount());
         while(xQueueReceive(u->events,&e,0)==pdPASS) {
             uint32_t ms=(uint32_t)xTaskGetTickCount();
-            if(e.error || (uint32_t)(ms-e.ms)>0x7fffffffu)
+            if(u->wake_waiting || e.error || (uint32_t)(ms-e.ms)>0x7fffffffu)
                 (void)tp_freertos_subordinate_error(&u->subordinate,e.us,ms);
             else (void)tp_freertos_subordinate_byte_at(&u->subordinate,e.byte,e.us,e.ms,ms);
             if(u->overflow) break;
@@ -80,8 +111,14 @@ static void uart_task(void *ctx) {
         bool clear=!u->overflow && !uxQueueMessagesWaiting(u->events) && !(UART4->SR & RX_FLAGS);
         uint32_t now=TIM5->CNT;
         taskEXIT_CRITICAL();
+        if(u->wake_active) {
+            uint32_t now_ms=(uint32_t)xTaskGetTickCount();
+            tp_sub_master_tick(&u->subordinate.link.poll.master,now_ms);
+            service_wakeup(u,now_ms);
+        }
         if(clear && !u->transmitting)
             (void)tp_freertos_subordinate_tick(&u->subordinate,now,(uint32_t)xTaskGetTickCount());
+        service_wakeup(u,(uint32_t)xTaskGetTickCount());
         (void)ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(1));
     }
 }
@@ -101,5 +138,15 @@ tp_result tp_f407_uart4_subordinate_init(tp_f407_uart4_subordinate *u,
         instance=NULL; vQueueDelete(u->subordinate.snapshot); vQueueDelete(u->events);
         u->subordinate.snapshot=NULL; u->events=NULL; return TP_IO_ERROR;
     }
+    return TP_OK;
+}
+
+tp_result tp_f407_uart4_subordinate_set_wakeup(tp_f407_uart4_subordinate *u,
+    void *ctx,void (*set_wake)(void *,bool),uint32_t delay_ms) {
+    if(!u || u!=instance || !set_wake || u->set_wake || !delay_ms ||
+       delay_ms>=u->subordinate.link.poll.master.response_timeout_ms-1u ||
+       xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
+    u->wake_ctx=ctx; u->set_wake=set_wake; u->wake_delay_ms=delay_ms;
+    set_wake(ctx,false);
     return TP_OK;
 }

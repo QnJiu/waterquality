@@ -13,8 +13,18 @@ typedef struct {
     uint8_t tx[TP_SUB_REQUEST_SIZE];
     volatile uint8_t tx_length, tx_position;
     volatile bool transmitting, overflow;
+    void *wake_ctx;
+    void (*set_wake)(void *, bool);
+    uint32_t wake_delay_ms, wake_started_ms;
+    bool wake_active, wake_waiting;
 } tp_f407_uart4_subordinate;
 tp_result tp_f407_uart4_subordinate_init(tp_f407_uart4_subordinate *,
     uint32_t period_ms,uint32_t timeout_ms,uint32_t freshness_ms,uint32_t first_token,
     uint16_t stack_words,UBaseType_t priority);
+/* Optional active-high wake line, configured before scheduler start. The callback
+ * must be short, nonblocking, and drive the level immediately; assertion
+ * runs with interrupts masked.
+ * The request timeout includes the wake delay. */
+tp_result tp_f407_uart4_subordinate_set_wakeup(tp_f407_uart4_subordinate *,
+    void *ctx, void (*set_wake)(void *, bool), uint32_t delay_ms);
 #endif

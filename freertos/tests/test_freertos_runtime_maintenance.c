@@ -1,6 +1,8 @@
 #include <assert.h>
 #include "../os/freertos_runtime.c"
 static int critical, scheduler, notifications, safe_calls;
+static tp_event captured[4]; static unsigned event_count;
+static void record(void *ctx,const tp_event *event) { (void)ctx; assert(event_count<4); captured[event_count++]=*event; }
 static tp_freertos_runtime *active;
 void test_enter(void) { assert(!critical); critical=1; }
 void test_exit(void) { assert(critical); critical=0; }
@@ -31,6 +33,14 @@ int main(void) {
     process_maintenance(&rt);
     assert(safe_calls==1 && s.maintenance && tp_runtime_request_maintenance(&rt)==TP_OK);
     process_maintenance(&rt); assert(safe_calls==1);
+    rt.maintenance_state=MAINTENANCE_NONE; s.maintenance=false;
+    c.state=TP_RUNNING; s.standard_attached=true; s.auto_standard.controller=&c;
+    s.auto_standard.state=TP_STANDARD_RUNNING; rt.io.event=record;
+    assert(tp_runtime_request_maintenance(&rt)==TP_LOCK_BUSY);
+    process_maintenance(&rt);
+    assert(event_count==2 && captured[0].type==TP_EVENT_FAILED);
+    assert(captured[1].type==TP_EVENT_AUTO_STANDARD && captured[1].detail==5);
+    assert(s.auto_standard.state==TP_STANDARD_CANCELLED);
     rt.maintenance_state=MAINTENANCE_NONE; s.maintenance=false; c.hal.safe_outputs=NULL;
     assert(tp_runtime_request_maintenance(&rt)==TP_LOCK_BUSY);
     process_maintenance(&rt);

@@ -30,8 +30,21 @@ static void emit_transition(tp_freertos_runtime *rt,tp_run_state before) {
     event.utc_valid=rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx,&event.utc_seconds);
     rt->io.event(rt->io.ctx,&event);
 }
+static void emit_operation_events(tp_freertos_runtime *rt,tp_operation_snapshot before) {
+    if (!rt->io.event) return;
+    tp_event event;
+    if (tp_operation_cal_event(before,rt->service,&event)) {
+        event.utc_valid=rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx,&event.utc_seconds);
+        rt->io.event(rt->io.ctx,&event);
+    }
+    if (tp_operation_standard_event(before,rt->service,&event)) {
+        event.utc_valid=rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx,&event.utc_seconds);
+        rt->io.event(rt->io.ctx,&event);
+    }
+}
 static void process(tp_freertos_runtime *rt, const tp_runtime_frame *f) {
     tp_run_state before=rt->service->controller->state;
+    tp_operation_snapshot operation_before=tp_operation_capture(rt->service);
     uint8_t response[TP_RUNTIME_FRAME_MAX]; size_t length = 0;
 #ifdef TP_USE_FREEMODBUS
     tp_result r = tp_freemodbus_frame(&rt->ports[f->port], f->bytes, f->length,
@@ -41,6 +54,7 @@ static void process(tp_freertos_runtime *rt, const tp_runtime_frame *f) {
                                   response, sizeof(response), &length);
 #endif
     emit_transition(rt,before);
+    emit_operation_events(rt,operation_before);
     if (r == TP_OK && length && rt->io.send(rt->io.ctx, f->port, response, length) != TP_OK &&
         rt->io.communication_error) rt->io.communication_error(rt->io.ctx, f->port);
 }
@@ -102,8 +116,9 @@ static void process_maintenance(tp_freertos_runtime *rt) {
     taskEXIT_CRITICAL();
     if (!requested) return;
     tp_run_state before=rt->service && rt->service->controller ? rt->service->controller->state : TP_IDLE;
+    tp_operation_snapshot operation_before=tp_operation_capture(rt->service);
     tp_result result=tp_service_enter_maintenance(rt->service);
-    if (result==TP_OK) emit_transition(rt,before);
+    if (result==TP_OK) { emit_transition(rt,before); emit_operation_events(rt,operation_before); }
     taskENTER_CRITICAL();
     rt->maintenance_state=result==TP_OK ? MAINTENANCE_READY : MAINTENANCE_FAILED;
     taskEXIT_CRITICAL();
@@ -132,8 +147,10 @@ static void task(void *arg) {
         int64_t utc = 0;
         bool valid = rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx, &utc);
         tp_run_state before=rt->service->controller->state;
+        tp_operation_snapshot operation_before=tp_operation_capture(rt->service);
         tp_service_tick(rt->service, (uint32_t)xTaskGetTickCount(), valid, utc);
         emit_transition(rt,before);
+        emit_operation_events(rt,operation_before);
         while (budget-- && xQueueReceive(rt->requests, &f, 0) == pdPASS) {
             process_maintenance(rt);
             /* Check again between requests to bound stop latency. */

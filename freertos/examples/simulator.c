@@ -68,6 +68,24 @@ static tp_result command(tp_modbus *m,uint16_t value) {
     size_t n=0; tp_result r=tp_modbus_frame(m,q,sizeof(q),response,sizeof(response),&n);
     return r==TP_OK && n==8 && !memcmp(q,response,8) ? TP_OK : TP_IO_ERROR;
 }
+/* Display the three readings using the same FC03 snapshot as the host tools. */
+static int show_readings(tp_modbus *m) {
+    uint8_t q[8]={1,3,0,132,0,7,0,0}, response[19]; size_t n=0;
+    uint16_t sum=crc(q,6); q[6]=(uint8_t)sum; q[7]=(uint8_t)(sum>>8);
+    if(tp_modbus_frame(m,q,sizeof(q),response,sizeof(response),&n)!=TP_OK ||
+       n!=19 || response[0]!=1 || response[1]!=3 || response[2]!=14 ||
+       crc(response,n)!=0 || response[3]!=0 || response[4]!=7) return 1;
+    float values[3];
+    for(unsigned i=0;i<3;i++) {
+        const uint8_t *p=&response[5+4*i];
+        uint32_t bits=((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3];
+        memcpy(&values[i],&bits,sizeof(bits));
+    }
+    printf("signals: blank=%.3f reacted=%.3f turbidity=%.3f (simulated)\n",
+           (double)values[0],(double)values[1],(double)values[2]);
+    return fabsf(values[0]-1.0f)>0.0001f || fabsf(values[1]-0.5f)>0.0001f ||
+           fabsf(values[2]-0.1f)>0.0001f;
+}
 /* Configure the five schedule registers together using Modbus FC16. */
 static tp_result set_automatic_mode(tp_modbus *m,uint16_t mode) {
     uint8_t q[19]={1,16,0,1,0,5,10,0,(uint8_t)mode,0,0,0,60,0,1,0,0};
@@ -313,6 +331,7 @@ int main(int argc,char **argv) {
     if(fault_sensor) return controller.state==TP_FAILED && controller.fault==TP_FAULT_SENSOR ? 0 : 1;
     if(stop_rinse) return controller.state==TP_FAILED && controller.fault==TP_FAULT_STOP &&
         x.pump_count==3 && x.pump_valves[2]==RINSE ? 0 : 1;
+    if(show_readings(&modbus)) return 1;
     if(journal_mode && verify_journal(&service,&modbus,&memory,&journal_io,controller.result_mg_l)) return 1;
     if(periodic && completed!=2) return 1;
     if(controlled && !advances) return 1;

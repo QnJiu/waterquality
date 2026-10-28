@@ -41,6 +41,11 @@ tp_result tp_runtime_init(tp_freertos_runtime *rt, tp_service *service,
     const tp_runtime_io *io, const uint8_t *addresses, size_t port_count, uint32_t tick_ms);
 /* Attach before start; cfg is loaded by the caller or a validated default. */
 tp_result tp_runtime_attach_storage(tp_freertos_runtime *rt, const tp_store_io *store, const tp_config *cfg);
+/* Pre-scheduler boot: loads a valid slot or uses defaults; no implicit write.
+ * Returns source and sequence for startup diagnostics. Store and its context
+ * must remain valid for the lifetime of the runtime. */
+tp_result tp_runtime_bootstrap_storage(tp_freertos_runtime *rt, const tp_store_io *store,
+    const tp_config *defaults, uint32_t *sequence, tp_config_source *source);
 tp_result tp_runtime_start(tp_freertos_runtime *rt, uint16_t stack_words, UBaseType_t priority);
 /* Call from a UART task, not an ISR. Input is copied; queue-full returns TP_BUSY. */
 tp_result tp_runtime_submit(tp_freertos_runtime *rt, unsigned port, const uint8_t *frame, size_t length);

@@ -58,6 +58,17 @@ tp_result tp_runtime_attach_storage(tp_freertos_runtime *rt, const tp_store_io *
     }
     return r;
 }
+tp_result tp_runtime_bootstrap_storage(tp_freertos_runtime *rt, const tp_store_io *store,
+    const tp_config *defaults, uint32_t *sequence, tp_config_source *source) {
+    if (!rt || !sequence || !source || !store || !store->read || !store->write || !store->erase)
+        return TP_INVALID;
+    tp_config cfg; uint32_t seq; tp_config_source origin;
+    tp_result r = tp_store_bootstrap(store, defaults, &cfg, &seq, &origin);
+    if (r != TP_OK) return r;
+    r = tp_runtime_attach_storage(rt, store, &cfg);
+    if (r == TP_OK) { *sequence = seq; *source = origin; }
+    return r;
+}
 static void task(void *arg) {
     tp_freertos_runtime *rt = arg;
     const TickType_t period = pdMS_TO_TICKS(rt->tick_ms) ? pdMS_TO_TICKS(rt->tick_ms) : 1;

@@ -75,3 +75,21 @@ tp_result tp_store_save(const tp_store_io *io, const tp_config *cfg) {
 }
 
 
+
+tp_result tp_store_bootstrap(const tp_store_io *io, const tp_config *defaults,
+    tp_config *out, uint32_t *sequence, tp_config_source *source) {
+    if (!out || !sequence || !source || tp_config_validate(defaults) != TP_OK)
+        return TP_INVALID;
+    tp_config loaded; uint32_t seq;
+    tp_result r = tp_store_load(io, &loaded, &seq);
+    if (r == TP_OK) {
+        *out = loaded; *sequence = seq; *source = TP_CONFIG_FROM_STORAGE;
+        return TP_OK;
+    }
+    /* TP_INVALID means there is no valid record only when the interface itself
+     * is valid. Validate it separately before treating that as a blank store. */
+    if (!io || !io->read) return TP_INVALID;
+    if (r != TP_INVALID) return r;
+    *out = *defaults; *sequence = 0; *source = TP_CONFIG_DEFAULTED;
+    return TP_OK;
+}

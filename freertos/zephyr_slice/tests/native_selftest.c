@@ -40,7 +40,7 @@ static void test_thread(void *a, void *b, void *c) {
     ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
     const struct device *uart = DEVICE_DT_GET(DT_NODELABEL(tp_uart));
     const struct gpio_dt_spec drdy = GPIO_DT_SPEC_GET(DT_ALIAS(tp_adc), drdy_gpios);
-    uint8_t request[] = {1, 3, 0, 6, 0, 8, 0xa4, 0x0d};
+    uint8_t request[] = TP_SLICE_SNAPSHOT_REQUEST;
     size_t received = 0;
     k_sleep(K_MSEC(200));
     if (gpio_emul_input_set(drdy.port, drdy.pin, 0) != 0) goto fail;

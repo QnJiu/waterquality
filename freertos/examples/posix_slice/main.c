@@ -46,6 +46,15 @@ static void run_slice(void *arg) {
        response[11]!=(uint8_t)(TP_SLICE_UV>>24) || response[12]!=(uint8_t)(TP_SLICE_UV>>16) ||
        response[13]!=(uint8_t)(TP_SLICE_UV>>8) || response[14]!=(uint8_t)TP_SLICE_UV ||
        crc16(response,15)!=(uint16_t)(response[15]|((uint16_t)response[16]<<8))) goto fail;
+    const uint8_t snapshot_request[]=TP_SLICE_SNAPSHOT_REQUEST;
+    if(tp_modbus_frame(&modbus,snapshot_request,sizeof(snapshot_request),response,sizeof(response),&length)!=TP_OK ||
+       length!=21 || response[0]!=1 || response[1]!=3 || response[2]!=16 ||
+       response[3]!=response[17] || response[4]!=response[18] ||
+       response[5]!=0 || response[6]!=1 || response[7]!=0 || response[8]!=0 ||
+       response[9]!=0 || response[10]!=0 || (response[11]==0 && response[12]==0) ||
+       response[13]!=(uint8_t)(TP_SLICE_UV>>24) || response[14]!=(uint8_t)(TP_SLICE_UV>>16) ||
+       response[15]!=(uint8_t)(TP_SLICE_UV>>8) || response[16]!=(uint8_t)TP_SLICE_UV ||
+       crc16(response,19)!=(uint16_t)(response[19]|((uint16_t)response[20]<<8))) goto fail;
     puts("TP_FREERTOS_POSIX_SELFTEST PASS"); fflush(stdout); exit(0);
 fail:
     fputs("TP_FREERTOS_POSIX_SELFTEST FAIL\n",stderr); exit(1);

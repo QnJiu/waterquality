@@ -4,12 +4,12 @@
 #include <math.h>
 #include <stdio.h>
 
-typedef struct { const float *samples; unsigned next, safe; } fake;
+typedef struct { const float *samples; unsigned next, safe; bool heater_failure; } fake;
 static tp_result valves(void *p,uint32_t mask) { (void)p; (void)mask; return TP_OK; }
 static tp_result pump(void *p,int32_t steps,uint32_t hz) { (void)p; (void)steps; (void)hz; return TP_OK; }
 static tp_result poll(void *p,bool *done) { (void)p; *done=true; return TP_OK; }
 static tp_result temperature(void *p,float *v) { (void)p; *v=20; return TP_OK; }
-static tp_result heat(void *p,float v) { (void)p; (void)v; return TP_OK; }
+static tp_result heat(void *p,float v) { (void)v; return ((fake *)p)->heater_failure ? TP_IO_ERROR : TP_OK; }
 static tp_result adc(void *p,uint8_t ch,float *v) { fake *f=p; (void)ch; *v=f->samples[f->next++]; return TP_OK; }
 static bool interlock(void *p) { (void)p; return true; }
 static void safe(void *p) { ((fake *)p)->safe++; }
@@ -67,5 +67,27 @@ int main(void) {
     for(unsigned i=0;i<7;i++) tp_tick(&c,300+i*50);
     assert(c.state==TP_COMPLETE && c.result_valid &&
            fabsf(c.result_mg_l-log10f(5.0f))<0.0001f);
+    /* A result calculated before an abort must never survive recovery as valid. */
+    tp_step interrupted[6];
+    for(unsigned i=0;i<4;i++) interrupted[i]=result_recipe[i];
+    interrupted[4]=(tp_step){.kind=TP_STEP_HEATER_OFF};
+    interrupted[5]=(tp_step){.kind=TP_STEP_END};
+    f.next=0;
+    assert(tp_start(&c,interrupted,6,700)==TP_OK);
+    for(unsigned i=0;i<4;i++) tp_tick(&c,700+i*50);
+    assert(c.result_valid);
+    tp_stop(&c);
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_STOP && !c.result_valid);
+    assert(tp_clear_fault(&c)==TP_OK && !c.result_valid);
+    f.next=0; f.heater_failure=true;
+    assert(tp_start(&c,interrupted,6,1000)==TP_OK);
+    for(unsigned i=0;i<5;i++) tp_tick(&c,1000+i*50);
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_IO && !c.result_valid);
+    assert(tp_clear_fault(&c)==TP_OK && !c.result_valid);
+    f.next=0; f.heater_failure=false;
+    assert(tp_start(&c,interrupted,6,1300)==TP_OK);
+    for(unsigned i=0;i<6;i++) tp_tick(&c,1300+i*50);
+    assert(c.state==TP_COMPLETE && c.result_valid &&
+           fabsf(c.result_mg_l-1.0f)<0.0001f);
     puts("sample filtering checks passed"); return 0;
 }

@@ -5,11 +5,15 @@
 #define TP_PID_PERIOD_MS 200u
 #define TP_SAMPLE_PERIOD_MS 50u
 #define TP_MAX_DURATION 0x7fffffffu
+#define TP_ADVANCE_TIMEOUT_MS 30000u
 static bool expired(uint32_t now, uint32_t start, uint32_t duration) { return (uint32_t)(now - start) >= duration; }
 static void fail(tp_controller *c, tp_fault f) {
     c->heating = false; c->fault = f; c->state = TP_FAILED; c->hal.safe_outputs(c->hal.ctx);
 }
-static void next(tp_controller *c) { c->index++; c->entered = false; }
+static void next(tp_controller *c, uint32_t now) {
+    c->index++; c->entered = false;
+    if (c->single_step) { c->awaiting_advance = true; c->advance_wait_ms = now; }
+}
 void tp_init(tp_controller *c, const tp_hal *hal, const tp_calibration *cal,
              const tp_pid *pid, float max_temperature_c) {
     memset(c, 0, sizeof(*c));
@@ -46,8 +50,16 @@ tp_result tp_start(tp_controller *c, const tp_step *recipe, size_t count, uint32
     if (!c->hal.interlocks_ok(c->hal.ctx)) { fail(c, TP_FAULT_INTERLOCK); return TP_IO_ERROR; }
     c->recipe = recipe; c->recipe_len = count; c->index = 0; c->entered = false;
     c->state = TP_RUNNING; c->fault = TP_FAULT_NONE; c->heating = false;
+    c->single_step = false; c->awaiting_advance = false;
     c->result_valid = false; c->valid_readings = 0; c->pid.integral = 0; c->pid.initialized = false;
     c->entered_ms = now; c->last_pid_ms = now - TP_PID_PERIOD_MS;
+    return TP_OK;
+}
+tp_result tp_advance(tp_controller *c, uint32_t now) {
+    if (!c || c->state != TP_RUNNING || !c->single_step || !c->awaiting_advance) return TP_INVALID;
+    if (!c->hal.interlocks_ok(c->hal.ctx)) { fail(c, TP_FAULT_INTERLOCK); return TP_IO_ERROR; }
+    if (expired(now, c->advance_wait_ms, TP_ADVANCE_TIMEOUT_MS)) { fail(c, TP_FAULT_TIMEOUT); return TP_TIMEOUT; }
+    c->awaiting_advance = false;
     return TP_OK;
 }
 void tp_stop(tp_controller *c) { if (c && c->hal.safe_outputs && c->state != TP_FAILED) fail(c, TP_FAULT_STOP); }
@@ -60,7 +72,7 @@ void tp_tick(tp_controller *c, uint32_t now) {
     if (!c->hal.interlocks_ok(c->hal.ctx)) { fail(c, TP_FAULT_INTERLOCK); return; }
     if (c->index >= c->recipe_len) { fail(c, TP_FAULT_RECIPE); return; }
     const tp_step *s = &c->recipe[c->index];
-    if (!c->entered) {
+    if (!c->entered && !c->awaiting_advance) {
         c->entered = true; c->entered_ms = now; c->sample_count = 0; c->sample_sum = 0;
         c->last_sample_ms = now - TP_SAMPLE_PERIOD_MS;
         if (s->kind == TP_STEP_PUMP && c->hal.pump_start(c->hal.ctx, s->arg.pump.steps,
@@ -78,23 +90,27 @@ void tp_tick(tp_controller *c, uint32_t now) {
             fail(c, TP_FAULT_IO); return;
         }
     }
+    if (c->awaiting_advance) {
+        if (expired(now, c->advance_wait_ms, TP_ADVANCE_TIMEOUT_MS)) fail(c, TP_FAULT_TIMEOUT);
+        return;
+    }
     if (s->timeout_ms && expired(now, c->entered_ms, s->timeout_ms) &&
         s->kind != TP_STEP_WAIT && s->kind != TP_STEP_HOLD) { fail(c, TP_FAULT_TIMEOUT); return; }
     switch (s->kind) {
     case TP_STEP_VALVES:
-        if (c->hal.set_valves(c->hal.ctx, s->arg.valves.mask) != TP_OK) fail(c, TP_FAULT_IO); else next(c); break;
+        if (c->hal.set_valves(c->hal.ctx, s->arg.valves.mask) != TP_OK) fail(c, TP_FAULT_IO); else next(c, now); break;
     case TP_STEP_PUMP: {
         bool done = false; tp_result r = c->hal.pump_poll(c->hal.ctx, &done);
-        if (r != TP_OK && r != TP_BUSY) fail(c, TP_FAULT_PUMP); else if (r == TP_OK && done) next(c); break;
+        if (r != TP_OK && r != TP_BUSY) fail(c, TP_FAULT_PUMP); else if (r == TP_OK && done) next(c, now); break;
     }
     case TP_STEP_HEAT:
         /* Read on each tick so entry and PID scheduling cannot falsely satisfy the target. */
         if (c->hal.read_temperature(c->hal.ctx, &temp) != TP_OK || !isfinite(temp)) fail(c, TP_FAULT_SENSOR);
         else if (temp >= c->max_temperature_c) fail(c, TP_FAULT_OVERTEMP);
-        else if (fabsf(temp - c->target_c) <= s->arg.heat.tolerance_c) next(c);
+        else if (fabsf(temp - c->target_c) <= s->arg.heat.tolerance_c) next(c, now);
         break;
     case TP_STEP_HOLD: case TP_STEP_WAIT:
-        if (expired(now, c->entered_ms, s->arg.wait.duration_ms)) next(c);
+        if (expired(now, c->entered_ms, s->arg.wait.duration_ms)) next(c, now);
         break;
     case TP_STEP_READ:
         if (expired(now, c->last_sample_ms, TP_SAMPLE_PERIOD_MS)) {
@@ -103,17 +119,17 @@ void tp_tick(tp_controller *c, uint32_t now) {
                 c->sample_sum += sample; c->sample_count++; c->last_sample_ms = now;
                 if (c->sample_count == s->arg.read.samples) {
                     c->readings[s->arg.read.slot] = c->sample_sum / c->sample_count;
-                    c->valid_readings |= (uint8_t)(1u << s->arg.read.slot); next(c);
+                    c->valid_readings |= (uint8_t)(1u << s->arg.read.slot); next(c, now);
                 }
             } else if (r != TP_BUSY) fail(c, TP_FAULT_SENSOR);
         } break;
     case TP_STEP_CALCULATE:
         if (c->valid_readings != ((1u << TP_READ_COUNT) - 1u) || tp_concentration(&c->calibration,
             c->readings[TP_READ_BLANK], c->readings[TP_READ_REACTED], c->readings[TP_READ_TURBIDITY],
-            &c->result_mg_l) != TP_OK) fail(c, TP_FAULT_CALIBRATION); else { c->result_valid = true; next(c); } break;
+            &c->result_mg_l) != TP_OK) fail(c, TP_FAULT_CALIBRATION); else { c->result_valid = true; next(c, now); } break;
     case TP_STEP_HEATER_OFF:
         c->heating = false;
-        if (c->hal.set_heater(c->hal.ctx, 0.0f) != TP_OK) fail(c, TP_FAULT_IO); else next(c);
+        if (c->hal.set_heater(c->hal.ctx, 0.0f) != TP_OK) fail(c, TP_FAULT_IO); else next(c, now);
         break;
     case TP_STEP_END:
         c->hal.safe_outputs(c->hal.ctx); c->heating = false; c->state = TP_COMPLETE; break;

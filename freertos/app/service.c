@@ -5,6 +5,7 @@ static uint32_t join(uint16_t hi, uint16_t lo) { return ((uint32_t)hi << 16) | l
 static tp_result start(tp_service *s) {
     if (s->save_status == 2) { s->last_start_result = TP_BUSY; return TP_BUSY; }
     s->last_start_result = tp_start(s->controller, s->recipe, s->recipe_len, s->now_ms);
+    if (s->last_start_result == TP_OK) s->controller->single_step = s->schedule.mode == TP_MODE_CONTROLLED;
     return s->last_start_result;
 }
 tp_result tp_service_init(tp_service *s, tp_controller *controller,
@@ -82,6 +83,7 @@ static uint16_t read_one(const tp_service *s, uint16_t a) {
     case 12: return s->controller->index > UINT16_MAX ? UINT16_MAX : (uint16_t)s->controller->index;
     case 13: return (uint16_t)s->last_start_result;
     case 17: return s->save_status;
+    case 18: return s->controller->state == TP_RUNNING && s->controller->awaiting_advance;
     case 16: return s->controller->state == TP_COMPLETE && s->controller->result_valid;
     case 14: case 15:
         memcpy(&bits, &s->controller->result_mg_l, sizeof(bits));
@@ -99,7 +101,7 @@ tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, u
     }
     if (!s || !s->controller || !values || !count ||
         !((address <= 5 && (uint32_t)address + count <= 6) ||
-          (address >= 10 && (uint32_t)address + count <= 18))) return TP_INVALID;
+          (address >= 10 && (uint32_t)address + count <= 19))) return TP_INVALID;
     for (uint16_t i = 0; i < count; i++) values[i] = read_one(s, (uint16_t)(address + i));
     return TP_OK;
 }
@@ -111,6 +113,7 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
         case 1: return start(s);
         case 2: tp_stop(s->controller); return TP_OK;
         case 3: return tp_clear_fault(s->controller);
+        case 5: return tp_advance(s->controller, s->now_ms);
         case 4:
             if (!s->request_save || s->save_status==2 || s->controller->state==TP_RUNNING) return TP_BUSY;
             if (s->request_save(s->save_ctx,&s->config)!=TP_OK) { s->save_status=4; return TP_IO_ERROR; }

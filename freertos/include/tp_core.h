@@ -58,7 +58,8 @@ typedef struct {
     tp_run_state state;
     tp_fault fault;
     uint32_t entered_ms, last_pid_ms, last_sample_ms;
-    bool entered, heating, result_valid;
+    bool entered, heating, result_valid, single_step, awaiting_advance;
+    uint32_t advance_wait_ms;
     float target_c, max_temperature_c, result_mg_l;
     float readings[TP_READ_COUNT], sample_sum;
     uint8_t valid_readings, sample_count;
@@ -69,6 +70,10 @@ typedef struct {
 void tp_init(tp_controller *c, const tp_hal *hal, const tp_calibration *cal,
              const tp_pid *pid, float max_temperature_c);
 tp_result tp_start(tp_controller *c, const tp_step *recipe, size_t count, uint32_t now);
+/* Single-step can be enabled immediately after a successful start, before tick.
+ * At each boundary a 30-second wait is enforced while interlocks and temperature
+ * regulation remain active. Stop and faults always force safe outputs. */
+tp_result tp_advance(tp_controller *c, uint32_t now_ms);
 void tp_tick(tp_controller *c, uint32_t now);
 void tp_stop(tp_controller *c);
 tp_result tp_clear_fault(tp_controller *c);

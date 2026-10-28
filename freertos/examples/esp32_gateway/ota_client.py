@@ -207,10 +207,12 @@ def upload(client, manifest, image, retries=3):
                 raise ProtocolError("write retry limit reached")
     if state["written"] != size or state["phase"] not in (2, 3):
         raise ProtocolError("download not ready to finish")
+    finish_uncertain = False
     for attempt in range(retries + 1):
         try:
             result, state = client.command(FINISH)
         except TimeoutError:
+            finish_uncertain = True
             if attempt == retries:
                 raise FinishUnknown("finish response lost; check the confirmed device version")
             continue
@@ -219,6 +221,8 @@ def upload(client, manifest, image, retries=3):
             # accepted, so neither proves that staging failed.
             raise FinishUnknown("finish communication failed; check the confirmed device version")
         if result != OK:
+            if finish_uncertain:
+                raise FinishUnknown("earlier finish response lost; check the confirmed device version")
             raise ProtocolError("finish failed: %d" % result)
         try:
             state = checked(state)

@@ -246,6 +246,26 @@ class Tests(unittest.TestCase):
             u.upload(client, b"manifest", bytes(32), b"data")
         self.assertEqual(client.state["phase"], 3)
 
+    def test_failed_finish_retry_after_lost_reply_is_unknown(self):
+        class Retry(FakeClient):
+            def __init__(self, image, ident):
+                super().__init__(image, ident)
+                self.attempts = 0
+            def command(self, cmd, payload=b""):
+                if cmd == u.FINISH:
+                    self.attempts += 1
+                    if self.attempts == 1:
+                        self.state["phase"] = 3
+                        raise TimeoutError()
+                    return u.INVALID, None
+                return super().command(cmd, payload)
+        image = b"data"
+        ident = bytes(32)
+        client = Retry(image, ident)
+        with self.assertRaisesRegex(u.ProtocolError, "upgrade result is unknown"):
+            u.upload(client, b"manifest", bytes(32), b"data")
+        self.assertEqual(client.attempts, 2)
+
     def test_invalid_finish_reply_reports_unknown_result(self):
         class InvalidFinish(FakeClient):
             def __init__(self, reply):

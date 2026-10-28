@@ -102,6 +102,26 @@ class Tests(unittest.TestCase):
             ota.upload(client, manifest, io.BytesIO(image))
         self.assertEqual(client.state['phase'], 3)
 
+    def test_failed_finish_retry_after_lost_reply_is_unknown(self):
+        class Retry(FakeClient):
+            def __init__(self, image, ident):
+                super().__init__(image, ident)
+                self.attempts = 0
+            def command(self, cmd, payload=b""):
+                if cmd == ota.FINISH:
+                    self.attempts += 1
+                    if self.attempts == 1:
+                        self.state["phase"] = 3
+                        raise TimeoutError()
+                    return ota.INVALID, None
+                return super().command(cmd, payload)
+        image = b'firmware'
+        manifest, ident = manifest_for(image)
+        client = Retry(image, ident)
+        with self.assertRaises(ota.FinishUnknown):
+            ota.upload(client, manifest, io.BytesIO(image))
+        self.assertEqual(client.attempts, 2)
+
     def test_invalid_finish_reply_keeps_outcome_unknown(self):
         class BadReply(FakeClient):
             def __init__(self, image, ident, reply):

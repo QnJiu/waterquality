@@ -184,10 +184,12 @@ def upload(client, manifest, manifest_id, image, retries=3):
                 raise ProtocolError("write retry limit reached")
     if state["written"] != len(image) or state["phase"] not in (2, 3):
         raise ProtocolError("download not ready to finish")
+    finish_uncertain = False
     for attempt in range(retries + 1):
         try:
             result, state = client.command(FINISH)
         except TimeoutError as exc:
+            finish_uncertain = True
             if attempt == retries:
                 raise TimeoutError("finish response lost; upgrade result is unknown. "
                                    "Check the device version and boot status after reconnecting") from exc
@@ -202,6 +204,9 @@ def upload(client, manifest, manifest_id, image, retries=3):
             raise ProtocolError("invalid finish reply; upgrade result is unknown. "
                                 "Check the device version and boot status after reconnecting") from exc
         if result != OK:
+            if finish_uncertain:
+                raise ProtocolError("earlier finish response lost; upgrade result is unknown. "
+                                    "Check the device version and boot status after reconnecting")
             raise ProtocolError("finish failed: %d" % result)
         try:
             state = match_state(state, manifest_id, image)

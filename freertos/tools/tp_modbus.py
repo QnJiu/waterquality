@@ -78,7 +78,7 @@ class Client:
         return self.exchange(struct.pack('>BHH', 3, address, count), count)
 
     def command(self, command):
-        if command not in range(1, 9):
+        if command not in range(1, 10):
             raise ValueError('invalid command')
         self.exchange(struct.pack('>BHH', 6, 0, command), 0)
 
@@ -141,6 +141,13 @@ class Client:
             raise ModbusError('standard check result unavailable')
         return {'passed': state == 1, 'actual_mg_l': float32(high, low)}
 
+    def auto_standard_status(self):
+        state, error, result, high, low = self.read(105, 5)
+        names = ('unavailable', 'idle', 'running', 'complete', 'failed', 'cancelled')
+        return {'state': names[state] if state < len(names) else 'unknown',
+                'error': error, 'passed': (result == 1) if result in (1, 2) else None,
+                'actual_mg_l': float32(high, low) if state == 3 and result in (1, 2) else None}
+
     def auto_calibration_status(self):
         state, error = self.read(90, 2)
         names = ('unavailable', 'idle', 'low', 'high', 'complete', 'failed', 'cancelled')
@@ -180,6 +187,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('status')
     sub.add_parser('auto-cal-status', help='show automatic calibration progress and error')
+    sub.add_parser('auto-standard-status', help='show automatic standard check progress and result')
     calibrate = sub.add_parser('calibrate')
     calibrate.add_argument('values', type=float, nargs=9, metavar='VALUE',
                            help='low blank/reacted/turbidity/concentration, high blank/reacted/turbidity/concentration, minimum delta')
@@ -193,7 +201,7 @@ def main(argv=None):
     log = sub.add_parser('log')
     log.add_argument('--sequence', type=int, help='omit for latest event')
     cmd = sub.add_parser('command')
-    cmd.add_argument('name', choices=['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover'])
+    cmd.add_argument('name', choices=['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start'])
     schedule = sub.add_parser('schedule')
     schedule.add_argument('mode', choices=['controlled', 'periodic', 'daily'])
     schedule.add_argument('seconds', type=int)
@@ -205,8 +213,10 @@ def main(argv=None):
         with serial.Serial(args.port, args.baud, bytesize=8, parity='N', stopbits=1, timeout=0.1, write_timeout=args.timeout) as port:
             client = Client(port, args.address, args.timeout)
             if args.action == 'command':
-                client.command(['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover'].index(args.name) + 1)
+                client.command(['start', 'stop', 'clear', 'save', 'next', 'auto-cal-start', 'auto-cal-apply', 'adc-recover', 'auto-standard-start'].index(args.name) + 1)
                 print('Command accepted; check status for completion.')
+            elif args.action == 'auto-standard-status':
+                print(json.dumps(client.auto_standard_status()))
             elif args.action == 'auto-cal-status':
                 print(json.dumps(client.auto_calibration_status()))
             elif args.action == 'schedule':

@@ -71,6 +71,23 @@ int main(void) {
     exchange(&m,6,0,6,r); assert(r[1]==6);
     for(unsigned i=0;i<8;i++) tp_service_tick(&s,650+i*250,false,0);
     assert(s.auto_cal.state==TP_AUTO_CAL_COMPLETE && f.checks==2 && f.reads==6);
+    uint16_t controlled[]={TP_MODE_CONTROLLED,0,1,0,0};
+    assert(tp_service_write_holding(&s,1,5,controlled)==TP_OK);
+    assert(tp_service_attach_auto_standard(&s,recipe,4,0,0.01f)==TP_OK);
+    f.reads=0; f.checks=0;
+    exchange(&m,6,0,9,r); assert(r[1]==6 && s.auto_standard.state==TP_STANDARD_RUNNING);
+    exchange(&m,6,0,6,r); assert(r[1]==0x86);
+    exchange(&m,6,0,1,r); assert(r[1]==0x86);
+    for(unsigned i=0;i<4;i++) tp_service_tick(&s,2500+i*50,false,0);
+    exchange(&m,3,105,5,r);
+    assert(r[1]==3 && r[4]==3 && r[6]==0 && r[8]==1 && f.reads==3 && f.checks==1);
+    assert(c.calibration.slope==5);
+    f.reads=0; exchange(&m,6,0,9,r); assert(r[1]==6);
+    exchange(&m,6,0,2,r); assert(r[1]==6 && s.auto_standard.state==TP_STANDARD_CANCELLED);
+    assert(c.fault==TP_FAULT_STOP);
+    assert(tp_service_write_holding(&s,0,1,&clear)==TP_OK);
+    exchange(&m,6,0,9,r); assert(r[1]==6);
     assert(tp_service_enter_maintenance(&s)==TP_OK);
+    assert(s.auto_standard.state==TP_STANDARD_CANCELLED && c.fault==TP_FAULT_STOP);
     puts("service automatic calibration checks passed"); return 0;
 }

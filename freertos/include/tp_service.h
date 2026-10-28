@@ -12,6 +12,11 @@
 typedef struct {
     tp_controller *controller;
     tp_auto_calibration auto_cal;
+    tp_auto_standard auto_standard;
+    const tp_step *standard_recipe;
+    size_t standard_length;
+    float standard_concentration, standard_tolerance;
+    bool standard_attached;
     const tp_step *cal_recipes[2];
     size_t cal_lengths[2];
     float cal_concentrations[2], cal_min_delta;
@@ -50,6 +55,9 @@ void tp_service_save_complete(tp_service *s, tp_result result);
 tp_result tp_service_attach_auto_calibration(tp_service *s,
     const tp_step *low, size_t low_len, const tp_step *high, size_t high_len,
     float low_concentration, float high_concentration, float min_delta);
+/* Attach the standard-liquid recipe and reference parameters before use. */
+tp_result tp_service_attach_auto_standard(tp_service *, const tp_step *, size_t,
+    float concentration, float tolerance);
 /* Optional nonblocking startup check; invoked for every actual start request. */
 tp_result tp_service_attach_preflight(tp_service *,void *,tp_result (*)(void *,uint16_t *));
 /* Optional bounded ADC recovery, called only by the owner with outputs safe.

@@ -28,6 +28,10 @@ typedef struct {
 } tp_f407_auto_cal_options;
 typedef struct {
     const tp_step *recipe; size_t recipe_len;
+    float concentration, tolerance;
+} tp_f407_auto_standard_options;
+typedef struct {
+    const tp_step *recipe; size_t recipe_len;
     const tp_valve_policy *valves;
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
     uint16_t (*resource_faults)(void *); void *resource_ctx;
@@ -41,6 +45,8 @@ typedef struct {
     /* Optional; recipes must remain valid and immutable for the application lifetime.
      * Board configuration supplies the standard-selection and sampling steps. */
     const tp_f407_auto_cal_options *auto_calibration;
+    /* Optional standard verification; recipe remains valid and immutable. */
+    const tp_f407_auto_standard_options *auto_standard;
     /* Optional initialized master; UART task owns its link. */
     tp_freertos_subordinate *subordinate;
     /* Optional pre-scheduler board services, after app initialization and

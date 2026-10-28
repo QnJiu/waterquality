@@ -107,6 +107,10 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
         INIT(tp_f407_recipe_validate(&a->controller,cal->low_recipe,cal->low_recipe_len,o->valves,o->channel_count));
         INIT(tp_f407_recipe_validate(&a->controller,cal->high_recipe,cal->high_recipe_len,o->valves,o->channel_count));
     }
+    if (o->auto_standard) {
+        const tp_f407_auto_standard_options *standard=o->auto_standard;
+        INIT(tp_f407_recipe_validate(&a->controller,standard->recipe,standard->recipe_len,o->valves,o->channel_count));
+    }
     INIT(tp_service_init(&a->service,&a->controller,o->recipe,o->recipe_len,0));
     INIT(tp_service_attach_preflight(&a->service,a,preflight));
     INIT(tp_service_attach_adc_recovery(&a->service,a,recover_adc));
@@ -119,6 +123,11 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
         INIT(tp_service_attach_auto_calibration(&a->service,
             cal->low_recipe,cal->low_recipe_len,cal->high_recipe,cal->high_recipe_len,
             cal->low_concentration,cal->high_concentration,cal->min_absorbance_delta));
+    }
+    if (o->auto_standard) {
+        const tp_f407_auto_standard_options *standard=o->auto_standard;
+        INIT(tp_service_attach_auto_standard(&a->service,standard->recipe,standard->recipe_len,
+                                             standard->concentration,standard->tolerance));
     }
     INIT(tp_f407_temperature_start(&a->temperature,500,256,tskIDLE_PRIORITY+1));
     INIT(tp_freertos_clock_start(&a->clock,&a->rtc,1000,3000,256,tskIDLE_PRIORITY+1));

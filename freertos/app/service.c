@@ -5,6 +5,9 @@ static uint32_t join(uint16_t hi, uint16_t lo) { return ((uint32_t)hi << 16) | l
 static bool calibration_running(const tp_service *s) {
     return s->cal_attached && (s->auto_cal.state==TP_AUTO_CAL_LOW || s->auto_cal.state==TP_AUTO_CAL_HIGH);
 }
+static bool standard_running(const tp_service *s) {
+    return s->standard_attached && s->auto_standard.state==TP_STANDARD_RUNNING;
+}
 static tp_result run_preflight(void *ctx) {
     tp_service *s=ctx;
     if (!s->preflight) return TP_OK;
@@ -19,7 +22,7 @@ static tp_result run_preflight(void *ctx) {
     return TP_OK;
 }
 static tp_result start(tp_service *s) {
-    if (s->maintenance || s->save_status==2 || calibration_running(s)) {
+    if (s->maintenance || s->save_status==2 || calibration_running(s) || standard_running(s)) {
         s->last_start_result=TP_BUSY; return TP_BUSY;
     }
     if (s->controller->state!=TP_RUNNING && s->controller->state!=TP_FAILED && run_preflight(s)!=TP_OK) {
@@ -63,6 +66,30 @@ static tp_result start_auto_cal(tp_service *s) {
     s->auto_cal=candidate;
     return r;
 }
+tp_result tp_service_attach_auto_standard(tp_service *s, const tp_step *recipe,
+    size_t length, float concentration, float tolerance) {
+    if (!s || !s->controller || s->standard_attached || s->controller->state==TP_RUNNING)
+        return TP_INVALID;
+    tp_auto_standard candidate;
+    tp_result r=tp_auto_standard_init(&candidate,s->controller,recipe,length,concentration,
+                                       tolerance,s,run_preflight);
+    if (r!=TP_OK) return r;
+    s->auto_standard=candidate; s->standard_recipe=recipe; s->standard_length=length;
+    s->standard_concentration=concentration; s->standard_tolerance=tolerance;
+    s->standard_attached=true; return TP_OK;
+}
+static tp_result start_auto_standard(tp_service *s) {
+    if (!s->standard_attached) return TP_INVALID;
+    if (s->maintenance || s->save_status==2 || calibration_running(s) || standard_running(s) ||
+        s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED) return TP_BUSY;
+    tp_auto_standard candidate;
+    tp_result r=tp_auto_standard_init(&candidate,s->controller,s->standard_recipe,s->standard_length,
+        s->standard_concentration,s->standard_tolerance,s,run_preflight);
+    if (r!=TP_OK) return r;
+    r=tp_auto_standard_start(&candidate,s->now_ms);
+    if (r!=TP_OK) { candidate.state=TP_STANDARD_FAILED; candidate.error=r; }
+    s->auto_standard=candidate; return r;
+}
 tp_result tp_service_attach_preflight(tp_service *s,void *ctx,tp_result (*check)(void *,uint16_t *)) {
     if(!s || !s->controller || !s->controller->hal.safe_outputs || !check || s->preflight ||
        s->controller->state==TP_RUNNING) return TP_INVALID;
@@ -75,6 +102,8 @@ tp_result tp_service_attach_adc_recovery(tp_service *s,void *ctx,tp_result (*rec
 }
 static void apply_config(tp_service *s, const tp_config *cfg) {
     s->standard_check_status=0; s->standard_check_actual=0;
+    if (s->standard_attached && s->auto_standard.state==TP_STANDARD_COMPLETE)
+        s->auto_standard.state=TP_STANDARD_IDLE;
     if (s->schedule.mode != (tp_mode)cfg->mode ||
         s->schedule.period_ms != cfg->period_seconds * 1000u ||
         s->schedule.daily_minute != cfg->daily_minute ||
@@ -178,6 +207,7 @@ tp_result tp_service_enter_maintenance(tp_service *s) {
     if (s->maintenance) return TP_OK;
     s->maintenance = true;
     if (calibration_running(s)) tp_auto_cal_cancel(&s->auto_cal);
+    else if (standard_running(s)) tp_auto_standard_cancel(&s->auto_standard);
     else if (s->controller->state == TP_RUNNING) tp_stop(s->controller);
     else s->controller->hal.safe_outputs(s->controller->hal.ctx);
     return TP_OK;
@@ -188,6 +218,7 @@ void tp_service_tick(tp_service *s, uint32_t now, bool rtc_valid, int64_t utc) {
     bool busy = s->maintenance || s->controller->state == TP_RUNNING || s->controller->state == TP_FAILED;
     if (tp_schedule_poll(&s->schedule, now, rtc_valid, utc, busy)) (void)start(s);
     if (calibration_running(s)) tp_auto_cal_tick(&s->auto_cal,now);
+    else if (standard_running(s)) tp_auto_standard_tick(&s->auto_standard,now);
     else tp_tick(s->controller,now);
 }
 static uint16_t read_one(const tp_service *s, uint16_t a) {
@@ -215,6 +246,14 @@ static uint16_t read_one(const tp_service *s, uint16_t a) {
 }
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values) {
     tp_service *s = ctx;
+    if (s && s->controller && values && count && address>=105 && (uint32_t)address+count<=110) {
+        uint16_t words[]={s->standard_attached ? (uint16_t)(s->auto_standard.state+1) : 0,
+            s->standard_attached ? (uint16_t)s->auto_standard.error : 0,
+            s->standard_attached && s->auto_standard.state==TP_STANDARD_COMPLETE ? (s->auto_standard.passed ? 1 : 2) : 0,
+            float_word(s->auto_standard.actual,false),float_word(s->auto_standard.actual,true)};
+        for(uint16_t i=0;i<count;i++) values[i]=words[address-105+i];
+        return TP_OK;
+    }
     if (s && s->controller && values && count && address>=102 && (uint32_t)address+count<=105) {
         uint16_t words[]={s->standard_check_status,float_word(s->standard_check_actual,false),
                           float_word(s->standard_check_actual,true)};
@@ -253,12 +292,14 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
         case 1: return start(s);
         case 2:
             if (calibration_running(s)) tp_auto_cal_cancel(&s->auto_cal);
+            else if (standard_running(s)) tp_auto_standard_cancel(&s->auto_standard);
             else tp_stop(s->controller);
             return TP_OK;
         case 3: return tp_clear_fault(s->controller);
         case 5: return s->maintenance ? TP_BUSY : tp_advance(s->controller, s->now_ms);
         case 6: return start_auto_cal(s);
         case 7: return apply_auto_cal(s);
+        case 9: return start_auto_standard(s);
         case 8:
             if (!s->recover_adc) return TP_INVALID;
             if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s)) return TP_BUSY;

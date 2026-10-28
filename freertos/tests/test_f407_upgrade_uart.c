@@ -11,7 +11,9 @@ static unsigned head,count;
 static TickType_t ticks;
 static unsigned commands_run;
 static bool task_failure, held, unavailable;
-static unsigned unlocks;
+static unsigned unlocks, gate_calls;
+static tp_result gate_result=TP_LOCK_BUSY;
+static tp_result gate(void *ctx) { assert(ctx==&gate_calls && !held); gate_calls++; return gate_result; }
 static uint8_t response[128]; static size_t response_len;
 static bool try_lock(void *ctx) { assert(ctx==&held); if(unavailable) return false; assert(!held); held=true; return true; }
 static void unlock(void *ctx) { assert(ctx==&held && held); held=false; unlocks++; }
@@ -48,7 +50,7 @@ void vTaskNotifyGiveFromISR(TaskHandle_t task,BaseType_t *wake) { assert(task); 
 uint32_t ulTaskNotifyTake(BaseType_t clear,TickType_t wait) { (void)clear; (void)wait; return 0; }
 tp_result tp_upgrade_command_execute(const tp_upgrade_commands *c,tp_upgrade_command cmd,
                                      const uint8_t *data,size_t n,tp_upgrade_reply *reply) {
-    (void)c; (void)data; assert(cmd==TP_UP_CMD_STATUS && n==0);
+    (void)c; (void)data; assert((cmd==TP_UP_CMD_STATUS && n==0) || (cmd==TP_UP_CMD_BEGIN && n==1));
     assert(held); commands_run++; memset(reply,0,sizeof(*reply)); reply->result=TP_OK; return TP_OK;
 }
 static tp_result auth(void *ctx,const uint8_t *p,size_t n,tp_download_manifest *m) {
@@ -72,7 +74,7 @@ int main(void) {
     assert(tp_f407_upgrade_uart_init(&u,&commands,50,2048,2)==TP_IO_ERROR);
     task_failure=false;
     assert(tp_f407_upgrade_uart_init_shared(&u,&commands,50,2048,2,&held,try_lock,NULL)==TP_INVALID);
-    assert(tp_f407_upgrade_uart_init_shared(&u,&commands,50,2048,2,&held,try_lock,unlock)==TP_OK);
+    assert(tp_f407_upgrade_uart_init_guarded(&u,&commands,50,2048,2,&held,try_lock,unlock,&gate_calls,gate)==TP_OK);
     hardware_start(); fake_usart.SR=USART_SR_TXE | USART_SR_TC;
     u.stream.wire.send=capture;
     unavailable=true; frame_bytes(frame,0,n); upgrade_step(&u);
@@ -99,5 +101,17 @@ int main(void) {
     upgrade_step(&u); assert(commands_run==4 && ticks-before==TX_TIMEOUT_MS);
     fake_usart.SR=USART_SR_TXE | USART_SR_TC;
     frame_bytes(frame,0,n); upgrade_step(&u); assert(commands_run==5);
+    assert(gate_calls==0); /* STATUS never stops the controller. */
+    tp_upgrade_reply malformed;
+    assert(shared_execute(&u,&commands,TP_UP_CMD_BEGIN,NULL,0,&malformed)==TP_INVALID && gate_calls==0);
+    tp_upgrade_reply reply; uint8_t manifest=1;
+    assert(shared_execute(&u,&commands,TP_UP_CMD_BEGIN,&manifest,1,&reply)==TP_LOCK_BUSY);
+    assert(gate_calls==1 && commands_run==5 && !held && reply.result==TP_LOCK_BUSY);
+    gate_result=TP_INVALID;
+    assert(shared_execute(&u,&commands,TP_UP_CMD_BEGIN,&manifest,1,&reply)==TP_INVALID && commands_run==5);
+    gate_result=TP_OK; unavailable=true;
+    assert(shared_execute(&u,&commands,TP_UP_CMD_BEGIN,&manifest,1,&reply)==TP_LOCK_BUSY && commands_run==5);
+    unavailable=false;
+    assert(shared_execute(&u,&commands,TP_UP_CMD_BEGIN,&manifest,1,&reply)==TP_OK && commands_run==6 && !held);
     return 0;
 }

@@ -14,6 +14,8 @@ typedef struct {
     QueueHandle_t events;
     TaskHandle_t task;
     volatile bool overflow;
+    void *maintenance_ctx;
+    tp_result (*request_maintenance)(void *);
     void *lock_ctx;
     bool (*try_lock)(void *);
     void (*unlock)(void *);
@@ -27,4 +29,10 @@ tp_result tp_f407_upgrade_uart_init(tp_f407_upgrade_uart *, const tp_upgrade_com
 tp_result tp_f407_upgrade_uart_init_shared(tp_f407_upgrade_uart *, const tp_upgrade_commands *,
     uint32_t frame_timeout_ms, uint16_t stack_words, UBaseType_t priority,
     void *lock_ctx, bool (*try_lock)(void *), void (*unlock)(void *));
+/* Mutating commands wait for the nonblocking maintenance callback to return
+ * TP_OK. TP_LOCK_BUSY means no command was executed and can be retried. */
+tp_result tp_f407_upgrade_uart_init_guarded(tp_f407_upgrade_uart *, const tp_upgrade_commands *,
+    uint32_t frame_timeout_ms, uint16_t stack_words, UBaseType_t priority,
+    void *lock_ctx, bool (*try_lock)(void *), void (*unlock)(void *),
+    void *maintenance_ctx, tp_result (*request_maintenance)(void *));
 #endif

@@ -3,14 +3,17 @@
 #include "tp_f407_upgrade.h"
 #include "tp_f407_upgrade_uart.h"
 #include "tp_freertos_trial.h"
+#include "tp_freertos_runtime.h"
 
 /* The callbacks and all hardware contexts remain valid for the life of the
  * tasks. lock/unlock must serialize every upgrade, confirmation and image
  * access. healthy must be nonblocking and include latched faults since the
  * prior sample; finished is responsible for safe failure handling/reset.
- * Board code must prevent unsafe operation during single-bank flash writes. */
+ * runtime must be started before this service. Board code must ensure safe
+ * outputs and watchdog behavior throughout single-bank flash writes. */
 typedef struct {
     tp_f407_upgrade_options storage;
+    tp_freertos_runtime *runtime;
     void *ctx;
     bool (*try_lock)(void *);
     void (*unlock)(void *);

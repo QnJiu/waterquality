@@ -88,6 +88,16 @@ static void upgrade_task(void *arg) {
 static tp_result shared_execute(void *ctx,const tp_upgrade_commands *commands,tp_upgrade_command command,
                                 const uint8_t *data,size_t length,tp_upgrade_reply *reply) {
     tp_f407_upgrade_uart *u=ctx;
+    bool valid=(command==TP_UP_CMD_STATUS && length==0) ||
+        (command==TP_UP_CMD_BEGIN && length>0 && data) ||
+        (command==TP_UP_CMD_RESUME && length==0) ||
+        (command==TP_UP_CMD_WRITE && length>4 && length<=4+TP_DOWNLOAD_CHUNK_MAX && data) ||
+        (command==TP_UP_CMD_FINISH && length==0);
+    if (!valid) { memset(reply,0,sizeof(*reply)); reply->result=TP_INVALID; return TP_INVALID; }
+    if (command!=TP_UP_CMD_STATUS && u->request_maintenance) {
+        tp_result gate=u->request_maintenance(u->maintenance_ctx);
+        if (gate!=TP_OK) { memset(reply,0,sizeof(*reply)); reply->result=gate; return gate; }
+    }
     if (!u->try_lock(u->lock_ctx)) {
         memset(reply,0,sizeof(*reply)); reply->result=TP_LOCK_BUSY; return TP_LOCK_BUSY;
     }
@@ -97,9 +107,10 @@ static tp_result shared_execute(void *ctx,const tp_upgrade_commands *commands,tp
 }
 static tp_result init(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
                       uint32_t timeout,uint16_t stack,UBaseType_t priority,void *lock_ctx,
-                      bool (*try_lock)(void *),void (*unlock)(void *)) {
+                      bool (*try_lock)(void *),void (*unlock)(void *),
+                      void *maintenance_ctx,tp_result (*maintenance)(void *)) {
     if (!u || !commands || !commands->upgrade || !commands->authenticate || instance || !stack ||
-        (!!try_lock != !!unlock) ||
+        (!!try_lock != !!unlock) || (maintenance && !try_lock) ||
         priority >= configMAX_PRIORITIES || SystemCoreClock!=16000000u ||
         (RCC->CFGR & (RCC_CFGR_SWS | RCC_CFGR_HPRE | RCC_CFGR_PPRE1)) != 0 ||
         xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED)
@@ -108,6 +119,7 @@ static tp_result init(tp_f407_upgrade_uart *u,const tp_upgrade_commands *command
     tp_result r=tp_upgrade_stream_init(&u->stream,commands,u,send_response,timeout);
     if (r!=TP_OK) return r;
     if (try_lock) {
+        u->maintenance_ctx=maintenance_ctx; u->request_maintenance=maintenance;
         u->lock_ctx=lock_ctx; u->try_lock=try_lock; u->unlock=unlock;
         tp_upgrade_wire_set_executor(&u->stream.wire,u,shared_execute);
     }
@@ -122,11 +134,19 @@ static tp_result init(tp_f407_upgrade_uart *u,const tp_upgrade_commands *command
 
 tp_result tp_f407_upgrade_uart_init(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
                                     uint32_t timeout,uint16_t stack,UBaseType_t priority) {
-    return init(u,commands,timeout,stack,priority,NULL,NULL,NULL);
+    return init(u,commands,timeout,stack,priority,NULL,NULL,NULL,NULL,NULL);
 }
 tp_result tp_f407_upgrade_uart_init_shared(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
     uint32_t timeout,uint16_t stack,UBaseType_t priority,void *ctx,
     bool (*try_lock)(void *),void (*unlock)(void *)) {
     if (!try_lock || !unlock) return TP_INVALID;
-    return init(u,commands,timeout,stack,priority,ctx,try_lock,unlock);
+    return init(u,commands,timeout,stack,priority,ctx,try_lock,unlock,NULL,NULL);
+}
+
+tp_result tp_f407_upgrade_uart_init_guarded(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
+    uint32_t timeout,uint16_t stack,UBaseType_t priority,void *ctx,
+    bool (*try_lock)(void *),void (*unlock)(void *),void *maintenance_ctx,
+    tp_result (*maintenance)(void *)) {
+    if (!try_lock || !unlock || !maintenance) return TP_INVALID;
+    return init(u,commands,timeout,stack,priority,ctx,try_lock,unlock,maintenance_ctx,maintenance);
 }

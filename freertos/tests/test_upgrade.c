@@ -141,7 +141,14 @@ int main(void) {
     assert(tp_upgrade_write(&upgrade,0,"data",4)==TP_OK);
     image.reject=true; assert(tp_upgrade_finish(&upgrade)==TP_INVALID);
     tp_boot_state state; assert(tp_boot_read(&boot,&state)==TP_OK && state.phase==TP_BOOT_IDLE);
-    image.reject=false; bs.committed=false; bs.fail_commit_read=true;
+    image.reject=false;
+    /* Reset between download verification and boot staging: BEGIN must not
+     * erase the already verified image when the client reconnects. */
+    assert(tp_download_finish(&download)==TP_OK);
+    assert(tp_upgrade_begin(&upgrade,&manifest)==TP_BUSY && image.erases==1);
+    tp_download_state download_state;
+    assert(tp_download_read(&download,&download_state)==TP_OK && download_state.phase==TP_DOWNLOAD_VERIFIED);
+    bs.committed=false; bs.fail_commit_read=true;
     assert(tp_upgrade_finish(&upgrade)==TP_IO_ERROR);
     assert(tp_boot_read(&boot,&state)==TP_OK && state.phase==TP_BOOT_READY);
     assert(tp_upgrade_finish(&upgrade)==TP_OK);

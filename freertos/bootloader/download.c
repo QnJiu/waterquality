@@ -49,7 +49,10 @@ tp_result tp_download_read(const tp_download_io *io,tp_download_state *s) { unsi
 tp_result tp_download_begin(const tp_download_io *io,const tp_download_manifest *manifest) {
     if(!io_valid(io) || !manifest || manifest->bank>1 || !manifest->version || !manifest->size) return TP_INVALID;
     tp_download_state s; unsigned slot=1; tp_result r=find(io,&s,&slot);
-    if(r==TP_OK && s.phase!=TP_DOWNLOAD_VERIFIED) return TP_BUSY;
+    if(r==TP_OK && (s.phase!=TP_DOWNLOAD_VERIFIED ||
+       (s.manifest.bank==manifest->bank && s.manifest.version==manifest->version &&
+        s.manifest.size==manifest->size && !memcmp(s.manifest.id,manifest->id,TP_DOWNLOAD_ID_SIZE))))
+        return TP_BUSY;
     if(r!=TP_OK && r!=TP_INVALID) return r;
     if(r==TP_INVALID) {
         uint8_t b[RECORD_SIZE];

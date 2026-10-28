@@ -27,7 +27,8 @@ typedef struct {
 /* Single owner; caller must ensure the bank is not active or staged for boot.
  * All metadata and image operations may block and must run outside control task. */
 tp_result tp_download_read(const tp_download_io *,tp_download_state *);
-/* Starts a new session only on blank metadata or after a VERIFIED session. */
+/* Starts on blank metadata or after a different VERIFIED session. Repeating
+ * the same verified manifest returns TP_BUSY without erasing the image. */
 tp_result tp_download_begin(const tp_download_io *,const tp_download_manifest *);
 /* Repeats interrupted erase before accepting any payload. */
 tp_result tp_download_resume(const tp_download_io *);

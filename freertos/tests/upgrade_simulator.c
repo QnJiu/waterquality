@@ -74,6 +74,7 @@ int sim_exchange(const uint8_t *in,size_t n,uint8_t *out,size_t capacity) {
     if(response_len>capacity) return -1;
     memcpy(out,response,response_len); return (int)response_len;
 }
+int sim_verify_download(void) { return (int)tp_download_finish(&download); }
 int sim_writes(void) { return (int)writes; }
 int sim_boot_phase(void) {
     tp_boot_state state; return tp_boot_read(&boot,&state)==TP_OK ? (int)state.phase : -1;

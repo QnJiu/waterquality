@@ -69,6 +69,21 @@ class Tests(unittest.TestCase):
         self.assertEqual(lib.sim_writes(), 3)
         self.assertEqual(lib.sim_boot_phase(), 1)
 
+    def test_reconnect_after_verified_before_staging(self):
+        lib = self.lib
+        transport = CTransport(lib); transport.drop.clear()
+        client = u.Client(transport, 0.02)
+        image = bytes(range(256)) * 3
+        self.assertEqual(client.command(u.BEGIN, b"ok")[0], u.OK)
+        for offset in range(0, len(image), 256):
+            self.assertEqual(client.command(u.WRITE, offset.to_bytes(4, "little") + image[offset:offset+256])[0], u.OK)
+        self.assertEqual(lib.sim_verify_download(), u.OK)
+        self.assertEqual(lib.sim_boot_phase(), 0)
+        lib.sim_reset_transport()
+        state = u.upload(u.Client(CTransport(lib), 0.02), b"ok", bytes([1]) + bytes(31), image)
+        self.assertEqual((state["phase"], state["written"]), (3, len(image)))
+        self.assertEqual(lib.sim_writes(), 3)
+        self.assertEqual(lib.sim_boot_phase(), 1)
     def test_rejects_untrusted_manifest(self):
         with self.assertRaisesRegex(u.ProtocolError, "begin failed"):
             u.upload(u.Client(CTransport(self.lib), 0.02), b"bad", bytes([1]) + bytes(31), bytes(range(256)) * 3)

@@ -1,0 +1,8 @@
+description: ADS1220 used by the water quality sampling example
+compatible: "tp,ads1220-slice"
+include: spi-device.yaml
+properties:
+  drdy-gpios:
+    type: phandle-array
+    required: true
+    description: Dedicated data-ready pin, active low

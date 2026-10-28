@@ -1,0 +1,27 @@
+/* Replace controller labels, GPIO pins, and pinctrl with the selected board's
+ * definitions. Save as app.overlay; never share the Modbus UART with console. */
+#include <zephyr/dt-bindings/gpio/gpio.h>
+/ {
+    aliases {
+        tp-adc = &tp_adc;
+        tp-modbus = &tp_modbus;
+    };
+};
+&spi2 {
+    status = "okay";
+    cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>;
+    tp_adc: ads1220@0 {
+        compatible = "tp,ads1220-slice";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+        drdy-gpios = <&gpioe 14 GPIO_ACTIVE_LOW>;
+    };
+};
+&usart3 {
+    status = "okay";
+    tp_modbus: modbus {
+        compatible = "zephyr,modbus-serial";
+        status = "okay";
+        /* Add de-gpios for a half-duplex RS485 transceiver. */
+    };
+};

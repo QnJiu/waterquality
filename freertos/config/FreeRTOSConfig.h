@@ -18,7 +18,12 @@ extern uint32_t SystemCoreClock;
 #define configQUEUE_REGISTRY_SIZE               4
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 #define configSUPPORT_STATIC_ALLOCATION         0
+/* OTA adds staging, upgrade and trial tasks plus their UART queues. */
+#ifdef TP_F407_TEACHING_OTA
+#define configTOTAL_HEAP_SIZE                   (64u * 1024u)
+#else
 #define configTOTAL_HEAP_SIZE                   (32u * 1024u)
+#endif
 #define configCHECK_FOR_STACK_OVERFLOW          2
 #define configUSE_MALLOC_FAILED_HOOK             1
 #define configUSE_IDLE_HOOK                     0

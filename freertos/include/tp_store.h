@@ -16,10 +16,12 @@ typedef struct {
     uint8_t slave_address;
 } tp_config;
 tp_result tp_config_validate(const tp_config *cfg);
+/* A committed record using an unsupported version returns TP_UNSUPPORTED,
+ * including when the other slot is readable; saves must not overwrite it. */
 tp_result tp_store_load(const tp_store_io *io, tp_config *cfg, uint32_t *sequence);
 tp_result tp_store_save(const tp_store_io *io, const tp_config *cfg);
 /* A missing or corrupt pair uses supplied defaults in RAM only. I/O errors
- * propagate and never silently select defaults; no writes occur here. */
+ * and unsupported versions propagate without selecting defaults; no writes occur here. */
 typedef enum { TP_CONFIG_FROM_STORAGE, TP_CONFIG_DEFAULTED } tp_config_source;
 tp_result tp_store_bootstrap(const tp_store_io *io, const tp_config *defaults,
     tp_config *out, uint32_t *sequence, tp_config_source *source);

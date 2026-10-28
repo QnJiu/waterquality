@@ -9,6 +9,7 @@ _Static_assert(sizeof(float) == 4, "storage format requires 32-bit float");
 #define PAYLOAD_SIZE 53u
 #define RECORD_SIZE (16u + PAYLOAD_SIZE + 8u)
 #define COMMIT 0x434f4d54u
+#define SLOT_SIZE 128u
 static uint32_t get32(const uint8_t *p) { return (uint32_t)p[0] | ((uint32_t)p[1]<<8) | ((uint32_t)p[2]<<16) | ((uint32_t)p[3]<<24); }
 static void put32(uint8_t *p, uint32_t x) { p[0]=(uint8_t)x; p[1]=(uint8_t)(x>>8); p[2]=(uint8_t)(x>>16); p[3]=(uint8_t)(x>>24); }
 static float getfloat(const uint8_t *p) { uint32_t u=get32(p); float f; memcpy(&f,&u,4); return f; }
@@ -48,15 +49,28 @@ static bool decode(const uint8_t *b, tp_config *c, uint32_t *seq) {
     c->period_seconds=get32(b+64); c->slave_address=b[68]; *seq=get32(b+8);
     return tp_config_validate(c)==TP_OK;
 }
+/* Versions share the 16-byte header and trailing CRC/commit envelope.
+ * A valid unfamiliar record is preserved, even alongside a known record. */
+static bool unsupported_record(const uint8_t *b) {
+    uint32_t size=get32(b+12);
+    if (get32(b)!=MAGIC || get32(b+4)==VERSION || size>SLOT_SIZE-24u) return false;
+    size_t crc_offset=16u+size;
+    return get32(b+crc_offset+4)==COMMIT && get32(b+crc_offset)==crc32(b,crc_offset);
+}
 static tp_result find(const tp_store_io *io, tp_config *cfg, uint32_t *seq, unsigned *slot) {
-    uint8_t b[RECORD_SIZE]; tp_config temp; uint32_t s; bool found=false;
+    uint8_t b[SLOT_SIZE]; tp_config temp, best; uint32_t s, best_seq=0;
+    unsigned best_slot=0; bool found=false, unsupported=false;
     if(!io || !io->read || !cfg || !seq || !slot) return TP_INVALID;
     for(unsigned i=0;i<2;i++) {
-        /* A failed read is an I/O failure, not evidence that the slot is empty. */
         if(io->read(io->ctx,i,0,b,sizeof(b))!=TP_OK) return TP_IO_ERROR;
-        if(decode(b,&temp,&s) && (!found || (int32_t)(s-*seq)>0)) { *cfg=temp; *seq=s; *slot=i; found=true; }
+        if(unsupported_record(b)) unsupported=true;
+        else if(decode(b,&temp,&s) && (!found || (int32_t)(s-best_seq)>0)) {
+            best=temp; best_seq=s; best_slot=i; found=true;
+        }
     }
-    return found ? TP_OK : TP_INVALID;
+    if(unsupported) return TP_UNSUPPORTED;
+    if(!found) return TP_INVALID;
+    *cfg=best; *seq=best_seq; *slot=best_slot; return TP_OK;
 }
 tp_result tp_store_load(const tp_store_io *io, tp_config *cfg, uint32_t *sequence) {
     unsigned slot; return find(io,cfg,sequence,&slot);

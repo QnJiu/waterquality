@@ -12,6 +12,10 @@ static tp_result read_i2c(void *ctx,uint8_t dev,const uint8_t *tx,size_t tn,uint
     fake *f=ctx; if (f->read_error || dev<0x50 || dev>0x57 || tn!=1 || (size_t)tx[0]+n>256) return TP_IO_ERROR;
     memcpy(rx,f->mem+(dev-0x50)*256+tx[0],n); return TP_OK;
 }
+static uint32_t crc32(const uint8_t *p,size_t n) {
+    uint32_t c=0xffffffffu; while(n--) { c^=*p++; for(unsigned i=0;i<8;i++) c=(c>>1)^(0xedb88320u & (uint32_t)-(int32_t)(c&1u)); } return ~c;
+}
+static void put32(uint8_t *p,uint32_t v) { for(unsigned i=0;i<4;i++) p[i]=(uint8_t)(v>>(8*i)); }
 int main(void) {
     fake f; memset(&f,0xff,sizeof(f)); f.fail_after=-1; f.writes=0; f.read_error=false;
     tp_i2c_io bus={&f,write_i2c,read_i2c}; tp_mb85rc16 chip;
@@ -41,6 +45,17 @@ int main(void) {
     assert(tp_store_save(&io,&cfg)==TP_OK); assert(tp_store_load(&io,&got,&seq)==TP_OK && seq==1);
     assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_OK);
     assert(source==TP_CONFIG_FROM_STORAGE && seq==1 && got.period_seconds==3600);
+    /* A committed future-format record must survive old-firmware boot/save. */
+    memcpy(f.mem+1792+128,f.mem+1792,128);
+    f.mem[1792+128+4]=2;
+    put32(f.mem+1792+128+69,crc32(f.mem+1792+128,69));
+    int protected_writes=f.writes; seq=123; source=TP_CONFIG_FROM_STORAGE;
+    assert(tp_store_load(&io,&got,&seq)==TP_UNSUPPORTED && seq==123);
+    assert(tp_store_bootstrap(&io,&cfg,&got,&seq,&source)==TP_UNSUPPORTED && seq==123);
+    assert(tp_store_save(&io,&cfg)==TP_UNSUPPORTED && f.writes==protected_writes);
+    /* Interrupted or corrupt future records cannot hide the valid old slot. */
+    f.mem[1792+128+73]^=1;
+    assert(tp_store_load(&io,&got,&seq)==TP_OK && seq==1);
     cfg.period_seconds=7200; f.writes=0; f.fail_after=4;
     assert(tp_store_save(&io,&cfg)==TP_IO_ERROR);
     assert(tp_store_load(&io,&got,&seq)==TP_OK && seq==1 && got.period_seconds==3600);

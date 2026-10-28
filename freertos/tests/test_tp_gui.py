@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
 from tp_modbus import ModbusError
-from tp_gui import App, read_status, read_calibration_status, read_clock_status, read_event, read_log_stats, parse_config, CONFIG_LABELS
+from tp_gui import App, describe_preflight, read_status, read_calibration_status, read_clock_status, read_event, read_log_stats, parse_config, CONFIG_LABELS
 
 
 def words(value):
@@ -45,6 +45,18 @@ class StatusTest(unittest.TestCase):
         self.assertIn('空白：1.2500', text)
         self.assertIn('反应后：无', text)
         self.assertIn('浊度：0.5000', text)
+
+    def test_preflight_fault_descriptions(self):
+        self.assertEqual(describe_preflight(0), '无故障位')
+        self.assertEqual(describe_preflight(0x0042), '温度传感器异常、漏液')
+        self.assertEqual(describe_preflight(0x8100), '尚未自检、未知故障位 0x0100')
+        class FaultClient(FakeClient):
+            def read(self, address, count):
+                values = super().read(address, count)
+                if address == 10:
+                    values[9] = 0x0042
+                return values
+        self.assertIn('0x0042（温度传感器异常、漏液）', read_status(FaultClient(1)))
 
     def test_old_device_and_other_errors(self):
         client = FakeClient(1)

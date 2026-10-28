@@ -10,6 +10,19 @@ from tkinter import ttk
 from tp_modbus import Client, FLOAT_FIELDS, ModbusError, float32
 
 
+def describe_preflight(bits):
+    """Explain the fault bits while retaining unknown bits for newer firmware."""
+    names = ((0x0001, '互锁异常'), (0x0002, '温度传感器异常'),
+             (0x0004, '温度过高'), (0x0008, '试剂异常'),
+             (0x0010, '液位异常'), (0x0020, '资源状态未知'),
+             (0x0040, '漏液'), (0x0080, 'ADC异常'), (0x8000, '尚未自检'))
+    descriptions = [name for mask, name in names if bits & mask]
+    unknown = bits & ~0x80ff
+    if unknown:
+        descriptions.append('未知故障位 0x%04X' % unknown)
+    return '、'.join(descriptions) if descriptions else '无故障位'
+
+
 def read_status(client):
     """Status, temperature and signal readings are separate snapshots."""
     v = client.read(10, 10)
@@ -29,9 +42,9 @@ def read_status(client):
     temp = '%.2f °C' % float32(t[1], t[2]) if t[0] == 1 else '无有效温度'
     return ('状态：%s  故障码：%d  步骤：%d\n'
             '最近启动结果：%d  浓度：%s\n'
-            '保存状态：%d  等待下一步：%s  自检故障位：0x%04X\n'
+            '保存状态：%d  等待下一步：%s\n自检故障位：0x%04X（%s）\n'
             '温度：%s  升级维护：%s\n采样信号：%s') % (state, v[1], v[2], v[3], result, v[7],
-                              '是' if v[8] == 1 else '否', v[9], temp,
+                              '是' if v[8] == 1 else '否', v[9], describe_preflight(v[9]), temp,
                               '未知' if maintenance is None else '是' if maintenance else '否', signal)
 
 

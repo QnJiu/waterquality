@@ -1,5 +1,6 @@
 /* native_sim-only, deliberately limited to the commands used by this slice. */
 #include <errno.h>
+#include "../../tests/adc_slice_vector.h"
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/emul.h>
@@ -20,7 +21,7 @@ static int io(const struct emul *emul, const struct spi_config *config,
     if (n == 5 && in[0] == 0x43) memcpy(registers, in + 1, 4);
     else if (n == 5 && in[0] == 0x23) memcpy(out + 1, registers, 4);
     else if (n == 2 && in[0] == 0x40) registers[0] = in[1];
-    else if (n == 4 && in[0] == 0x10) { out[1] = 0x10; }
+    else if (n == 4 && in[0] == 0x10) { out[1] = (uint8_t)(TP_SLICE_RAW >> 16); out[2] = (uint8_t)(TP_SLICE_RAW >> 8); out[3] = (uint8_t)TP_SLICE_RAW; }
     else if (n != 1 || (in[0] != 0x08 && in[0] != 0x02)) return -EINVAL;
     return 0;
 }

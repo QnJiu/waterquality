@@ -1,4 +1,5 @@
 #include "tp_adc_status.h"
+#include "adc_slice_vector.h"
 #include <assert.h>
 #include <string.h>
 
@@ -14,7 +15,30 @@ static tp_result transfer(void *ctx, const uint8_t *tx, uint8_t *rx, size_t n) {
     return TP_OK;
 }
 static tp_result ready(void *ctx, bool *r) { *r = ((fake_adc *)ctx)->ready; return TP_OK; }
+static void shared_slice_vector(void) {
+    fake_adc f = {.ready = true, .raw = TP_SLICE_RAW};
+    tp_ads1220 a; tp_ads1220_io io = {&f, transfer, ready};
+    uint8_t regs[4] = {1,0,0,0};
+    tp_adc_channel ch = {8, TP_SLICE_VOLTS_PER_COUNT};
+    tp_adc_reader reader; tp_adc_status status;
+    assert(tp_ads1220_init(&a, &io, regs, 100) == TP_OK);
+    assert(tp_adc_reader_init(&reader, &a, &ch, 1) == TP_OK);
+    assert(tp_adc_status_init(&status, &reader, 0, 1000, 0) == TP_OK);
+    tp_adc_status_poll(&status, 0);
+    tp_adc_status_poll(&status, 1);
+    assert(status.status == 1 && status.microvolts == TP_SLICE_UV);
+    tp_modbus modbus = {&status, 1, tp_adc_status_read, NULL};
+    const uint8_t request[] = TP_SLICE_REQUEST;
+    uint8_t reply[32]; size_t length = 0;
+    assert(tp_modbus_frame(&modbus, request, sizeof(request), reply, sizeof(reply), &length) == TP_OK);
+    assert(length == 17 && reply[0] == 1 && reply[1] == 3 && reply[2] == 12);
+    assert(reply[3] == 0 && reply[4] == 1 && reply[5] == 0 && reply[6] == 0);
+    assert(reply[7] == 0 && reply[8] == 0 && reply[9] == 0 && reply[10] == 1);
+    assert(reply[11] == (uint8_t)(TP_SLICE_UV >> 24) && reply[12] == (uint8_t)(TP_SLICE_UV >> 16));
+    assert(reply[13] == (uint8_t)(TP_SLICE_UV >> 8) && reply[14] == (uint8_t)TP_SLICE_UV);
+}
 int main(void) {
+    shared_slice_vector();
     fake_adc f = {0}; tp_ads1220 a; tp_ads1220_io io = {&f, transfer, ready};
     uint8_t regs[4] = {1,0,0,0}; tp_adc_channel ch = {8, 0.000001f};
     tp_adc_reader reader; tp_adc_status s; uint16_t values[6];

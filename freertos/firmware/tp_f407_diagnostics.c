@@ -36,6 +36,11 @@ static void sample_resources(void *ctx) {
         tp_debug_resources.temperature_words=words(app->temperature.task);
         tp_debug_resources.clock_words=words(app->clock.task);
         tp_debug_resources.uart_words=words(app->uart.task);
+#ifdef TP_F407_SECOND_MODBUS
+        tp_debug_resources.uart1_words=words(app->uart1.task);
+#else
+        tp_debug_resources.uart1_words=UINT32_MAX;
+#endif
         tp_debug_resources.health_words=words(app->health.task);
         tp_debug_resources.events_words=words(app->events.task);
         tp_debug_resources.diagnostics_words=words(diagnostics_task);

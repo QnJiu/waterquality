@@ -30,8 +30,9 @@ tp_result tp_f030_pn532_door_recover(tp_f030_pn532_door *);
 /* Suitable for tp_f030_subordinate_on_door_fault. */
 void tp_f030_pn532_door_abort(void *);
 
-/* Supplied by the board. Configure the lock to its safe state and reset and
- * synchronize PN532 before returning TP_OK. Runs before the scheduler. */
+/* Supplied by the board before the scheduler. Configure the lock safe.
+ * If recover_hardware is supplied, the owner resets and checks the reader
+ * after the scheduler starts; otherwise the board must prepare it beforehand. */
 tp_result tp_f030_door_board_prepare(tp_f030_door_config *);
 /* Authentication task only; TP_OK means queued, not accepted. */
 tp_result tp_f030_door_authorize(uint32_t request_id,bool approved);

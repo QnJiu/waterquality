@@ -1,0 +1,20 @@
+#ifndef TP_F407_UART4_SUBORDINATE_H
+#define TP_F407_UART4_SUBORDINATE_H
+#include "tp_freertos_subordinate.h"
+#include "task.h"
+
+/* Reference only: UART4 PC10/PC11 AF8, 115200 8N1, full duplex.
+ * Initialize once before the scheduler, and retain this object for its life. */
+typedef struct { uint32_t us; uint8_t byte; bool error; } tp_sub_uart_event;
+typedef struct {
+    tp_freertos_subordinate subordinate;
+    QueueHandle_t events;
+    TaskHandle_t task;
+    uint8_t tx[TP_SUB_REQUEST_SIZE];
+    volatile uint8_t tx_length, tx_position;
+    volatile bool transmitting, overflow;
+} tp_f407_uart4_subordinate;
+tp_result tp_f407_uart4_subordinate_init(tp_f407_uart4_subordinate *,
+    uint32_t period_ms,uint32_t timeout_ms,uint32_t freshness_ms,uint32_t first_token,
+    uint16_t stack_words,UBaseType_t priority);
+#endif

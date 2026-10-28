@@ -103,18 +103,20 @@ int main(void) {
     assert(s.maintenance && c.state==TP_FAILED && c.fault==TP_FAULT_STOP && safe_count==before_safe+1);
     assert(tp_service_enter_maintenance(&s)==TP_OK && safe_count==before_safe+1);
     assert(tp_service_write_holding(&s,0,1,&recovery)==TP_BUSY && recover_count==2);
-    assert(tp_service_write_holding(&s,0,1,&clear)==TP_OK);
+    assert(tp_service_write_holding(&s,0,1,&clear)==TP_BUSY);
     assert(tp_service_write_holding(&s,0,1,&begin)==TP_BUSY);
     uint16_t advance=5; assert(tp_service_write_holding(&s,0,1,&advance)==TP_BUSY);
-    tp_service_tick(&s,5000,false,0); assert(c.state==TP_IDLE && s.schedule.last_period_ms==5000);
+    tp_service_tick(&s,5000,false,0); assert(c.state==TP_FAILED && s.schedule.last_period_ms==5000);
     uint16_t daily[]={TP_MODE_DAILY,0,1,1,0};
-    assert(tp_service_write_holding(&s,1,5,daily)==TP_OK);
-    tp_service_tick(&s,6000,true,946684860LL); assert(c.state==TP_IDLE && s.schedule.daily_fired);
+    assert(tp_service_write_holding(&s,1,5,daily)==TP_BUSY);
+    tp_service_tick(&s,6000,true,946684860LL); assert(c.state==TP_FAILED && s.schedule.mode==TP_MODE_PERIODIC);
     tp_init(&c,&hal,NULL,NULL,100);
     assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
     before_safe=safe_count; assert(tp_service_enter_maintenance(&s)==TP_OK);
     assert(c.state==TP_IDLE && c.fault==TP_FAULT_NONE && safe_count==before_safe+1);
     assert(tp_service_enter_maintenance(NULL)==TP_INVALID);
+    tp_init(&c,&hal,NULL,NULL,100);
+    assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
     tp_config cfg={.calibration={1,0,0,0.01f,10},.kp=1,.output_max=1,.integral_max=10,
                    .max_temperature_c=100,.period_seconds=3600,.slave_address=1};
     assert(tp_service_attach_config(&s,&cfg,NULL,save_config)==TP_OK);
@@ -194,9 +196,22 @@ int main(void) {
     c.max_temperature_c=100;
     assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_OK && c.state==TP_IDLE);
     assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_INVALID);
+    assert(tp_service_attach_config(&s,&cfg,NULL,save_config)==TP_OK);
+    tp_stop(&c);
     assert(tp_service_enter_maintenance(&s)==TP_OK);
+    uint16_t stop_cmd=2, save_cmd=4, config_before[27], config_after[27];
+    uint16_t schedule_change[]={TP_MODE_PERIODIC,0,2,0,0};
+    assert(tp_service_read_holding(&s,20,27,config_before)==TP_OK);
     assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_BUSY);
     assert(tp_service_write_holding(&s,0,1,&recover_all)==TP_BUSY);
+    assert(tp_service_write_holding(&s,0,1,&clear)==TP_BUSY);
+    assert(tp_service_write_holding(&s,0,1,&save_cmd)==TP_BUSY);
+    assert(tp_service_write_holding(&s,20,27,config_before)==TP_BUSY);
+    assert(tp_service_write_holding(&s,1,5,schedule_change)==TP_BUSY);
+    assert(tp_service_read_holding(&s,20,27,config_after)==TP_OK &&
+           memcmp(config_before,config_after,sizeof(config_before))==0);
+    assert(tp_service_write_holding(&s,0,1,&stop_cmd)==TP_OK);
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_STOP && s.save_status==1);
     tp_init(&c,&hal,NULL,NULL,100);
     assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
     uint16_t time_words[2]={0x6553,0xf100}, clock_word=99; /* 1700000000 UTC */

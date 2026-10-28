@@ -344,6 +344,10 @@ tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, u
 tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, const uint16_t *v) {
     tp_service *s = ctx;
     if (!s || !s->controller || !v) return TP_INVALID;
+    /* During upgrade maintenance, reject new business changes until reboot. Status
+     * reads remain available; permit stop and the read-only journal query. */
+    if (s->maintenance && !(address==0 && count==1 && v[0]==2) &&
+        !(address==50 && count==3)) return TP_BUSY;
     if (address == 0 && count == 1) {
         switch (v[0]) {
         case 1: return start(s);

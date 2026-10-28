@@ -87,5 +87,10 @@ int main(void) {
     assert(words[0]==3 && words[1]==0 && words[2]==1 && words[3]==TP_EVENT_COMPLETED &&
            words[4]==1 && words[5]==1 && words[8]==0x6553 && words[9]==0xf100 &&
            words[10]==0x4050 && words[11]==0);
+    /* Log queries are still available in upgrade maintenance. */
+    s.maintenance=true;
+    assert(tp_service_write_holding(&s,50,3,latest)==TP_OK && q.latest);
+    tp_service_log_complete(&s,TP_INVALID,NULL);
+    assert(tp_service_read_holding(&s,53,12,words)==TP_OK && words[0]==4);
     puts("asynchronous log protocol checks passed"); return 0;
 }

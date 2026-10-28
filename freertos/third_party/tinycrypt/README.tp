@@ -1,0 +1,4 @@
+TinyCrypt v0.2.8, commit b1fed54ce0f79e0e2ffbec7684bb4988a5f20607
+Source: https://github.com/intel/tinycrypt
+Only the SHA-256 implementation and required utility files are included.
+The upstream BSD-3-Clause license is in LICENSE and the individual files.

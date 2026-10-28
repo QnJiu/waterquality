@@ -23,17 +23,17 @@ add_executable(tp_f407.elf ${ENTRY} tp_f407_iwdg.c tp_f407_emergency.c tp_f407_a
     ${KERNEL}/portable/GCC/ARM_CM4F/port.c ${KERNEL}/portable/MemMang/heap_4.c
     ${ROOT}/os/freertos_health.c ${ROOT}/os/freertos_runtime.c ${ROOT}/os/freertos_event_log.c ${ROOT}/os/freertos_clock.c ${ROOT}/os/freertos_subordinate.c ${ROOT}/app/preflight.c ${ROOT}/app/health.c ${ROOT}/app/event_transition.c ${ROOT}/app/clock_cache.c ${ROOT}/app/valve_policy.c ${ROOT}/app/pulse_counter.c ${ROOT}/app/heater_duty.c ${ROOT}/app/controller.c ${ROOT}/app/measurement.c
     ${ROOT}/app/schedule.c ${ROOT}/app/service.c ${ROOT}/app/door.c ${ROOT}/app/door_service.c ${ROOT}/storage/config_store.c ${ROOT}/storage/event_log.c ${ROOT}/drivers/mb85rc16.c ${ROOT}/drivers/ds3231.c ${ROOT}/drivers/ntc.c ${ROOT}/drivers/ads1220.c ${ROOT}/drivers/adc_reader.c ${ROOT}/drivers/pn532.c ${ROOT}/drivers/pn532_scan.c
-    ${ROOT}/bootloader/boot.c ${ROOT}/bootloader/download.c ${ROOT}/bootloader/upgrade.c ${ROOT}/bootloader/upgrade_commands.c ${ROOT}/bootloader/upgrade_wire.c ${ROOT}/bootloader/upgrade_stream.c
+    ${ROOT}/bootloader/boot.c ${ROOT}/bootloader/download.c ${ROOT}/bootloader/upgrade.c ${ROOT}/bootloader/upgrade_commands.c ${ROOT}/bootloader/upgrade_wire.c ${ROOT}/bootloader/upgrade_stream.c ${ROOT}/bootloader/image_hash.c ${ROOT}/third_party/tinycrypt/source/sha256.c ${ROOT}/third_party/tinycrypt/source/utils.c
     ${ROOT}/protocol/modbus_rtu.c ${ROOT}/protocol/rtu_receiver.c ${ROOT}/protocol/rtu_port.c ${ROOT}/protocol/subordinate.c ${ROOT}/protocol/subordinate_poll.c ${ROOT}/protocol/subordinate_link.c)
 target_include_directories(tp_f407.elf PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${ROOT}/include ${ROOT}/config
     ${KERNEL}/include ${KERNEL}/portable/GCC/ARM_CM4F ${DEVICE}/Include
-    ${ROOT}/third_party/CMSIS-Core/Include ${ROOT}/third_party/STM32F4-LL/Inc)
+    ${ROOT}/third_party/tinycrypt/include ${ROOT}/third_party/CMSIS-Core/Include ${ROOT}/third_party/STM32F4-LL/Inc)
 target_compile_definitions(tp_f407.elf PRIVATE STM32F407xx)
 target_compile_options(tp_f407.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16
     -mfloat-abi=hard -ffunction-sections -fdata-sections)
 target_link_options(tp_f407.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16
     -mfloat-abi=hard --specs=nosys.specs -T${CMAKE_CURRENT_LIST_DIR}/stm32f407vg.ld
-    -Wl,--gc-sections -Wl,--undefined=tp_f407_app_init -Wl,--undefined=tp_f407_upgrade_uart_init -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/tp_f407.map)
+    -Wl,--gc-sections -Wl,--undefined=tp_f407_app_init -Wl,--undefined=tp_f407_upgrade_uart_init -Wl,--undefined=tp_image_sha256_verify -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/tp_f407.map)
 target_link_libraries(tp_f407.elf PRIVATE m)
 add_custom_command(TARGET tp_f407.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:tp_f407.elf> ${CMAKE_CURRENT_BINARY_DIR}/tp_f407.hex

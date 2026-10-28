@@ -34,3 +34,4 @@ python freertos/tools/upgrade_client.py --serial COM3 --baud 115200 --manifest m
 主机联通测试通过共享库将 Python 发送端连接到 C 帧处理、升级和启动核心，覆盖丢失应答、断线续传、拒绝清单和损坏镜像。测试使用内存存储和固定内容的认证与镜像校验替身，不验证真实签名或设备。构建时检测到 Python 解释器后，`ctest --test-dir build --output-on-failure` 会运行该测试；也可设置 `TP_UP_SIM_LIB` 为构建出的 `upgrade_simulator` 共享库绝对路径后运行 `python -m unittest discover -s tests -p test_upgrade_interop.py -v`。
 
 `tp_upgrade_stream` 为单连接提供字节流会话：按接收时刻检查帧间超时，在空闲时轮询超时，并在串口溢出、断线或连接切换时复位。接收事件和空闲轮询必须按时间顺序交付；带时间戳的队列应先排空再按当前时间轮询。计时器使用 32 位毫秒回绕运算，超时上限为 2^31-1 毫秒。发送回调仍须完整复制或发送响应；超时与断线不能撤销已执行的升级操作。实际 UART/网络收发、任务调度、访问控制和存储仍需接入。
+`tp_image_sha256` 使用 TinyCrypt v0.2.8 以 256 字节缓冲区分块计算指定镜像的 SHA-256；`tp_image_sha256_verify` 比较完整摘要。调用方提供镜像读取回调和每个槽的容量，长度为零或超出槽容量时拒绝读取，读取失败原样返回。摘要必须来自已认证的清单，且校验期间禁止并发擦写。该组件尚未连接 `tp_download_io.verify` 和 `tp_boot_io.verify_image`；仅使用哈希不能证明镜像来源，完整安全启动还需要签名认证、可信密钥和受保护的镜像布局。

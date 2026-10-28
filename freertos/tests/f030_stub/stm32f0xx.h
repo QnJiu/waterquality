@@ -2,7 +2,7 @@
 #define TEST_STM32F0_H
 #include <stdint.h>
 typedef struct { uint32_t AHBENR,APB1ENR,APB2ENR,CFGR,CFGR3; } RCC_TypeDef;
-typedef struct { uint32_t AFR[2],PUPDR,MODER,IDR; } GPIO_TypeDef;
+typedef struct { uint32_t AFR[2],PUPDR,MODER,IDR,BSRR,OTYPER,OSPEEDR; } GPIO_TypeDef;
 typedef struct { uint32_t EXTICR[4]; } SYSCFG_TypeDef;
 typedef struct { uint32_t IMR,RTSR,FTSR,PR; } EXTI_TypeDef;
 typedef struct { uint32_t CR1,PSC,ARR,EGR,SR,DIER,CNT; } TIM_TypeDef;

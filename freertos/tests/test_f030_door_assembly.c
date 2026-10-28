@@ -11,6 +11,7 @@ static jmp_buf started;
 #include "../firmware_f030/main_subordinate.c"
 #undef main
 
+void tp_f030_reference_lock_emergency_off(void) {}
 static unsigned hardware_calls, i2c_calls, door_calls, registrations;
 static tp_result hardware_result=TP_BUSY, i2c_result=TP_OK, door_result=TP_OK;
 static tp_result (*registered_recovery)(void *);

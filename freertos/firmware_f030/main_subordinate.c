@@ -1,6 +1,7 @@
 #include "tp_f030_subordinate.h"
 #include "tp_f030_board_inputs.h"
 #include "stm32f0xx.h"
+#include "tp_f030_reference_lock.h"
 #ifdef TP_F030_DOOR_CONFIG
 #include "tp_f030_i2c.h"
 #include "tp_f030_pn532_door.h"
@@ -31,6 +32,7 @@ tp_result tp_f030_door_authorize(uint32_t request_id,bool approved) {
 void tp_platform_assert(const char *file,int line) {
     (void)file; (void)line;
     __disable_irq();
+    tp_f030_reference_lock_emergency_off();
     for(;;) { __NOP(); }
 }
 void vApplicationMallocFailedHook(void) { tp_platform_assert(__FILE__,__LINE__); }

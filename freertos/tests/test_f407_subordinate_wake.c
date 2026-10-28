@@ -5,7 +5,8 @@ USART_TypeDef fake_usart;
 GPIO_TypeDef fake_gpio;
 TIM_TypeDef fake_tim;
 static uint32_t ticks;
-static unsigned queued, errors, wake_changes;
+static unsigned queued, errors, wake_changes, exchange_ticks;
+static bool accept_buffered;
 static bool wake_level;
 static BaseType_t scheduler=taskSCHEDULER_NOT_STARTED;
 BaseType_t xTaskGetSchedulerState(void) { return scheduler; }
@@ -27,7 +28,13 @@ tp_result tp_freertos_subordinate_init(tp_freertos_subordinate *s,void *ctx,tp_s
 }
 tp_result tp_freertos_subordinate_error(tp_freertos_subordinate *s,uint32_t us,uint32_t ms) { (void)us; (void)ms; errors++; s->link.poll.master.pending=false; s->link.poll.master.have_status=false; return TP_OK; }
 tp_result tp_freertos_subordinate_byte_at(tp_freertos_subordinate *s,uint8_t b,uint32_t us,uint32_t arrived,uint32_t now) { (void)s;(void)b;(void)us;(void)arrived;(void)now;return TP_OK; }
-tp_result tp_freertos_subordinate_tick(tp_freertos_subordinate *s,uint32_t us,uint32_t ms) { (void)s;(void)us;(void)ms;return TP_OK; }
+tp_result tp_freertos_subordinate_tick(tp_freertos_subordinate *s,uint32_t us,uint32_t ms) {
+    (void)us; exchange_ticks++;
+    if(accept_buffered && s->link.poll.master.pending) {
+        s->link.poll.master.pending=false; s->link.poll.master.have_status=true;
+    } else tp_sub_master_tick(&s->link.poll.master,ms);
+    return TP_OK;
+}
 static void wake(void *ctx,bool active) { assert(ctx==&wake_changes); wake_level=active; wake_changes++; }
 int main(void) {
     tp_f407_uart4_subordinate u;
@@ -52,6 +59,30 @@ int main(void) {
     assert(send_request(&u,frame,sizeof(frame))==TP_OK);
     u.subordinate.link.poll.master.pending=false; service_wakeup(&u,40);
     assert(!wake_level && !u.transmitting); /* timed out before sending */
+    /* Process a buffered response before checking its deadline. */
+    ticks=100; u.subordinate.link.poll.master.pending=true;
+    u.subordinate.link.poll.master.deadline_start=100;
+    assert(send_request(&u,frame,sizeof(frame))==TP_OK);
+    service_exchange(&u,true,0,104); assert(u.transmitting);
+    u.transmitting=false; accept_buffered=true;
+    service_exchange(&u,true,0,125);
+    assert(exchange_ticks==1 && u.subordinate.link.poll.master.have_status && !wake_level);
+    accept_buffered=false;
+    /* A response in the UART queue must be handled before timeout. */
+    ticks=150; u.subordinate.link.poll.master.pending=true;
+    u.subordinate.link.poll.master.deadline_start=150;
+    assert(send_request(&u,frame,sizeof(frame))==TP_OK);
+    service_exchange(&u,true,0,154); u.transmitting=false;
+    service_exchange(&u,false,0,175);
+    assert(u.subordinate.link.poll.master.pending && wake_level);
+    service_exchange(&u,true,0,175);
+    assert(!u.subordinate.link.poll.master.pending && !wake_level);
+    /* Wake delay expires when sending cannot start in time. */
+    ticks=200; u.subordinate.link.poll.master.pending=true;
+    u.subordinate.link.poll.master.deadline_start=200;
+    assert(send_request(&u,frame,sizeof(frame))==TP_OK);
+    service_exchange(&u,false,0,220);
+    assert(!wake_level && !u.transmitting);
     /* Exercise the reference GPIO adapter separately from the custom callback. */
     scheduler=taskSCHEDULER_NOT_STARTED; u.set_wake=NULL;
     fake_rcc.AHB1ENR=0; fake_gpio.BSRR=0;

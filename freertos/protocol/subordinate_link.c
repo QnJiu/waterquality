@@ -61,7 +61,8 @@ tp_result tp_sub_link_tick(tp_sub_link *l,uint32_t us,uint32_t ms) {
     l->now_ms=ms; l->frame_result=TP_OK; tp_rtu_receiver_poll(&l->receiver,us);
     if(l->frame_result!=TP_OK) return l->frame_result;
     if(l->role==TP_SUB_LINK_MASTER) {
-        if(l->receiver.receiving) { tp_sub_master_tick(&l->poll.master,ms); return TP_OK; }
+        /* Wait for the RTU gap before judging a buffered response. */
+        if(l->receiver.receiving) return TP_OK;
         return tp_sub_poll_tick(&l->poll,ms);
     }
     return TP_OK;

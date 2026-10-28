@@ -72,6 +72,9 @@ int main(void) {
     assert(tp_sub_reply(queued.bytes,queued.len,&ok,reply)==TP_OK); queued.len=0;
     for(size_t i=0;i<sizeof(reply);i++)
         assert(tp_sub_link_byte_at(&late_processing,reply[i],100+(uint32_t)i*100,10,25)==TP_OK);
+    /* Wait for the RTU silence even after the deadline. */
+    assert(tp_sub_link_tick(&late_processing,1650,25)==TP_OK);
+    assert(late_processing.poll.master.pending);
     assert(tp_sub_link_tick(&late_processing,4000,25)==TP_OK);
     assert(tp_sub_link_healthy(&late_processing,25));
     assert(!tp_sub_link_healthy(&late_processing,110));

@@ -90,6 +90,16 @@ static void service_wakeup(tp_f407_uart4_subordinate *u, uint32_t now) {
         u->set_wake(u->wake_ctx,false); u->wake_active=false;
     }
 }
+/* Process a received frame before applying the current-time deadline. */
+static void service_exchange(tp_f407_uart4_subordinate *u,bool clear,uint32_t now_us,uint32_t now_ms) {
+    if(u->wake_active && (u->wake_waiting || u->transmitting)) {
+        tp_sub_master_tick(&u->subordinate.link.poll.master,now_ms);
+        service_wakeup(u,now_ms);
+    }
+    if(clear && !u->transmitting && !u->wake_waiting)
+        (void)tp_freertos_subordinate_tick(&u->subordinate,now_us,now_ms);
+    service_wakeup(u,now_ms);
+}
 static void uart_task(void *ctx) {
     tp_f407_uart4_subordinate *u=ctx;
     hardware_start();
@@ -111,14 +121,7 @@ static void uart_task(void *ctx) {
         bool clear=!u->overflow && !uxQueueMessagesWaiting(u->events) && !(UART4->SR & RX_FLAGS);
         uint32_t now=TIM5->CNT;
         taskEXIT_CRITICAL();
-        if(u->wake_active) {
-            uint32_t now_ms=(uint32_t)xTaskGetTickCount();
-            tp_sub_master_tick(&u->subordinate.link.poll.master,now_ms);
-            service_wakeup(u,now_ms);
-        }
-        if(clear && !u->transmitting)
-            (void)tp_freertos_subordinate_tick(&u->subordinate,now,(uint32_t)xTaskGetTickCount());
-        service_wakeup(u,(uint32_t)xTaskGetTickCount());
+        service_exchange(u,clear,now,(uint32_t)xTaskGetTickCount());
         (void)ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(1));
     }
 }

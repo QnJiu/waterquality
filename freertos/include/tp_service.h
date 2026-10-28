@@ -10,6 +10,7 @@
  * invoke callbacks concurrently with tick. Give stop requests priority. */
 typedef struct {
     tp_controller *controller;
+    bool maintenance; /* latched until service reinitialization */
     const tp_step *recipe;
     size_t recipe_len;
     tp_schedule schedule;
@@ -40,6 +41,8 @@ tp_result tp_service_attach_preflight(tp_service *,void *,tp_result (*)(void *,u
  * Complete only from the service owner task. TP_INVALID means not found. */
 tp_result tp_service_attach_log(tp_service *,void *ctx,tp_result (*request)(void *,bool,uint32_t));
 void tp_service_log_complete(tp_service *,tp_result,const tp_event *);
+/* Owner task only. Safe outputs are applied before success; latched until reset. */
+tp_result tp_service_enter_maintenance(tp_service *s);
 void tp_service_tick(tp_service *s, uint32_t now_ms, bool rtc_valid, int64_t utc_seconds);
 /* Functions implement the tp_modbus callbacks when called in the owner task. */
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values);

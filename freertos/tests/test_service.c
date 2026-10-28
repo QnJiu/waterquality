@@ -50,6 +50,22 @@ int main(void) {
     assert(c.state==TP_IDLE && checks==3 && s.last_start_result==TP_IO_ERROR);
     check_faults=0; tp_service_tick(&s,2000,false,0);
     assert(c.state==TP_RUNNING && checks==4);
+    before_safe=safe_count;
+    assert(tp_service_enter_maintenance(&s)==TP_OK);
+    assert(s.maintenance && c.state==TP_FAILED && c.fault==TP_FAULT_STOP && safe_count==before_safe+1);
+    assert(tp_service_enter_maintenance(&s)==TP_OK && safe_count==before_safe+1);
+    assert(tp_service_write_holding(&s,0,1,&clear)==TP_OK);
+    assert(tp_service_write_holding(&s,0,1,&begin)==TP_BUSY);
+    uint16_t advance=5; assert(tp_service_write_holding(&s,0,1,&advance)==TP_BUSY);
+    tp_service_tick(&s,5000,false,0); assert(c.state==TP_IDLE && s.schedule.last_period_ms==5000);
+    uint16_t daily[]={TP_MODE_DAILY,0,1,1,0};
+    assert(tp_service_write_holding(&s,1,5,daily)==TP_OK);
+    tp_service_tick(&s,6000,true,60); assert(c.state==TP_IDLE && s.schedule.daily_fired);
+    tp_init(&c,&hal,NULL,NULL,100);
+    assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    before_safe=safe_count; assert(tp_service_enter_maintenance(&s)==TP_OK);
+    assert(c.state==TP_IDLE && c.fault==TP_FAULT_NONE && safe_count==before_safe+1);
+    assert(tp_service_enter_maintenance(NULL)==TP_INVALID);
     puts("service checks passed"); return 0;
 }
 

@@ -3,6 +3,7 @@
 /* Holding register addresses are zero-based. See docs/MODBUS.md. */
 static uint32_t join(uint16_t hi, uint16_t lo) { return ((uint32_t)hi << 16) | lo; }
 static tp_result start(tp_service *s) {
+    if (s->maintenance) { s->last_start_result = TP_BUSY; return TP_BUSY; }
     if (s->save_status == 2) { s->last_start_result = TP_BUSY; return TP_BUSY; }
     if (s->preflight && s->controller->state != TP_RUNNING && s->controller->state != TP_FAILED) {
         uint16_t faults=TP_PREFLIGHT_NOT_RUN;
@@ -93,10 +94,18 @@ static tp_result set_config_words(tp_service *s, const uint16_t *v) {
     if (tp_config_validate(&c)!=TP_OK) return TP_INVALID;
     apply_config(s,&c); s->save_status=1; return TP_OK;
 }
+tp_result tp_service_enter_maintenance(tp_service *s) {
+    if (!s || !s->controller || !s->controller->hal.safe_outputs) return TP_INVALID;
+    if (s->maintenance) return TP_OK;
+    s->maintenance = true;
+    if (s->controller->state == TP_RUNNING) tp_stop(s->controller);
+    else s->controller->hal.safe_outputs(s->controller->hal.ctx);
+    return TP_OK;
+}
 void tp_service_tick(tp_service *s, uint32_t now, bool rtc_valid, int64_t utc) {
     if (!s || !s->controller) return;
     s->now_ms = now;
-    bool busy = s->controller->state == TP_RUNNING || s->controller->state == TP_FAILED;
+    bool busy = s->maintenance || s->controller->state == TP_RUNNING || s->controller->state == TP_FAILED;
     if (tp_schedule_poll(&s->schedule, now, rtc_valid, utc, busy)) (void)start(s);
     tp_tick(s->controller, now);
 }
@@ -149,7 +158,7 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
         case 1: return start(s);
         case 2: tp_stop(s->controller); return TP_OK;
         case 3: return tp_clear_fault(s->controller);
-        case 5: return tp_advance(s->controller, s->now_ms);
+        case 5: return s->maintenance ? TP_BUSY : tp_advance(s->controller, s->now_ms);
         case 4:
             if (!s->request_save || s->save_status==2 || s->controller->state==TP_RUNNING) return TP_BUSY;
             if (s->request_save(s->save_ctx,&s->config)!=TP_OK) { s->save_status=4; return TP_IO_ERROR; }

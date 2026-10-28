@@ -135,9 +135,21 @@ static void tick_service(tp_freertos_runtime *rt, uint32_t now, bool valid, int6
     emit_transition(rt,before);
     emit_operation_events(rt,operation_before);
 }
+/* Called only by the control task; busy operations defer the check. */
+static void startup_preflight(tp_freertos_runtime *rt, uint32_t elapsed) {
+    if (!rt->startup_preflight_pending) return;
+    if (rt->service->preflight_checked) { rt->startup_preflight_pending=false; return; }
+    if (elapsed < rt->startup_preflight_delay_ms) return;
+    uint16_t command=10;
+    tp_operation_snapshot before=tp_operation_capture(rt->service);
+    tp_result r=tp_service_write_holding(rt->service,0,1,&command);
+    if (r!=TP_BUSY) rt->startup_preflight_pending=false;
+    emit_operation_events(rt,before);
+}
 static void task(void *arg) {
     tp_freertos_runtime *rt = arg;
     const TickType_t period = pdMS_TO_TICKS(rt->tick_ms) ? pdMS_TO_TICKS(rt->tick_ms) : 1;
+    const uint32_t started=(uint32_t)xTaskGetTickCount();
     for (;;) {
         tp_runtime_frame f; unsigned budget = TP_RUNTIME_QUEUE_DEPTH;
         process_maintenance(rt);
@@ -159,6 +171,7 @@ static void task(void *arg) {
         int64_t utc = 0;
         bool valid = rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx, &utc);
         tick_service(rt,(uint32_t)xTaskGetTickCount(),valid,utc);
+        startup_preflight(rt,(uint32_t)xTaskGetTickCount()-started);
         while (budget-- && xQueueReceive(rt->requests, &f, 0) == pdPASS) {
             process_maintenance(rt);
             /* Check again between requests to bound stop latency. */
@@ -190,6 +203,13 @@ tp_result tp_runtime_init(tp_freertos_runtime *rt, tp_service *service,
     if (!rt->requests) return TP_IO_ERROR;
     rt->stops = xQueueCreate(TP_RUNTIME_STOP_DEPTH, sizeof(tp_runtime_frame));
     if (!rt->stops) { vQueueDelete(rt->requests); rt->requests = NULL; return TP_IO_ERROR; }
+    return TP_OK;
+}
+tp_result tp_runtime_enable_startup_preflight(tp_freertos_runtime *rt, uint32_t delay_ms) {
+    if (!rt || !rt->requests || rt->owner || !rt->service || !rt->service->preflight ||
+        delay_ms > 0x7fffffffu) return TP_INVALID;
+    rt->startup_preflight_delay_ms=delay_ms;
+    rt->startup_preflight_pending=true;
     return TP_OK;
 }
 tp_result tp_runtime_start(tp_freertos_runtime *rt, uint16_t stack_words, UBaseType_t priority) {

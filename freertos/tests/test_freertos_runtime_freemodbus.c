@@ -73,5 +73,25 @@ int main(void) {
     assert(tp_service_read_holding(&s,16,1,&valid)==TP_OK && valid==0);
     tick_service(&rt,2000,false,0);
     assert(event_count==3); /* Unchanged fault does not flood the log. */
+    /* Startup check waits without blocking and logs a failed check once. */
+    s.preflight_checked=false; s.preflight_faults=TP_PREFLIGHT_NOT_RUN;
+    rt.startup_preflight_pending=true; rt.startup_preflight_delay_ms=2000;
+    c.state=TP_RUNNING; faults=TP_PREFLIGHT_ADC;
+    startup_preflight(&rt,1999); assert(!s.preflight_checked && rt.startup_preflight_pending);
+    startup_preflight(&rt,2000); assert(!s.preflight_checked && rt.startup_preflight_pending);
+    c.state=TP_IDLE; s.maintenance=true;
+    startup_preflight(&rt,2001); assert(!s.preflight_checked && rt.startup_preflight_pending);
+    s.maintenance=false; int prior_safe=safe_count; int prior_events=event_count;
+    startup_preflight(&rt,2002);
+    assert(s.preflight_checked && !rt.startup_preflight_pending && safe_count==prior_safe+1);
+    assert(event_count==prior_events+1 && last_event.detail==TP_PREFLIGHT_ADC);
+    startup_preflight(&rt,3000); assert(event_count==prior_events+1);
+    /* An earlier command already performed the check. */
+    rt.startup_preflight_pending=true; startup_preflight(&rt,2000);
+    assert(!rt.startup_preflight_pending && event_count==prior_events+1);
+    /* Unsigned elapsed time remains valid across tick rollover. */
+    s.preflight_checked=false; rt.startup_preflight_pending=true; faults=0;
+    startup_preflight(&rt,(uint32_t)1000-(uint32_t)(UINT32_MAX-1000));
+    assert(s.preflight_checked && !rt.startup_preflight_pending);
     return 0;
 }

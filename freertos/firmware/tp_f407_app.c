@@ -157,6 +157,8 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
 #else
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));
 #endif
+    /* Teaching reference: allow temperature and subordinate data to arrive. */
+    INIT(tp_runtime_enable_startup_preflight(&a->runtime,2000));
     INIT(tp_runtime_attach_storage(&a->runtime,&a->store,&a->config));
     if (o->auto_calibration) {
         const tp_f407_auto_cal_options *cal=o->auto_calibration;

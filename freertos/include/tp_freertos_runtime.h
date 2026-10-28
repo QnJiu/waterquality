@@ -42,12 +42,16 @@ typedef struct {
     TaskHandle_t storage_task;
     TaskHandle_t owner;
     uint32_t tick_ms;
+    uint32_t startup_preflight_delay_ms;
+    bool startup_preflight_pending;
     uint8_t maintenance_state; /* protected by FreeRTOS critical sections */
 } tp_freertos_runtime;
 /* Call before scheduler starts. Queues are owned by the runtime. The task stack,
  * FreeRTOS heap and priority are application configuration responsibilities. */
 tp_result tp_runtime_init(tp_freertos_runtime *rt, tp_service *service,
     const tp_runtime_io *io, const uint8_t *addresses, size_t port_count, uint32_t tick_ms);
+/* Optional one-shot check, enabled after init and before start. */
+tp_result tp_runtime_enable_startup_preflight(tp_freertos_runtime *rt, uint32_t delay_ms);
 /* Attach before start; cfg is loaded by the caller or a validated default. */
 tp_result tp_runtime_attach_storage(tp_freertos_runtime *rt, const tp_store_io *store, const tp_config *cfg);
 /* Pre-scheduler boot: loads a valid slot or uses defaults; no implicit write.

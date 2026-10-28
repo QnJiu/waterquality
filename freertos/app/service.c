@@ -13,6 +13,7 @@ static tp_result run_preflight(void *ctx) {
     if (!s->preflight) return TP_OK;
     uint16_t faults=TP_PREFLIGHT_NOT_RUN;
     tp_result r=s->preflight(s->preflight_ctx,&faults);
+    s->preflight_checked=true;
     s->preflight_faults=faults;
     if(r!=TP_OK || faults) {
         if(!faults) s->preflight_faults=TP_PREFLIGHT_NOT_RUN;

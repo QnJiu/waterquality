@@ -69,6 +69,19 @@ class Tests(unittest.TestCase):
         p = Port(m.frame(bytes.fromhex('01030a00040002000000000000')))
         self.assertEqual(m.Client(p, 1).auto_standard_status()['actual_mg_l'], None)
 
+    def test_temperature_cli(self):
+        for response, expected in (('010306000141a00000', '20.0'),
+                                   ('010306000000000000', 'null')):
+            class SerialPort(Port):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(m.frame(bytes.fromhex(response)))
+                def __enter__(self): return self
+                def __exit__(self, *args): pass
+            text = io.StringIO()
+            with patch.dict(sys.modules, {'serial': SimpleNamespace(Serial=SerialPort)}), contextlib.redirect_stdout(text):
+                self.assertEqual(m.main(['--port', 'COM3', 'temperature']), 0)
+            self.assertIn('"temperature_c": ' + expected, text.getvalue())
+
     def test_auto_calibration_cli(self):
         class SerialPort(Port):
             def __init__(self, *args, **kwargs):

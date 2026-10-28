@@ -278,6 +278,13 @@ tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, u
         return TP_OK;
     }
     tp_service *s = ctx;
+    if (s && s->controller && values && count && address>=128 && (uint32_t)address+count<=131) {
+        bool valid=s->controller->state==TP_RUNNING && s->controller->temperature_valid;
+        float temperature=valid ? s->controller->last_temperature_c : 0;
+        uint16_t words[3]={valid ? 1u : 0u,float_word(temperature,false),float_word(temperature,true)};
+        for (uint16_t i=0;i<count;i++) values[i]=words[address-128+i];
+        return TP_OK;
+    }
     if (s && s->controller && values && count && address>=105 && (uint32_t)address+count<=110) {
         uint16_t words[]={s->standard_attached ? (uint16_t)(s->auto_standard.state+1) : 0,
             s->standard_attached ? (uint16_t)s->auto_standard.error : 0,

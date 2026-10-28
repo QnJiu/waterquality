@@ -22,9 +22,12 @@ int main(void) {
         {.kind=TP_STEP_PUMP,.timeout_ms=1000,.arg.pump={100,500}},
         {.kind=TP_STEP_HEATER_OFF}, {.kind=TP_STEP_END} };
     tp_service s; assert(tp_service_init(&s,&c,recipe,5,0)==TP_OK);
+    uint16_t snapshot[3];
+    assert(tp_service_read_holding(&s,128,3,snapshot)==TP_OK && snapshot[0]==0);
     uint16_t command=5; assert(tp_service_write_holding(&s,0,1,&command)==TP_INVALID);
     command=1; assert(tp_service_write_holding(&s,0,1,&command)==TP_OK);
     tp_service_tick(&s,0,false,0);
+    assert(tp_service_read_holding(&s,128,3,snapshot)==TP_OK && snapshot[0]==1 && snapshot[1]==0x41a0 && snapshot[2]==0);
     uint16_t waiting; assert(tp_service_read_holding(&s,18,1,&waiting)==TP_OK && waiting==1);
     assert(c.index==1 && f.valves==0 && f.pumps==0 && c.heating);
     tp_service_tick(&s,200,false,0); assert(f.heat_calls>=2 && f.valves==0);
@@ -37,6 +40,7 @@ int main(void) {
     tp_service_tick(&s,203,false,0); assert(!c.heating && c.awaiting_advance);
     assert(tp_service_write_holding(&s,0,1,&command)==TP_OK);
     tp_service_tick(&s,204,false,0); assert(c.state==TP_COMPLETE && f.safe==1);
+    assert(tp_service_read_holding(&s,128,3,snapshot)==TP_OK && snapshot[0]==0 && snapshot[1]==0 && snapshot[2]==0);
     command=1; assert(tp_service_write_holding(&s,0,1,&command)==TP_OK);
     tp_service_tick(&s,205,false,0); assert(c.awaiting_advance);
     f.interlock=false; command=5; assert(tp_service_write_holding(&s,0,1,&command)==TP_IO_ERROR);

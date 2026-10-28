@@ -61,6 +61,8 @@ typedef struct {
     bool entered, heating, result_valid, single_step, awaiting_advance;
     uint32_t advance_wait_ms;
     float target_c, max_temperature_c, result_mg_l;
+    float last_temperature_c;
+    bool temperature_valid;
     float readings[TP_READ_COUNT], sample_min, sample_max;
     double sample_sum;
     uint8_t valid_readings, sample_count;

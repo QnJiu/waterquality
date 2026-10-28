@@ -58,7 +58,7 @@ tp_result tp_start(tp_controller *c, const tp_step *recipe, size_t count, uint32
     c->recipe = recipe; c->recipe_len = count; c->index = 0; c->entered = false;
     c->state = TP_RUNNING; c->fault = TP_FAULT_NONE; c->heating = false;
     c->single_step = false; c->awaiting_advance = false;
-    c->result_valid = false; c->valid_readings = 0; c->pid.integral = 0; c->pid.initialized = false;
+    c->result_valid = false; c->temperature_valid = false; c->valid_readings = 0; c->pid.integral = 0; c->pid.initialized = false;
     c->entered_ms = now; c->last_pid_ms = now - TP_PID_PERIOD_MS;
     return TP_OK;
 }
@@ -111,7 +111,8 @@ void tp_tick(tp_controller *c, uint32_t now) {
      * heater is off. The same periodic read drives PID while heating. */
     if (expired(now, c->last_pid_ms, TP_PID_PERIOD_MS)) {
         tp_result r = c->hal.read_temperature(c->hal.ctx, &temp);
-        if (r != TP_OK || !isfinite(temp)) { fail(c, TP_FAULT_SENSOR); return; }
+        if (r != TP_OK || !isfinite(temp)) { c->temperature_valid = false; fail(c, TP_FAULT_SENSOR); return; }
+        c->last_temperature_c = temp; c->temperature_valid = true;
         if (temp >= c->max_temperature_c) { fail(c, TP_FAULT_OVERTEMP); return; }
         float dt = (float)(uint32_t)(now - c->last_pid_ms) / 1000.0f;
         c->last_pid_ms = now;

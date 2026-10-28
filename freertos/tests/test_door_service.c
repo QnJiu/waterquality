@@ -1,4 +1,5 @@
 #include "tp_door_service.h"
+#include "tp_door_allowlist.h"
 #include <assert.h>
 #include <string.h>
 
@@ -39,6 +40,32 @@ static void setup(tp_door_service *s,fake *f) {
 }
 static void card(fake *f) {
     const uint8_t data[]={1,1,4,0,8,4,0xab,0xcd,0xef,0x12}; response(f,0x4a,data,sizeof(data));
+}
+typedef struct { uint32_t id; bool approved; unsigned count; tp_result result; } decision;
+static tp_result submit(void *ctx,uint32_t id,bool approved) {
+    decision *d=ctx; d->id=id; d->approved=approved; d->count++; return d->result;
+}
+static void test_allowlist(void) {
+    const tp_door_card cards[]={{{0xab,0xcd,0xef,0x12},4}};
+    tp_door_allowlist policy; decision d={0}; fake f={0}; tp_door_service s;
+    assert(tp_door_allowlist_init(&policy,cards,1,&d,submit)==TP_OK);
+    setup(&s,&f); s.request=tp_door_allowlist_request; s.request_ctx=&policy;
+    card(&f); assert(tp_door_service_tick(&s,6)==TP_OK);
+    assert(d.count==1 && d.id==7 && d.approved && !f.unlocked);
+    assert(tp_door_service_authorize(&s,7,d.id,d.approved)==TP_OK && f.unlocked);
+    assert(tp_door_service_tick(&s,47)==TP_OK && !f.unlocked);
+    /* A different card is denied, and cannot energize the lock. */
+    bool created=false; uint32_t id=0; const uint8_t other[]={1,2,3,4};
+    assert(tp_door_observe(&s.door,48,other,4,&created,&id)==TP_OK && created);
+    assert(tp_door_allowlist_request(&policy,id,other,4)==TP_OK && !d.approved);
+    assert(tp_door_service_authorize(&s,49,id,d.approved)==TP_OK && !f.unlocked);
+    assert(tp_door_allowlist_init(&policy,NULL,0,&d,submit)==TP_OK);
+    assert(tp_door_allowlist_request(&policy,9,cards[0].uid,4)==TP_OK && !d.approved);
+    tp_door_card invalid={{0},5};
+    assert(tp_door_allowlist_init(&policy,&invalid,1,&d,submit)==TP_INVALID);
+    assert(tp_door_allowlist_request(&policy,9,cards[0].uid,3)==TP_INVALID);
+    d.result=TP_BUSY;
+    assert(tp_door_allowlist_request(&policy,9,cards[0].uid,4)==TP_BUSY);
 }
 int main(void) {
     fake f={0}; tp_door_service s; setup(&s,&f);

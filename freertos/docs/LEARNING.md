@@ -28,6 +28,8 @@ ctest --test-dir build --output-on-failure
 4. `protocol/` 和 `docs/MODBUS.md`：Modbus 通信及寄存器。
 5. `firmware/`、`firmware_f030/`：主控与从控参考固件，具体构建选项分别见目录内的 README。
 
+F407 与 F030 的教学装配可通过 F407 构建选项 `TP_F407_TEACHING_SUBORDINATE=ON` 启用，具体步骤见 `firmware/README.md`。从控状态未知、过期或报告故障时，主控会阻止启动或停止运行；F030 也需启用对应参考输入。配方和接线都是示例，不能用于实际测量。
+
 不同硬件的管脚、传感器、反应参数和标定数据需要按实物配置。默认 F407 固件是心跳示例，业务入口需单独配置；F030 浅睡眠和 RTC 定时 STOP 均为可选，尚未实机验证。ESP32 局域网升级网关见 `examples/esp32_gateway/README.md`；阿里云状态上报和可选升级示例见 `examples/esp32_cloud/README.md`，均需实际设备联调。软件实现和实机验证的详细状态见 `docs/STATUS.md`。
 
 运行 `calibration` 可观察两种模拟标准液的自动采样、两点标定结果应用和标液核查。示例通过 Modbus 命令 6、7、9 依次启动、应用和核查；应用只改变内存，示例不执行保存。标准液读数和浓度是教学数据，实际配方需按仪器确定。

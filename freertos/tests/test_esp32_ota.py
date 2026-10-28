@@ -64,6 +64,17 @@ class Tests(unittest.TestCase):
         self.assertFalse(client.writes)
         self.assertEqual(client.state['written'], 0)
 
+    def test_single_bundle_upload_and_tamper_rejected(self):
+        image = bytes(range(256)) * 3
+        manifest, ident = manifest_for(image)
+        client = FakeClient(image, ident)
+        result = ota.upload_bundle(client, io.BytesIO(manifest + image))
+        self.assertEqual(result['phase'], 3)
+        self.assertEqual(client.storage, image)
+        for bad in (manifest + image[:-1], manifest + image + b'x', b'x' + manifest[1:] + image):
+            with self.subTest(bad_length=len(bad)), self.assertRaises(ValueError):
+                ota.upload_bundle(FakeClient(image, ident), io.BytesIO(bad))
+
     def test_no_reply_times_out(self):
         class UART:
             def write(self, data): return len(data)

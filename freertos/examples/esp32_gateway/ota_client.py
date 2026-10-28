@@ -211,3 +211,21 @@ def upload(client, manifest, image, retries=3):
         if state["phase"] != 3 or state["written"] != size:
             raise ProtocolError("unexpected final state")
         return state
+
+
+class BundleImage:
+    """Expose the image following a 116-byte signed manifest as a file."""
+    def __init__(self, source):
+        self.source = source
+    def seek(self, offset):
+        if offset < 0:
+            raise ValueError("invalid image offset")
+        return self.source.seek(116 + offset)
+    def read(self, size):
+        return self.source.read(size)
+
+
+def upload_bundle(client, source):
+    source.seek(0)
+    manifest = source.read(116)
+    return upload(client, manifest, BundleImage(source))

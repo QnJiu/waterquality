@@ -37,3 +37,20 @@ ota_run.run_https("https://example.com/signed.tpu", "https://example.com/app.bin
 将示例地址改为实际地址；服务端必须直接返回 HTTP 200、`Content-Length` 和完整文件，暂不支持跳转、分块传输和自定义端口。下载会占用 ESP32 文件系统，文件写到 `ota_manifest.tmp` 和 `ota_image.tmp`，后一次运行会覆盖它们。镜像下载完成并核对清单后才开始发送到 F407；不匹配时不会启动升级。成功暂存后这两个文件可手动删除。下载支持的最大固件大小为 384 KiB。
 
 阿里云 OTA 通知、下载地址的自动接收及升级状态上报仍未接入；此入口使用手动指定的地址。HTTPS 校验和串口流程目前只经过主机模拟，尚未进行实机或真实云服务测试。
+
+## 单文件升级包
+
+也可将签名清单与镜像合成一个包，便于以后通过云平台提供单个下载地址。在电脑的 `freertos` 目录执行：
+
+```powershell
+python tools/pack_ota_bundle.py --manifest signed.tpu --image app.bin --output firmware.tpb
+```
+
+工具先检查清单和镜像是否匹配，不覆盖已有输出文件。将 `firmware.tpb` 放到支持上节要求的 HTTPS 服务器后，ESP32 REPL 中运行：
+
+```python
+import ota_run
+ota_run.run_bundle_https("https://example.com/firmware.tpb")
+```
+
+包格式是 116 字节 TPU1 签名清单紧接固件原始字节；ESP32 分块核对镜像后发送给 F407，F407 独立验证签名。临时包保存在 `ota_bundle.tmp`，下次执行会覆盖。该入口仍需手动指定地址，阿里云 OTA 通知尚未连接，也未实机验证。

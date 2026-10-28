@@ -5,3 +5,4 @@ signed.tpu
 app.bin
 ota_manifest.tmp
 ota_image.tmp
+ota_bundle.tmp

@@ -1,5 +1,9 @@
 #include "tp_f407_board_config.h"
 #include "tp_preflight.h"
+#ifdef TP_F407_TEACHING_SUBORDINATE
+#include "tp_f407_uart4_subordinate.h"
+static tp_f407_uart4_subordinate subordinate;
+#endif
 
 /* Teaching example only: none of these values describe a verified instrument. */
 enum { SAMPLE = 1u, REAGENT = 2u, RINSE = 4u, DRAIN = 8u,
@@ -78,9 +82,23 @@ static const tp_adc_channel channels[] = {
     {0, 1.0f / 8388608.0f}, {1, 1.0f / 8388608.0f},
     {2, 1.0f / 8388608.0f}
 };
-static bool interlocks_ok(void *ctx) { (void)ctx; return false; }
+static bool interlocks_ok(void *ctx) {
+    (void)ctx;
+#ifdef TP_F407_TEACHING_SUBORDINATE
+    /* This example has no additional local safety input. The application
+     * separately requires a healthy, fresh subordinate snapshot. */
+    return true;
+#else
+    return false;
+#endif
+}
 static uint16_t resource_faults(void *ctx) {
-    (void)ctx; return TP_PREFLIGHT_RESOURCE_UNKNOWN;
+    (void)ctx;
+#ifdef TP_F407_TEACHING_SUBORDINATE
+    return 0; /* Liquid and reagent checks come from the subordinate. */
+#else
+    return TP_PREFLIGHT_RESOURCE_UNKNOWN;
+#endif
 }
 
 tp_result tp_f407_board_options(tp_f407_app_options *options) {
@@ -96,7 +114,15 @@ tp_result tp_f407_board_options(tp_f407_app_options *options) {
                    .output_max=1, .integral_max=20, .max_temperature_c=80,
                    .period_seconds=3600, .slave_address=1}
     };
+#ifdef TP_F407_TEACHING_SUBORDINATE
+    /* Period and deadlines are examples; all objects live for the application. */
+    tp_result r=tp_f407_uart4_subordinate_init(&subordinate,500,200,1500,1,512,tskIDLE_PRIORITY+2);
+    if (r!=TP_OK) return r;
+    options->subordinate=&subordinate.subordinate;
+    return TP_OK;
+#else
     /* Replace this example with a board-specific implementation after verifying
      * wiring, method and safety. Returning an error keeps the firmware halted. */
     return TP_INVALID;
+#endif
 }

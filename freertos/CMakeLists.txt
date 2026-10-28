@@ -51,6 +51,13 @@ if(TP_BUILD_HOST_TESTS)
     target_compile_definitions(test_f407_teaching_config PRIVATE TP_F407_I2C_POLL_ONLY)
     target_link_libraries(test_f407_teaching_config PRIVATE tp_core)
     add_test(NAME f407_teaching_config COMMAND test_f407_teaching_config)
+    add_executable(test_f407_teaching_subordinate tests/test_f407_teaching_subordinate.c
+        firmware/tp_f407_teaching_config.c)
+    target_include_directories(test_f407_teaching_subordinate PRIVATE tests/runtime_stub tests/upgrade_uart_stub firmware)
+    target_compile_definitions(test_f407_teaching_subordinate PRIVATE TP_F407_I2C_POLL_ONLY
+        TP_F407_TEACHING_SUBORDINATE tskIDLE_PRIORITY=0)
+    target_link_libraries(test_f407_teaching_subordinate PRIVATE tp_core)
+    add_test(NAME f407_teaching_subordinate COMMAND test_f407_teaching_subordinate)
     add_executable(test_service_auto_calibration tests/test_service_auto_calibration.c)
     target_link_libraries(test_service_auto_calibration PRIVATE tp_core)
     add_test(NAME service_auto_calibration COMMAND test_service_auto_calibration)

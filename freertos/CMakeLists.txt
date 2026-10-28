@@ -218,6 +218,7 @@ if(TP_BUILD_HOST_TESTS)
             add_test(NAME sign_manifest_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_sign_manifest.py -v)
         endif()
         add_test(NAME upgrade_client_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_upgrade_client.py -v)
+        add_test(NAME esp32_gateway COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_esp32_gateway.py -v)
         add_test(NAME tp_modbus_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_tp_modbus_tool.py -v)
         add_test(NAME upgrade_interop COMMAND ${CMAKE_COMMAND} -E env
             "TP_UP_SIM_LIB=$<TARGET_FILE:upgrade_simulator>"

@@ -2,6 +2,7 @@
 #include "tp_f407_recipe.h"
 #include "tp_auto_calibration.h"
 #include <assert.h>
+#include <math.h>
 
 static tp_result valves(void *p,uint32_t x) { (void)p; (void)x; return TP_OK; }
 static tp_result pump(void *p,int32_t x,uint32_t hz) { (void)p; (void)x; (void)hz; return TP_OK; }
@@ -16,6 +17,12 @@ int main(void) {
     /* Teaching options remain fail-closed, but their examples are inspectable. */
     assert(tp_f407_board_options(&o)==TP_INVALID);
     assert(o.auto_calibration && o.auto_standard && tp_config_validate(&o.defaults)==TP_OK);
+    assert(o.channel_count==3 && o.adc_registers[0]==0 && o.adc_registers[1]==0 &&
+           o.adc_registers[2]==0 && o.adc_registers[3]==0);
+    for (size_t i=0;i<o.channel_count;i++) {
+        assert(o.channels[i].mux==i);
+        assert(fabsf(o.channels[i].volts_per_count * 8388608.0f - 2.048f)<0.00001f);
+    }
     assert(!o.interlocks_ok(o.interlocks_ctx));
     tp_hal hal={NULL,valves,pump,poll,temp,heater,adc,interlock,safe};
     tp_controller c; tp_init(&c,&hal,&o.defaults.calibration,NULL,o.defaults.max_temperature_c);

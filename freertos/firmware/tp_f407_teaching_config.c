@@ -83,10 +83,13 @@ static const tp_valve_policy valve_policy = {
                   SAMPLE|REAGENT|RINSE|DRAIN|STANDARD_HIGH,
                   SAMPLE|REAGENT|RINSE|DRAIN|STANDARD_LOW}
 };
-/* Placeholder MUX and scale values, not a verified ADS1220 configuration. */
+/* All-zero registers select the 2.048 V internal reference and gain 1.
+ * Example differential pairs: AIN0-AIN1, AIN0-AIN2, AIN0-AIN3.
+ * Real inputs must meet the PGA common-mode and voltage requirements. */
+#define ADS1220_VOLTS_PER_COUNT (2.048f / 8388608.0f)
 static const tp_adc_channel channels[] = {
-    {0, 1.0f / 8388608.0f}, {1, 1.0f / 8388608.0f},
-    {2, 1.0f / 8388608.0f}
+    {0, ADS1220_VOLTS_PER_COUNT}, {1, ADS1220_VOLTS_PER_COUNT},
+    {2, ADS1220_VOLTS_PER_COUNT}
 };
 static bool interlocks_ok(void *ctx) {
     (void)ctx;

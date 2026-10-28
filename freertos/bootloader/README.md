@@ -145,3 +145,9 @@ persisted progress. `STATUS` and `RESUME` are available after a successful BEGIN
 `FINISH` confirms only the staging download: the separate guarded copy and boot
 staging step must still be run. The command context does not take a lock or create
 a transport task; the owner is responsible for the lock and staging handoff above.
+
+### 接收和安装会话
+
+`tp_stage_session` 将暂存命令和安装过程串成一个单任务会话。初始化时提供与其他升级操作共用的锁、暂存存储和安全维护回调，并将 `tp_stage_session_execute` 注册到帧层。BEGIN 获取锁并认证清单；FINISH 只校验暂存镜像。上层确认允许安装后调用 `tp_stage_session_install_begin`，维护回调返回 `TP_BUSY` 时稍后重试；随后反复调用 `tp_stage_session_install_step`，返回 `TP_BUSY` 表示继续，返回 `TP_OK` 表示候选镜像已写入并设置为待试运行。这里不会复位设备。
+
+锁从 BEGIN 持有到安装完成或 `tp_stage_session_abort`，同时覆盖暂存和目标存储，因此其他访问者必须使用同一把锁；禁止在持锁时重新初始化会话。通信任务应在断线或自己的空闲超时后调用 abort，重新连接发送相同 BEGIN 可恢复持久进度。安装失败后可 abort，再通过同一清单重新接收并重试；会话在安装期间不接受接收命令。以上是任务可调用的软件接口，网络接收、空闲超时、可信密钥、分区配置及复位策略仍由实际装配提供。

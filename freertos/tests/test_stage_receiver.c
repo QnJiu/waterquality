@@ -20,6 +20,11 @@ static tp_result dest_write(void *v,uint8_t bank,uint32_t off,const void *in,siz
     memcpy(f->target.image[bank]+off,in,n); return TP_OK;
 }
 #include "tp_stage_receiver.h"
+#include "tp_stage_session.h"
+typedef struct { bool locked, deny, safe; unsigned unlocks; } gate;
+static bool take_lock(void *v) { gate *g=v; if(g->deny || g->locked) return false; g->locked=true; return true; }
+static void release_lock(void *v) { gate *g=v; assert(g->locked); g->locked=false; g->unlocks++; }
+static tp_result make_safe(void *v) { return ((gate *)v)->safe ? TP_OK : TP_BUSY; }
 #include "tp_stage_commands.h"
 #include "tp_upgrade_stream.h"
 static uint8_t response[TP_UP_WIRE_ENCODED_MAX];
@@ -98,11 +103,36 @@ int main(void) {
     f.source[0]^=1;
     assert(tp_stage_commands_execute(&commands,NULL,TP_UP_CMD_FINISH,NULL,0,&reply)==TP_INVALID);
     f.source[0]^=1;
+    /* Receive and install through one lock-owned session. */
+    init(&stage_meta,&unused); f.erases=0;
+    gate g={0}; tp_stage_session session;
+    assert(tp_stage_session_init(&session,&u,&storage,image.capacity,&g,take_lock,release_lock,make_safe)==TP_OK);
+    tp_upgrade_wire_set_executor(&stream.wire,&session,tp_stage_session_execute);
+    g.deny=true;
+    assert(tp_stage_session_execute(&session,NULL,TP_UP_CMD_BEGIN,b1,116,&reply)==TP_LOCK_BUSY);
+    assert(!g.locked && f.erases==0);
+    g.deny=false; b1[52]^=1;
+    assert(tp_stage_session_execute(&session,NULL,TP_UP_CMD_BEGIN,b1,116,&reply)==TP_INVALID);
+    assert(!g.locked && g.unlocks==1 && f.erases==0);
+    b1[52]^=1; send_command(&stream,TP_UP_CMD_BEGIN,b1,116);
+    send_command(&stream,TP_UP_CMD_WRITE,first,sizeof(first));
+    assert(g.locked && tp_stage_session_install_begin(&session)==TP_INVALID);
+    tp_stage_session_abort(&session); assert(!g.locked && g.unlocks==2);
     send_command(&stream,TP_UP_CMD_BEGIN,b1,116);
-    tp_staged_upgrade upgrade; assert(tp_staged_upgrade_init(&upgrade,&u,&image,b1,116)==TP_OK);
-    assert(tp_staged_upgrade_step(&upgrade)==TP_BUSY);
-    assert(tp_staged_upgrade_step(&upgrade)==TP_OK);
-    assert(tp_staged_upgrade_finish(&upgrade)==TP_OK);
+    assert(tp_stage_session_execute(&session,NULL,TP_UP_CMD_STATUS,NULL,0,&reply)==TP_OK);
+    assert(reply.state.written==1 && f.erases==1);
+    send_command(&stream,TP_UP_CMD_WRITE,rest,sizeof(rest));
+    send_command(&stream,TP_UP_CMD_FINISH,NULL,0);
+    assert(tp_stage_session_install_begin(&session)==TP_BUSY && g.locked);
+    g.safe=true; f.source[0]^=1;
+    assert(tp_stage_session_install_begin(&session)==TP_INVALID && g.locked);
+    f.source[0]^=1;
+    assert(tp_stage_session_install_begin(&session)==TP_OK);
+    assert(tp_stage_session_execute(&session,NULL,TP_UP_CMD_STATUS,NULL,0,&reply)==TP_INVALID);
+    assert(tp_stage_session_install_step(&session)==TP_BUSY && g.locked);
+    assert(tp_stage_session_install_step(&session)==TP_OK && !g.locked && g.unlocks==3);
+    tp_boot_state boot_state; assert(tp_boot_read(&u.boot,&boot_state)==TP_OK);
+    assert(boot_state.phase==TP_BOOT_READY && boot_state.candidate_bank==1);
     assert(tp_stage_receiver_open(&s,&u.boot,&storage,image.capacity,c.public_key,c.product_id,b1,116)==TP_BUSY);
     return 0;
 }

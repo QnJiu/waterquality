@@ -28,6 +28,10 @@ tp_result tp_f407_ota_reference_start(void *ctx,tp_f407_app *app) {
     assert(ota.upgrade.options.storage.flash_ops.ctx==&flash);
     return start_result;
 }
+tp_result tp_f407_upgrade_uart_on_finish(tp_f407_upgrade_uart *u,void *ctx,void (*done)(void *)) {
+    assert(u==&ota.upgrade.service.uart && !ctx && done && calls++==3);
+    done(ctx); return TP_OK;
+}
 int main(void) {
     tp_f407_app_options options={0}; tp_f407_app app={0};
     assert(tp_f407_teaching_ota_configure(NULL)==TP_INVALID);
@@ -40,9 +44,10 @@ int main(void) {
     assert(options.start_services(NULL,&app)==TP_TIMEOUT && calls==2);
     calls=0; flash_result=TP_OK; start_result=TP_IO_ERROR;
     assert(options.start_services(NULL,&app)==TP_IO_ERROR && calls==3);
-    calls=0; start_result=TP_OK; assert(options.start_services(NULL,&app)==TP_OK && calls==3);
-    ota.upgrade.options.finished(NULL,TP_OK); assert(!resets);
-    ota.upgrade.options.finished(NULL,TP_IO_ERROR); assert(resets==1 && outputs_off==1);
-    ota.stage_finished(NULL,TP_TIMEOUT); assert(resets==2 && outputs_off==2);
+    calls=0; start_result=TP_OK; assert(options.start_services(NULL,&app)==TP_OK && calls==4);
+    assert(resets==1 && outputs_off==1);
+    ota.upgrade.options.finished(NULL,TP_OK); assert(resets==1);
+    ota.upgrade.options.finished(NULL,TP_IO_ERROR); assert(resets==2 && outputs_off==2);
+    ota.stage_finished(NULL,TP_TIMEOUT); assert(resets==3 && outputs_off==3);
     return 0;
 }

@@ -69,7 +69,13 @@ static void upgrade_step(tp_f407_upgrade_uart *u) {
     while (xQueueReceive(u->events,&event,0)==pdPASS) {
         if (u->overflow) break;
         if (event.error) tp_upgrade_stream_reset(&u->stream);
-        else (void)tp_upgrade_stream_byte(&u->stream,event.byte,event.ms);
+        else {
+            tp_result r=tp_upgrade_stream_byte(&u->stream,event.byte,event.ms);
+            if (u->finish_pending) {
+                u->finish_pending=false;
+                if (r==TP_OK && u->finish_sent) { u->finish_sent(u->finish_ctx); return; }
+            }
+        }
     }
     taskENTER_CRITICAL();
     bool idle=!u->overflow && !uxQueueMessagesWaiting(u->events) && !(USART2->SR & RX_FLAGS);
@@ -103,6 +109,7 @@ static tp_result shared_execute(void *ctx,const tp_upgrade_commands *commands,tp
     }
     tp_result r=tp_upgrade_command_execute(commands,command,data,length,reply);
     u->unlock(u->lock_ctx);
+    if (command==TP_UP_CMD_FINISH && r==TP_OK && reply->result==TP_OK) u->finish_pending=true;
     return r;
 }
 static tp_result init(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
@@ -149,4 +156,10 @@ tp_result tp_f407_upgrade_uart_init_guarded(tp_f407_upgrade_uart *u,const tp_upg
     tp_result (*maintenance)(void *)) {
     if (!try_lock || !unlock || !maintenance) return TP_INVALID;
     return init(u,commands,timeout,stack,priority,ctx,try_lock,unlock,maintenance_ctx,maintenance);
+}
+
+tp_result tp_f407_upgrade_uart_on_finish(tp_f407_upgrade_uart *u,void *ctx,void (*finished)(void *)) {
+    if (!u || u!=instance || !u->request_maintenance || !finished || u->finish_sent ||
+        xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
+    u->finish_ctx=ctx; u->finish_sent=finished; return TP_OK;
 }

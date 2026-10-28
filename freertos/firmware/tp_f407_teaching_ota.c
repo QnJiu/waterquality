@@ -26,6 +26,7 @@ static void install_finished(void *ctx,tp_result result) {
     (void)ctx; (void)result;
     safe_reset();
 }
+static void wired_finished(void *ctx) { (void)ctx; safe_reset(); }
 static tp_result start_ota(void *ctx,tp_f407_app *app) {
     (void)ctx;
     tp_result r=tp_f407_i2c_init_on(&upgrade_bus,2);
@@ -33,7 +34,9 @@ static tp_result start_ota(void *ctx,tp_f407_app *app) {
     ota.upgrade.options.storage.fram_bus=tp_f407_i2c_io(&upgrade_bus);
     r=tp_f407_flash_controller_init(&flash,1000000,&ota.upgrade.options.storage.flash_ops);
     if(r!=TP_OK) return r;
-    return tp_f407_ota_reference_start(&ota,app);
+    r=tp_f407_ota_reference_start(&ota,app);
+    if(r!=TP_OK) return r;
+    return tp_f407_upgrade_uart_on_finish(&ota.upgrade.service.uart,NULL,wired_finished);
 }
 tp_result tp_f407_teaching_ota_configure(tp_f407_app_options *options) {
     if(!options || !tp_f407_boot_product_id) return TP_INVALID;

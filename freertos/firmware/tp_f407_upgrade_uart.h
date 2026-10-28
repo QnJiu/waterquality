@@ -14,6 +14,9 @@ typedef struct {
     QueueHandle_t events;
     TaskHandle_t task;
     volatile bool overflow;
+    bool finish_pending;
+    void *finish_ctx;
+    void (*finish_sent)(void *);
     void *maintenance_ctx;
     tp_result (*request_maintenance)(void *);
     void *lock_ctx;
@@ -35,4 +38,7 @@ tp_result tp_f407_upgrade_uart_init_guarded(tp_f407_upgrade_uart *, const tp_upg
     uint32_t frame_timeout_ms, uint16_t stack_words, UBaseType_t priority,
     void *lock_ctx, bool (*try_lock)(void *), void (*unlock)(void *),
     void *maintenance_ctx, tp_result (*request_maintenance)(void *));
+/* Optional callback after a successful FINISH response is fully transmitted.
+ * Guarded port only, before scheduler; callback should safely reset the board. */
+tp_result tp_f407_upgrade_uart_on_finish(tp_f407_upgrade_uart *,void *,void (*)(void *));
 #endif

@@ -50,9 +50,11 @@ void vTaskNotifyGiveFromISR(TaskHandle_t task,BaseType_t *wake) { assert(task); 
 uint32_t ulTaskNotifyTake(BaseType_t clear,TickType_t wait) { (void)clear; (void)wait; return 0; }
 tp_result tp_upgrade_command_execute(const tp_upgrade_commands *c,tp_upgrade_command cmd,
                                      const uint8_t *data,size_t n,tp_upgrade_reply *reply) {
-    (void)c; (void)data; assert((cmd==TP_UP_CMD_STATUS && n==0) || (cmd==TP_UP_CMD_BEGIN && n==1));
+    (void)c; (void)data; assert((cmd==TP_UP_CMD_STATUS && n==0) || (cmd==TP_UP_CMD_BEGIN && n==1) || (cmd==TP_UP_CMD_FINISH && n==0));
     assert(held); commands_run++; memset(reply,0,sizeof(*reply)); reply->result=TP_OK; return TP_OK;
 }
+static unsigned finished_calls;
+static void finished(void *ctx) { assert(ctx==&finished_calls && !held); finished_calls++; }
 static tp_result auth(void *ctx,const uint8_t *p,size_t n,tp_download_manifest *m) {
     (void)ctx; (void)p; (void)n; (void)m; return TP_INVALID;
 }
@@ -113,5 +115,12 @@ int main(void) {
     assert(shared_execute(&u,&commands,TP_UP_CMD_BEGIN,&manifest,1,&reply)==TP_LOCK_BUSY && commands_run==5);
     unavailable=false;
     assert(shared_execute(&u,&commands,TP_UP_CMD_BEGIN,&manifest,1,&reply)==TP_OK && commands_run==6 && !held);
+    assert(tp_f407_upgrade_uart_on_finish(&u,&finished_calls,finished)==TP_OK);
+    assert(tp_f407_upgrade_uart_on_finish(&u,&finished_calls,finished)==TP_INVALID);
+    assert(tp_upgrade_wire_request(TP_UP_CMD_FINISH,2,NULL,0,frame,sizeof(frame),&n)==TP_OK);
+    frame_bytes(frame,0,n); fake_usart.SR=0;
+    upgrade_step(&u); assert(!finished_calls && !u.finish_pending);
+    fake_usart.SR=USART_SR_TXE | USART_SR_TC;
+    frame_bytes(frame,0,n); upgrade_step(&u); assert(finished_calls==1 && !u.finish_pending);
     return 0;
 }

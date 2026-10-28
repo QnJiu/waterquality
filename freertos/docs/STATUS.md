@@ -161,7 +161,7 @@ F030 可选 STOP 使用 LSE RTC Alarm A 补偿 FreeRTOS 节拍和 TIM3，主控�
 | 温控 PID、ADS1220、校准、三种运行模式 | 已提供算法、驱动与业务接口，并有主机模拟；真实温度、光学参数和化学配方需要实物确定。 |
 | Modbus 与上位机 | `protocol/` 实现 Modbus，`tools/tp_gui.py` 是简易上位机；USART3 参考接线见 `firmware/README.md`。 |
 | FRAM、EEPROM、日志 | `storage/` 和 `drivers/` 提供存储与驱动；实际使用的器件和地址需要按板卡配置。 |
-| Bootloader、OTA、云端 | `firmware_boot/`、`bootloader/` 和 `examples/esp32_cloud/` 提供参考实现。教学 OTA 可选接入 F407，从控、身份源和槽位配置见 `firmware/README.md`。直接串口升级完成后需要受控复位。密钥、初始化及云端凭据须由实际部署配置。 |
+| Bootloader、OTA、云端 | `firmware_boot/`、`bootloader/` 和 `examples/esp32_cloud/` 提供参考实现。教学 OTA 可选接入 F407，从控、身份源和槽位配置见 `firmware/README.md`。教学配置的直接串口升级应答发送完成后会安全复位。密钥、初始化及云端凭据须由实际部署配置。 |
 | F030、PN532 和低功耗 | `firmware_f030/` 提供参考入口及 STOP；当前主从状态交换采用 UART 协议，并有可选 IO 唤醒线，与原图所述 IO 信号通信方式不完全一致。门禁白名单仅作教学。 |
 | Zephyr | `zephyr_slice/` 是 ADS1220 到 Modbus 的局部示例，FreeRTOS 是当前主体。 |
 

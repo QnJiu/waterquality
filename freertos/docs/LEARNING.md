@@ -22,6 +22,22 @@ ctest --test-dir build --output-on-failure
 
 正常示例最后显示 `result_valid=1`、`safe=1`；`interlock` 模拟互锁故障，最后显示 `result_valid=0`、`safe=1`。`controlled` 展示受控模式每一步完成后等待，并模拟发送 Modbus 命令 5 继续；`periodic` 和 `daily` 分别通过 Modbus 配置周期与每日定时，在模拟时间到 60 秒时自动启动完整流程；周期示例继续运行到 120 秒，再完成第二次检测，每日模式使用模拟 RTC。`recover` 模拟互锁故障后，先尝试清故障、恢复输入，再清故障并重新完成检测；`sensor` 模拟传感器故障；`recover-sensor` 演示传感器问题未排除时恢复失败，排除后发送 Modbus 命令 11 恢复 ADC、自检并清故障，再重新测量；`stop-rinse` 模拟清洗时停机。正常完成时 `signals` 显示通过 Modbus 读取的空白、反应后和浊度模拟信号，`result` 显示计算浓度。`safe=1` 表示模拟器检查到输出进入安全状态；模拟值不代表实际仪器的测量精度。
 
+## 总设计要求对应到哪里
+
+下面按原始功能说明列出学习入口；“模拟通过”指电脑测试或模拟示例，不能代表板卡验收。
+
+| 功能 | 简易实现和查看入口 | 还需要什么 |
+|---|---|---|
+| FreeRTOS 任务和检测流程 | `os/freertos_runtime.c`、`app/controller.c`；电脑模拟器可运行一整次流程 | 业务固件需选用板级配置；调度及安全输出需上板验证 |
+| Modbus 和上位机 | `protocol/`、`tools/tp_gui.py`；协议及模拟流程有主机测试 | RS485 接线和真实串口联调 |
+| 温控、采样、浊度补偿和标定 | `app/measurement.c`、`app/controller.c`、`drivers/ads1220.c`；模拟器提供采样和标定演示 | 确认传感器、反应配方及标定数据，并测量准确度 |
+| 自动、周期、定时、受控及自检 | `app/service.c`、`app/schedule.c`、`app/preflight.c`；模拟器可分别演示 | RTC、液位等输入需结合实物确认 |
+| 参数与日志保存 | `storage/config_store.c`、`storage/event_log.c`；内存模拟及存储故障有主机测试 | 确认存储器接线并做复位、掉电测试 |
+| 固件升级、回滚和阿里云 | `bootloader/`、`firmware_boot/`、`examples/esp32_cloud/`；有升级和签名的主机测试 | 设备身份、密钥、Flash 布局及云端和板卡联调 |
+| F030、PN532 和低功耗 | `firmware_f030/`、`app/door_service.c`；从控协议和门锁逻辑有主机测试 | 确认传感器和门锁电路，测试休眠唤醒；UID 白名单不具备防复制认证 |
+
+截图中的 40 分钟、0–10 mg/L、±2% 和标准符合性均需要真实仪器及方法验证，当前模拟结果不能证明这些指标。更详细的软件状态见 `docs/STATUS.md`。
+
 ## Windows 交叉编译路径
 
 某些 Windows 版 `arm-none-eabi-gcc` 在项目路径含中文时无法链接。可在 PowerShell 中为项目目录临时映射一个空闲盘符，并通过该盘符配置和编译；例如 W 盘未使用时：

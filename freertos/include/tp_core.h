@@ -80,6 +80,16 @@ tp_result tp_clear_fault(tp_controller *c);
 float tp_pid_update(tp_pid *pid, float target, float measured, float dt_seconds);
 tp_result tp_concentration(const tp_calibration *cal, float blank, float reacted,
                            float turbidity, float *result);
+/* Two-point fit uses the same optical model as tp_concentration. The caller
+ * supplies reference concentrations and a minimum separation in absorbance.
+ * Outputs are unchanged on error; accepted parameters must be saved explicitly. */
+typedef struct { float blank, reacted, turbidity, concentration; } tp_calibration_point;
+tp_result tp_calibrate_two_point(const tp_calibration *base,
+    const tp_calibration_point *low, const tp_calibration_point *high,
+    float min_absorbance_delta, tp_calibration *out);
+/* Absolute tolerance is in mg/L; actual contains the computed concentration. */
+tp_result tp_calibration_check(const tp_calibration *cal, const tp_calibration_point *reference,
+    float tolerance, float *actual, bool *passed);
 #endif
 
 

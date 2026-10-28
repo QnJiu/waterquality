@@ -1,4 +1,5 @@
 #include "tp_upgrade.h"
+#include "tp_upgrade_commands.h"
 #include <assert.h>
 #include <string.h>
 
@@ -39,7 +40,35 @@ static tp_result verify_boot(void *ctx,uint8_t bank,uint32_t version) {
     if(bank==0 && version==1) return TP_OK;
     return !i->reject && bank==1 && version==2 && !memcmp(i->bank[1],"data",4) ? TP_OK : TP_INVALID;
 }
+static tp_result authenticate(void *ctx,const uint8_t *data,size_t n,tp_download_manifest *m) {
+    (void)ctx;
+    if(n!=2 || memcmp(data,"ok",2)) return TP_INVALID;
+    *m=(tp_download_manifest){{1},2,4,1}; return TP_OK;
+}
+static void commands_test(void) {
+    store bs={0},ds={0}; images image={0};
+    memset(bs.slot,0xff,sizeof(bs.slot)); memset(ds.slot,0xff,sizeof(ds.slot));
+    tp_boot_io boot={{&bs,read_slot,erase_slot,write_slot},&image,verify_boot};
+    tp_download_io download={{&ds,read_slot,erase_slot,write_slot},&image,erase_image,read_image,write_image,verify_download};
+    tp_upgrade upgrade={&boot,&download}; tp_upgrade_commands c={&upgrade,NULL,authenticate}; tp_upgrade_reply reply;
+    assert(tp_boot_provision(&boot,0,1)==TP_OK);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_STATUS,NULL,0,&reply)==TP_INVALID && !reply.state_available);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_BEGIN,(const uint8_t *)"no",2,&reply)==TP_INVALID && !image.erases);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_BEGIN,(const uint8_t *)"ok",2,&reply)==TP_OK);
+    assert(reply.state_available && reply.state.phase==TP_DOWNLOAD_WRITING && reply.state.written==0);
+    const uint8_t first[]={0,0,0,0,'d','a'}, second[]={2,0,0,0,'t','a'};
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_WRITE,second,sizeof(second),&reply)==TP_INVALID && !image.writes);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_WRITE,first,sizeof(first),&reply)==TP_OK && reply.state.written==2);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_STATUS,NULL,0,&reply)==TP_OK && reply.state.written==2);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_RESUME,NULL,0,&reply)==TP_OK);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_WRITE,second,sizeof(second),&reply)==TP_OK && reply.state.written==4);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_FINISH,NULL,0,&reply)==TP_OK && reply.state.phase==TP_DOWNLOAD_VERIFIED);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_FINISH,NULL,0,&reply)==TP_OK);
+    tp_boot_state state; assert(tp_boot_read(&boot,&state)==TP_OK && state.phase==TP_BOOT_READY);
+    assert(tp_upgrade_command_execute(&c,TP_UP_CMD_WRITE,first,4,&reply)==TP_INVALID);
+}
 int main(void) {
+    commands_test();
     store bs,ds; images image={0};
     memset(&bs,0,sizeof(bs)); memset(&ds,0,sizeof(ds));
     memset(bs.slot,0xff,sizeof(bs.slot)); memset(ds.slot,0xff,sizeof(ds.slot));

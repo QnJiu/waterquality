@@ -4,7 +4,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 add_library(tp_core STATIC app/controller.c app/preflight.c app/health.c app/event_transition.c app/clock_cache.c app/valve_policy.c app/pulse_counter.c app/heater_duty.c app/measurement.c app/schedule.c app/service.c app/door.c app/door_service.c app/subordinate_node.c app/subordinate_app.c
     drivers/ads1220.c drivers/adc_reader.c drivers/mb85rc16.c drivers/ds3231.c drivers/ntc.c drivers/pn532.c drivers/pn532_scan.c drivers/pn532_i2c.c protocol/modbus_rtu.c protocol/rtu_receiver.c protocol/rtu_port.c protocol/subordinate.c protocol/subordinate_poll.c protocol/subordinate_link.c
-    storage/config_store.c storage/event_log.c bootloader/boot.c bootloader/download.c bootloader/upgrade.c)
+    storage/config_store.c storage/event_log.c bootloader/boot.c bootloader/download.c bootloader/upgrade.c bootloader/upgrade_commands.c)
 target_include_directories(tp_core PUBLIC include)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(tp_core PRIVATE -Wall -Wextra -Werror)

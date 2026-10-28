@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
 from tp_modbus import ModbusError
-from tp_gui import App, read_status, read_calibration_status, read_clock_status, read_event, parse_config, CONFIG_LABELS
+from tp_gui import App, read_status, read_calibration_status, read_clock_status, read_event, read_log_stats, parse_config, CONFIG_LABELS
 
 
 def words(value):
@@ -153,6 +153,17 @@ class EventTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '日志为空'):
             read_event(Client())
 
+
+class LogStatsTest(unittest.TestCase):
+    def test_reports_storage_failures_and_unavailable(self):
+        class Client:
+            def __init__(self, stats): self.stats = stats
+            def log_stats(self): return self.stats
+        text = read_log_stats(Client({'available': True, 'queued': 12, 'written': 9,
+                                     'dropped': 3, 'io_errors': 2}))
+        for item in ('入队 12', '写入 9', '丢弃 3', 'I/O错误 2'):
+            self.assertIn(item, text)
+        self.assertEqual(read_log_stats(Client({'available': False})), '日志统计未配置')
 
 class ConfigInputTest(unittest.TestCase):
     def test_converts_complete_snapshot(self):

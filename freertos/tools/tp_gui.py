@@ -76,7 +76,14 @@ def read_event(client, sequence=None):
     return text
 
 
-READ_OPERATIONS = ('status', 'cal_status', 'clock_status', 'event', 'config_read', 'schedule_read')
+def read_log_stats(client):
+    stats = client.log_stats()
+    if not stats['available']:
+        return '日志统计未配置'
+    return '日志：入队 %d  写入 %d  丢弃 %d  I/O错误 %d' % (
+        stats['queued'], stats['written'], stats['dropped'], stats['io_errors'])
+
+READ_OPERATIONS = ('status', 'cal_status', 'clock_status', 'event', 'log_stats', 'config_read', 'schedule_read')
 
 
 CONFIG_LABELS = {
@@ -156,6 +163,7 @@ class App:
         ttk.Label(event, text='事件序号（留空读取最新）').pack(side='left')
         ttk.Entry(event, textvariable=self.event_sequence, width=10).pack(side='left', padx=4)
         ttk.Button(event, text='读取事件', command=self.read_event).pack(side='left')
+        ttk.Button(event, text='日志统计', command=lambda: self.start('log_stats')).pack(side='left', padx=4)
         ttk.Label(event, textvariable=self.event_status).pack(side='left', padx=4)
         ttk.Label(frame, textvariable=self.message, foreground='blue').grid(sticky='w')
         root.after(100, self.poll)
@@ -242,6 +250,8 @@ class App:
                         result = read_clock_status(client)
                     elif operation == 'event':
                         result = read_event(client, value)
+                    elif operation == 'log_stats':
+                        result = read_log_stats(client)
                     elif operation == 'schedule_read':
                         result = client.get_schedule()
                     elif operation == 'config_read':
@@ -283,8 +293,8 @@ class App:
                     self.cal_status.set('读取失败，标定及核查状态未知')
                 elif operation == 'clock_status':
                     self.clock_status.set('读取失败，时钟状态未知')
-                elif operation == 'event':
-                    self.event_status.set('读取失败，事件未知')
+                elif operation in ('event', 'log_stats'):
+                    self.event_status.set('读取失败，日志信息未知')
                 if operation in READ_OPERATIONS:
                     self.message.set('通信失败：' + error)
                 else:
@@ -308,9 +318,9 @@ class App:
             elif operation == 'config_read':
                 self.show_config(*result)
                 self.message.set('参数已读取；写入后需保存并确认保存状态')
-            elif operation == 'event':
+            elif operation in ('event', 'log_stats'):
                 self.event_status.set(result)
-                self.message.set('事件已读取')
+                self.message.set('日志信息已读取')
             else:
                 self.message.set(result)
         self.root.after(100, self.poll)

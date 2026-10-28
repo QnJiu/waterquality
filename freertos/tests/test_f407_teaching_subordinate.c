@@ -2,6 +2,11 @@
 #include "tp_f407_uart4_subordinate.h"
 #include <assert.h>
 
+#ifdef TP_F407_TEACHING_STATUS_INPUT
+static bool input_ok; static unsigned input_inits;
+void tp_f407_status_input_init(void) { input_inits++; }
+bool tp_f407_status_input_ok(void) { return input_ok; }
+#endif
 static tp_result next_result=TP_OK;
 static unsigned calls;
 #ifdef TP_F407_TEACHING_WAKE
@@ -37,6 +42,10 @@ int main(void) {
     assert(tp_f407_board_options(&options)==TP_OK && calls==2);
 #endif
     assert(options.subordinate && options.subordinate->snapshot);
+#ifdef TP_F407_TEACHING_STATUS_INPUT
+    assert(input_inits==1 && !options.interlocks_ok(options.interlocks_ctx));
+    input_ok=true;
+#endif
     assert(options.interlocks_ok(options.interlocks_ctx));
     assert(options.resource_faults(options.resource_ctx)==0);
     assert(options.recipe && options.recipe_len && options.auto_calibration && options.auto_standard);

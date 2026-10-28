@@ -1,5 +1,8 @@
 #include "tp_f407_board_config.h"
 #include "tp_preflight.h"
+#ifdef TP_F407_TEACHING_STATUS_INPUT
+#include "tp_f407_status_input.h"
+#endif
 #ifdef TP_F407_TEACHING_SUBORDINATE
 #include "tp_f407_uart4_subordinate.h"
 static tp_f407_uart4_subordinate subordinate;
@@ -88,9 +91,12 @@ static const tp_adc_channel channels[] = {
 static bool interlocks_ok(void *ctx) {
     (void)ctx;
 #ifdef TP_F407_TEACHING_SUBORDINATE
-    /* This example has no additional local safety input. The application
-     * separately requires a healthy, fresh subordinate snapshot. */
+#ifdef TP_F407_TEACHING_STATUS_INPUT
+    return tp_f407_status_input_ok();
+#else
+    /* The application separately requires a healthy, fresh UART snapshot. */
     return true;
+#endif
 #else
     return false;
 #endif
@@ -121,6 +127,9 @@ tp_result tp_f407_board_options(tp_f407_app_options *options) {
     /* Period and deadlines are examples; all objects live for the application. */
     tp_result r=tp_f407_uart4_subordinate_init(&subordinate,500,200,1500,1,512,tskIDLE_PRIORITY+2);
     if (r!=TP_OK) return r;
+#ifdef TP_F407_TEACHING_STATUS_INPUT
+    tp_f407_status_input_init();
+#endif
 #ifdef TP_F407_TEACHING_WAKE
     r=tp_f407_uart4_subordinate_use_pc8_wakeup(&subordinate,10);
     if (r!=TP_OK) return r;

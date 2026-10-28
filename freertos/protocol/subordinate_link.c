@@ -41,7 +41,7 @@ tp_result tp_sub_link_slave_init(tp_sub_link *l,void *ctx,tp_sub_send send,tp_su
 tp_result tp_sub_link_byte(tp_sub_link *l,uint8_t byte,uint32_t us,uint32_t ms) {
     if(!l || !l->initialized) return TP_INVALID;
     l->now_ms=ms; l->frame_result=TP_OK; tp_rtu_receiver_byte(&l->receiver,byte,us);
-    l->last_byte_timed=false;
+    l->last_byte_ms=ms; l->last_byte_timed=false;
     return l->frame_result;
 }
 tp_result tp_sub_link_byte_at(tp_sub_link *l,uint8_t byte,uint32_t us,uint32_t received_ms,uint32_t now_ms) {
@@ -61,8 +61,15 @@ tp_result tp_sub_link_tick(tp_sub_link *l,uint32_t us,uint32_t ms) {
     l->now_ms=ms; l->frame_result=TP_OK; tp_rtu_receiver_poll(&l->receiver,us);
     if(l->frame_result!=TP_OK) return l->frame_result;
     if(l->role==TP_SUB_LINK_MASTER) {
-        /* Wait for the RTU gap before judging a buffered response. */
-        if(l->receiver.receiving) return TP_OK;
+        if(l->receiver.receiving) {
+            /* A valid on-time frame needs its RTU gap. Continuous noise or a
+             * byte arriving after the deadline cannot extend the exchange. */
+            tp_sub_master *m=&l->poll.master;
+            if(m->pending && (l->receiver.invalid ||
+               (uint32_t)(l->last_byte_ms-m->deadline_start)>=m->response_timeout_ms))
+                m->pending=false;
+            return TP_OK;
+        }
         return tp_sub_poll_tick(&l->poll,ms);
     }
     return TP_OK;

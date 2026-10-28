@@ -79,6 +79,21 @@ int main(void) {
     assert(tp_sub_link_healthy(&late_processing,25));
     assert(!tp_sub_link_healthy(&late_processing,110));
 
+    /* Continuous traffic past the deadline cannot hold a request open. */
+    endpoint noisy={0}; tp_sub_link noise_link;
+    assert(tp_sub_link_master_init(&noise_link,&noisy,send,115200,10,50,20,100,11)==TP_OK);
+    assert(tp_sub_link_tick(&noise_link,0,0)==TP_OK);
+    assert(tp_sub_link_byte_at(&noise_link,0xff,100,19,25)==TP_OK);
+    assert(tp_sub_link_tick(&noise_link,200,25)==TP_OK && noise_link.poll.master.pending);
+    assert(tp_sub_link_byte_at(&noise_link,0xff,300,20,25)==TP_OK);
+    assert(tp_sub_link_tick(&noise_link,400,25)==TP_OK && !noise_link.poll.master.pending);
+    /* A framing error also makes the current frame unrecoverable. */
+    endpoint bad={0}; tp_sub_link bad_link;
+    assert(tp_sub_link_master_init(&bad_link,&bad,send,115200,10,50,20,100,12)==TP_OK);
+    assert(tp_sub_link_tick(&bad_link,0,0)==TP_OK);
+    assert(tp_sub_link_byte(&bad_link,0xff,100,1)==TP_OK);
+    assert(tp_sub_link_byte(&bad_link,0xff,1000,2)==TP_OK);
+    assert(tp_sub_link_tick(&bad_link,1100,2)==TP_OK && !bad_link.poll.master.pending);
     /* A later byte closes the previous frame; retain the previous timestamp. */
     assert(tp_sub_link_tick(&timed,50000,50)==TP_OK);
     assert(tp_sub_reply(delayed.bytes,delayed.len,&ok,reply)==TP_OK); delayed.len=0;

@@ -81,6 +81,15 @@ class Tests(unittest.TestCase):
         self.assertEqual(p.sent, m.frame(bytes.fromhex('01100046001224') + struct.pack('>9f', *values)))
         with self.assertRaises(ValueError): m.Client(p, 1).calibrate([float('nan')]*9)
 
+    def test_standard_check(self):
+        values = [1., .1, 0., 1., .01]
+        response = m.frame(bytes.fromhex('0110005c000a')) + m.frame(bytes.fromhex('01030600013f800000'))
+        p = Port(response)
+        self.assertEqual(m.Client(p, 1).check_standard(values), {'passed': True, 'actual_mg_l': 1.0})
+        self.assertEqual(p.sent, m.frame(bytes.fromhex('010300660003')))
+        with self.assertRaises(ValueError):
+            m.Client(p, 1).check_standard([float('nan')]*5)
+
     def test_log_query(self):
         words = [3, 0, 7, 2, 0, 1, 0, 0, 0, 42, 0x3f80, 0]
         response = m.frame(bytes.fromhex('011000320003')) + m.frame(bytes([1, 3, 24]) + struct.pack('>12H', *words))

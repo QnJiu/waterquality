@@ -33,6 +33,8 @@ typedef struct {
     void *preflight_ctx;
     tp_result (*preflight)(void *,uint16_t *);
     uint16_t preflight_faults;
+    uint8_t standard_check_status; /* 0 none, 1 passed, 2 failed */
+    float standard_check_actual;
     void *recover_ctx;
     tp_result (*recover_adc)(void *);
 } tp_service;

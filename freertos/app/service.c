@@ -74,6 +74,7 @@ tp_result tp_service_attach_adc_recovery(tp_service *s,void *ctx,tp_result (*rec
     s->recover_ctx=ctx; s->recover_adc=recover; return TP_OK;
 }
 static void apply_config(tp_service *s, const tp_config *cfg) {
+    s->standard_check_status=0; s->standard_check_actual=0;
     if (s->schedule.mode != (tp_mode)cfg->mode ||
         s->schedule.period_ms != cfg->period_seconds * 1000u ||
         s->schedule.daily_minute != cfg->daily_minute ||
@@ -154,6 +155,16 @@ static tp_result calibrate_words(tp_service *s, const uint16_t *v) {
         return TP_INVALID;
     apply_config(s,&candidate); s->save_status=1; return TP_OK;
 }
+static tp_result check_standard_words(tp_service *s,const uint16_t *v) {
+    if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s)) return TP_BUSY;
+    tp_calibration_point point={word_float(v),word_float(v+2),word_float(v+4),word_float(v+6)};
+    float actual; bool passed;
+    s->standard_check_status=0; s->standard_check_actual=0;
+    tp_result r=tp_calibration_check(&s->controller->calibration,&point,word_float(v+8),&actual,&passed);
+    if(r!=TP_OK) return r;
+    s->standard_check_actual=actual; s->standard_check_status=passed ? 1 : 2;
+    return TP_OK;
+}
 static tp_result apply_auto_cal(tp_service *s) {
     if (!s->cal_attached || !s->request_save || s->maintenance || s->save_status==2 ||
         s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED) return TP_BUSY;
@@ -204,6 +215,12 @@ static uint16_t read_one(const tp_service *s, uint16_t a) {
 }
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values) {
     tp_service *s = ctx;
+    if (s && s->controller && values && count && address>=102 && (uint32_t)address+count<=105) {
+        uint16_t words[]={s->standard_check_status,float_word(s->standard_check_actual,false),
+                          float_word(s->standard_check_actual,true)};
+        for(uint16_t i=0;i<count;i++) values[i]=words[address-102+i];
+        return TP_OK;
+    }
     if (s && s->controller && values && count && address>=90 && (uint32_t)address+count<=92) {
         for (uint16_t i=0;i<count;i++) {
             uint16_t a=(uint16_t)(address+i);
@@ -263,6 +280,7 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
     }
     if (address==20 && count==27) return set_config_words(s,v);
     if (address==70 && count==18) return calibrate_words(s,v);
+    if (address==92 && count==10) return check_standard_words(s,v);
     /* The schedule block must be written in one FC16 request; no partial changes. */
     if (address != 1 || count != 5 || v[0] > TP_MODE_DAILY || s->save_status == 2) return TP_INVALID;
     uint32_t seconds = join(v[1], v[2]);

@@ -1,6 +1,10 @@
 #include "tp_service.h"
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
+#include <math.h>
+static void put_float(uint16_t *v,float f) { uint32_t bits; memcpy(&bits,&f,4); v[0]=(uint16_t)(bits>>16); v[1]=(uint16_t)bits; }
+static float get_float(const uint16_t *v) { uint32_t bits=((uint32_t)v[0]<<16)|v[1]; float f; memcpy(&f,&bits,4); return f; }
 static tp_config saved;
 static tp_result save_config(void *ctx,const tp_config *cfg) { (void)ctx; saved=*cfg; return TP_OK; }
 static int safe_count, recover_count;
@@ -98,6 +102,27 @@ int main(void) {
     assert(tp_service_attach_config(&s,&saved,NULL,save_config)==TP_OK);
     tp_service_tick(&s,6999,false,0); assert(c.state==TP_IDLE);
     tp_service_tick(&s,7000,false,0); assert(c.state==TP_RUNNING);
+    tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    assert(tp_service_attach_config(&s,&cfg,NULL,save_config)==TP_OK);
+    uint16_t check[10], check_result[3];
+    put_float(check,1); put_float(check+2,0.1f); put_float(check+4,0);
+    put_float(check+6,1); put_float(check+8,0.01f);
+    assert(tp_service_write_holding(&s,92,9,check)==TP_INVALID);
+    assert(tp_service_write_holding(&s,92,10,check)==TP_OK);
+    assert(tp_service_read_holding(&s,102,3,check_result)==TP_OK);
+    assert(check_result[0]==1 && fabsf(get_float(check_result+1)-1)<0.0001f);
+    put_float(check+6,2);
+    assert(tp_service_write_holding(&s,92,10,check)==TP_OK);
+    assert(tp_service_read_holding(&s,102,3,check_result)==TP_OK && check_result[0]==2);
+    put_float(check+8,-1);
+    assert(tp_service_write_holding(&s,92,10,check)==TP_INVALID);
+    assert(tp_service_read_holding(&s,102,3,check_result)==TP_OK && check_result[0]==0);
+    put_float(check+8,0.01f);
+    assert(tp_service_write_holding(&s,92,10,check)==TP_OK);
+    assert(tp_service_attach_config(&s,&cfg,NULL,save_config)==TP_OK);
+    assert(tp_service_read_holding(&s,102,3,check_result)==TP_OK && check_result[0]==0);
+    assert(tp_service_write_holding(&s,0,1,&begin)==TP_OK);
+    assert(tp_service_write_holding(&s,92,10,check)==TP_BUSY);
     puts("service checks passed"); return 0;
 }
 

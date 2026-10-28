@@ -128,6 +128,19 @@ class Client:
             raise ValueError('calibration value is outside float32 range') from None
         self.exchange(struct.pack('>BHHB', 16, 70, 18, 36) + data, 0)
 
+    def check_standard(self, values):
+        if len(values) != 5 or not all(math.isfinite(x) for x in values):
+            raise ValueError('standard check requires five finite numbers')
+        try:
+            data = struct.pack('>5f', *values)
+        except (OverflowError, struct.error):
+            raise ValueError('standard check value is outside float32 range') from None
+        self.exchange(struct.pack('>BHHB', 16, 92, 10, 20) + data, 0)
+        state, high, low = self.read(102, 3)
+        if state not in (1, 2):
+            raise ModbusError('standard check result unavailable')
+        return {'passed': state == 1, 'actual_mg_l': float32(high, low)}
+
     def auto_calibration_status(self):
         state, error = self.read(90, 2)
         names = ('unavailable', 'idle', 'low', 'high', 'complete', 'failed', 'cancelled')
@@ -170,6 +183,9 @@ def main(argv=None):
     calibrate = sub.add_parser('calibrate')
     calibrate.add_argument('values', type=float, nargs=9, metavar='VALUE',
                            help='low blank/reacted/turbidity/concentration, high blank/reacted/turbidity/concentration, minimum delta')
+    standard = sub.add_parser('check-standard', help='evaluate a measured standard')
+    standard.add_argument('values', type=float, nargs=5, metavar='VALUE',
+                          help='blank reacted turbidity concentration tolerance (mg/L)')
     get_config = sub.add_parser('get-config')
     get_config.add_argument('--output', help='save JSON as UTF-8')
     config = sub.add_parser('set-config')
@@ -199,6 +215,8 @@ def main(argv=None):
             elif args.action == 'calibrate':
                 client.calibrate(args.values)
                 print('Calibration updated in RAM; inspect get-config, then save if appropriate.')
+            elif args.action == 'check-standard':
+                print(json.dumps(client.check_standard(args.values)))
             elif args.action == 'get-config':
                 text = json.dumps(client.get_config(), indent=2, allow_nan=False)
                 if args.output:

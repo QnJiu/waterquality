@@ -54,7 +54,8 @@ tp_result tp_f407_teaching_ota_configure(tp_f407_app_options *options) {
     ota.upgrade.options.max_gap_ms=1000;
     ota.upgrade.options.period_ms=500;
     ota.upgrade.options.trial_timeout_ms=30000;
-    ota.upgrade.options.uart_stack_words=512;
+    /* Direct UART upgrades verify signed manifests in this task. */
+    ota.upgrade.options.uart_stack_words=2048;
     ota.upgrade.options.trial_stack_words=1024;
     ota.upgrade.options.uart_priority=tskIDLE_PRIORITY+1;
     ota.upgrade.options.trial_priority=tskIDLE_PRIORITY+1;

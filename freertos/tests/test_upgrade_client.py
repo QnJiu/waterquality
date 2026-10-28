@@ -1,3 +1,4 @@
+import hashlib
 import pathlib
 import struct
 import sys
@@ -45,6 +46,26 @@ class FakeClient:
 
 
 class Tests(unittest.TestCase):
+    def test_manifest_and_image_preflight(self):
+        image = b"firmware image"
+        body = struct.pack("<4sIIIB3x32s", b"TPU1", 1, 2, len(image), 1,
+                           hashlib.sha256(image).digest())
+        manifest = body + bytes(64)
+        identity = hashlib.sha256(body).digest()
+        self.assertEqual(u.check_files(manifest, image), identity)
+        self.assertEqual(u.check_files(manifest, image, identity), identity)
+        invalid = [manifest[:-1], b"bad!" + manifest[4:],
+                   manifest[:17] + b"\x01" + manifest[18:]]
+        for bad in invalid:
+            with self.subTest(manifest=bad):
+                with self.assertRaises(ValueError):
+                    u.check_files(bad, image)
+        for bad_image in (image[:-1], b"X" + image[1:]):
+            with self.assertRaises(ValueError):
+                u.check_files(manifest, bad_image)
+        with self.assertRaises(ValueError):
+            u.check_files(manifest, image, bytes(32))
+
     def test_frames_and_recovery(self):
         self.assertEqual(u.crc16(b"123456789"), 0x4B37)
         self.assertEqual(u.encode(u.BEGIN, 0x7D7E, b"ok").hex(), "7e01027d5e7d5d02006f6ba9b47e")

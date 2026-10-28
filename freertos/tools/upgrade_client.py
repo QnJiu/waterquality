@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sequential client for the TP upgrade wire protocol (Python 3)."""
 import argparse
+import hashlib
 import pathlib
 import socket
 import struct
@@ -228,6 +229,25 @@ class SerialTransport:
         self.port.close()
 
 
+def check_files(manifest, image, expected_id=None):
+    """Check TPU1 file consistency before contacting the device.
+
+    The device must still authenticate the signature and verify the image.
+    """
+    if len(manifest) != 116:
+        raise ValueError("TPU1 manifest must be 116 bytes")
+    magic, product, version, size, bank, digest = struct.unpack('<4sIIIB3x32s', manifest[:52])
+    if (magic != b'TPU1' or not product or not version or not size or
+            bank not in (0, 1) or manifest[17:20] != bytes(3)):
+        raise ValueError("invalid TPU1 manifest fields")
+    if size != len(image) or hashlib.sha256(image).digest() != digest:
+        raise ValueError("image does not match the manifest size and SHA-256")
+    manifest_id = hashlib.sha256(manifest[:52]).digest()
+    if expected_id is not None and expected_id != manifest_id:
+        raise ValueError("manifest ID does not match the manifest")
+    return manifest_id
+
+
 def main():
     parser = argparse.ArgumentParser(description="Send an authenticated manifest and image using TP upgrade wire protocol")
     target = parser.add_mutually_exclusive_group(required=True)
@@ -236,17 +256,16 @@ def main():
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=10)
     parser.add_argument("--manifest", required=True, type=pathlib.Path)
-    parser.add_argument("--manifest-id", required=True, help="32-byte authenticated manifest ID in hex")
+    parser.add_argument("--manifest-id", help="optional expected manifest ID in hex")
     parser.add_argument("--image", required=True, type=pathlib.Path)
     args = parser.parse_args()
     transport = None
     try:
         if args.timeout <= 0 or args.baud <= 0:
             raise ValueError("timeout and baud must be positive")
-        manifest_id = bytes.fromhex(args.manifest_id)
+        expected_id = bytes.fromhex(args.manifest_id) if args.manifest_id is not None else None
         manifest, image = args.manifest.read_bytes(), args.image.read_bytes()
-        if len(manifest_id) != 32 or not manifest or len(manifest) > 512 or not image:
-            raise ValueError("manifest ID must be 32 bytes, manifest 1..512 bytes, and image nonempty")
+        manifest_id = check_files(manifest, image, expected_id)
         if args.tcp:
             host, port = args.tcp.rsplit(":", 1)
             transport = TcpTransport(host, int(port), args.timeout)

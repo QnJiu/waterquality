@@ -23,11 +23,11 @@
 `../tools/upgrade_client.py` 是 Python 3 参考发送端，支持 TCP 和串口（串口需要安装 `pyserial`）。例如：
 
 ```text
-python freertos/tools/upgrade_client.py --tcp 127.0.0.1:9000 --manifest manifest.bin --manifest-id <64位十六进制ID> --image firmware.bin
-python freertos/tools/upgrade_client.py --serial COM3 --baud 115200 --manifest manifest.bin --manifest-id <64位十六进制ID> --image firmware.bin
+python freertos/tools/upgrade_client.py --tcp 127.0.0.1:9000 --manifest manifest.bin --image firmware.bin
+python freertos/tools/upgrade_client.py --serial COM3 --baud 115200 --manifest manifest.bin --image firmware.bin
 ```
 
-清单及 ID 必须由具体认证方案生成，ID 须与设备认证回调生成的 32 字节值一致，镜像文件须与清单匹配。工具在超时后查询持久化状态，并只在 ID、大小与预期一致时继续；无法证明本地文件内容与清单匹配，需要镜像校验器最终验证。超时可能发生在设备已执行操作后，连接中断时重新运行并核对设备状态；首次 BEGIN 和其他错误不保证可自动恢复。TCP 为明文，实际网络需要安全传输和访问控制。设备侧 UART/TCP 驱动、真实认证方案和端到端实机测试尚未提供。
+发送工具使用 TPU1 清单，自动计算与设备认证回调一致的 32 字节 ID，并在连接设备前核对本地镜像大小及摘要。工具在超时后查询持久化状态，并只在 ID、大小与预期一致时继续；设备仍须验证签名及接收到的镜像。超时可能发生在设备已执行操作后，连接中断时重新运行并核对设备状态；首次 BEGIN 和其他错误不保证可自动恢复。TCP 为明文，实际网络需要安全传输和访问控制。设备侧已有 USART2 接收参考，TCP 设备接收与端到端实机测试尚未完成。
 
 断线或写入结果不确定时先查询持久化偏移：偏移已前进表示该块已提交，否则以相同内容重传；如果查询失败，不能推测是否写入。FINISH 可以重试。认证回调必须验证签名及产品兼容性、槽容量，并生成与可信清单绑定的持久化 ID；下载和启动时的镜像校验必须独立验证完整性及真实性，不能把 CRC、传输完整性或清单 ID 当作签名。该接口的单元测试认证回调只是替身；签名验证、F407 串口接收和 Flash 控制器已有参考实现，独立启动器参考工程见 `../firmware_boot/README.md`，板级装配和实机验证仍待完成。
 
@@ -45,7 +45,7 @@ python freertos/tools/upgrade_client.py --serial COM3 --baud 115200 --manifest m
 python tools/sign_manifest.py --image firmware.bin --key signing-key.pem --product 0x12345678 --version 2 --bank 1 --output manifest.bin
 ```
 
-加密 PEM 私钥时增加 `--encrypted-key`，工具会交互式读取密码。输出的 Manifest ID 是签名正文的 SHA-256，可传给 `tools/upgrade_client.py --manifest-id`；`--manifest` 和 `--image` 分别传入生成的清单与原镜像。工具不会覆盖已有输出文件；产品 ID、版本和目标槽必须与设备配置和升级策略一致。私钥只保存在可信签名环境，设备仅使用对应公钥；测试密钥不能用于实际部署。工具生成清单不表示设备已完成启动验签或硬件升级。
+加密 PEM 私钥时增加 `--encrypted-key`，工具会交互式读取密码。输出的 Manifest ID 是签名正文的 SHA-256；发送工具自动计算该 ID，也可用 `--manifest-id` 指定期望值进行核对。发送前工具检查 TPU1 清单字段、镜像大小和 SHA-256，检查通过不代表签名有效，设备仍须独立验签；`--manifest` 和 `--image` 分别传入生成的清单与原镜像。工具不会覆盖已有输出文件；产品 ID、版本和目标槽必须与设备配置和升级策略一致。私钥只保存在可信签名环境，设备仅使用对应公钥；测试密钥不能用于实际部署。工具生成清单不表示设备已完成启动验签或硬件升级。
 
 ## 每槽清单存储与启动验签
 

@@ -21,4 +21,8 @@ bool tp_f030_rtc_arm(uint32_t budget_ms,uint32_t poll_limit,
 /* Called with interrupts masked; preserves pending alarm and EXTI flags for the
  * caller's interrupt/cleanup sequence. */
 void tp_f030_rtc_disarm(void);
+/* With interrupts masked and Alarm A owned exclusively: disable the alarm,
+ * wait for hardware, clear ALRAF and finally EXTI17. On timeout leave pending
+ * flags for the caller; do not enter sleep. Does not clear NVIC pending state. */
+bool tp_f030_rtc_ack_alarm(uint32_t poll_limit);
 #endif

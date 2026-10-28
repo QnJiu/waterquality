@@ -3,6 +3,8 @@
 #include <assert.h>
 RCC_TypeDef rcc; PWR_TypeDef pwr; RTC_TypeDef rtc; EXTI_TypeDef exti;
 static int simulate_clock;
+void rtc_test_clear_alarm(void) { rtc.ISR &= ~RTC_ISR_ALRAF; }
+void rtc_test_clear_exti(void) { exti.PR &= ~EXTI_PR_PR17; }
 void rtc_test_wait_hook(void) {
     if (!simulate_clock) return;
     if (rcc.BDCR & RCC_BDCR_LSEON) rcc.BDCR |= RCC_BDCR_LSERDY;
@@ -44,6 +46,14 @@ int main(void) {
     assert(exti.PR==EXTI_PR_PR17); exti.PR=0;
     rtc.ISR|=RTC_ISR_ALRAF; assert(!tp_f030_rtc_arm(10,100,&stamp));
     assert(rtc.ISR & RTC_ISR_ALRAF); rtc.ISR &= ~RTC_ISR_ALRAF;
+    rtc.ISR &= ~RTC_ISR_ALRAWF;
+    rtc.ISR |= RTC_ISR_ALRAF; exti.PR=EXTI_PR_PR17|(1u<<3);
+    assert(!tp_f030_rtc_ack_alarm(2));
+    assert((rtc.ISR & RTC_ISR_ALRAF) && (exti.PR & EXTI_PR_PR17));
+    rtc.ISR |= RTC_ISR_ALRAWF | (1u<<13); rtc.CR |= RTC_CR_ALRAE|RTC_CR_ALRAIE;
+    assert(tp_f030_rtc_ack_alarm(2));
+    assert(!(rtc.CR & (RTC_CR_ALRAE|RTC_CR_ALRAIE)) && !(rtc.ISR & RTC_ISR_ALRAF));
+    assert((rtc.ISR & (1u<<13)) && exti.PR==(1u<<3));
     rtc.ISR &= ~RTC_ISR_ALRAWF; assert(!tp_f030_rtc_arm(10,2,&stamp));
     assert(rtc.WPR==0xffu && !(rtc.CR & RTC_CR_ALRAE));
     rtc.PRER=0; assert(!tp_f030_rtc_ready() && !tp_f030_rtc_read(&stamp,2));

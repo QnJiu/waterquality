@@ -17,6 +17,10 @@ extern RCC_TypeDef rcc; extern PWR_TypeDef pwr; extern RTC_TypeDef rtc; extern E
 #define RTC_CR_FMT (1u<<6)
 void rtc_test_wait_hook(void);
 #define TP_F030_RTC_WAIT_HOOK() rtc_test_wait_hook()
+void rtc_test_clear_alarm(void);
+void rtc_test_clear_exti(void);
+#define TP_F030_RTC_CLEAR_ALARM() rtc_test_clear_alarm()
+#define TP_F030_RTC_CLEAR_EXTI() rtc_test_clear_exti()
 #define RCC_BDCR_RTCEN (1u<<15)
 #define RCC_BDCR_RTCSEL (3u<<8)
 #define RCC_BDCR_RTCSEL_LSE (1u<<8)

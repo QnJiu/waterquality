@@ -8,6 +8,14 @@
 #ifndef TP_F030_RTC_WAIT_HOOK
 #define TP_F030_RTC_WAIT_HOOK() ((void)0)
 #endif
+#ifndef TP_F030_RTC_CLEAR_ALARM
+#define TP_F030_RTC_CLEAR_ALARM() \
+    (RTC->ISR = (RTC->ISR | RTC_ISR_TAMP2F | RTC_ISR_TAMP1F | RTC_ISR_TSOVF | \
+                 RTC_ISR_TSF | RTC_ISR_RSF) & ~RTC_ISR_ALRAF)
+#endif
+#ifndef TP_F030_RTC_CLEAR_EXTI
+#define TP_F030_RTC_CLEAR_EXTI() (EXTI->PR = ALARM_LINE)
+#endif
 static void unlock(void) { RTC->WPR=0xcau; RTC->WPR=0x53u; }
 static void lock(void) { RTC->WPR=0xffu; }
 bool tp_f030_rtc_ready(void) {
@@ -75,6 +83,25 @@ bool tp_f030_rtc_read(tp_f030_rtc_stamp *stamp,uint32_t attempts) {
 }
 void tp_f030_rtc_disarm(void) {
     unlock(); RTC->CR &= ~(RTC_CR_ALRAE|RTC_CR_ALRAIE); lock();
+}
+bool tp_f030_rtc_ack_alarm(uint32_t poll_limit) {
+    if (!poll_limit || !tp_f030_rtc_ready()) return false;
+    tp_f030_rtc_disarm();
+    uint32_t n=poll_limit;
+    while (!(RTC->ISR & RTC_ISR_ALRAWF)) {
+        TP_F030_RTC_WAIT_HOOK();
+        if (!--n) return false;
+    }
+    /* ALRAF is write-zero-to-clear; preserve other RTC event flags. */
+    TP_F030_RTC_CLEAR_ALARM();
+    n=poll_limit;
+    while (RTC->ISR & RTC_ISR_ALRAF) {
+        TP_F030_RTC_WAIT_HOOK();
+        if (!--n) return false;
+    }
+    /* EXTI pending is write-one-to-clear; never write back other lines. */
+    TP_F030_RTC_CLEAR_EXTI();
+    return true;
 }
 bool tp_f030_rtc_arm(uint32_t budget_ms,uint32_t poll_limit,tp_f030_rtc_stamp *started) {
     if (!started || !poll_limit || !tp_f030_rtc_ready() ||

@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
-from tp_gui import read_status, read_calibration_status
+from tp_gui import read_status, read_calibration_status, read_clock_status
 
 
 def words(value):
@@ -63,6 +63,24 @@ class CalibrationStatusTest(unittest.TestCase):
         self.assertIn('未配置', text)
         self.assertIn('无结果', text)
         self.assertNotIn('不通过', text)
+
+
+class ClockStatusTest(unittest.TestCase):
+    def test_verified_utc_time(self):
+        class Client:
+            def clock_status(self):
+                return {'state': 'verified', 'utc_seconds': 1700000000}
+        text = read_clock_status(Client())
+        self.assertIn('校时回读成功', text)
+        self.assertIn('2023-11-14 22:13:20 UTC', text)
+
+    def test_pending_clock_is_not_reported_as_valid(self):
+        class Client:
+            def clock_status(self):
+                return {'state': 'pending', 'utc_seconds': None}
+        text = read_clock_status(Client())
+        self.assertIn('校时中', text)
+        self.assertIn('无有效时间', text)
 
 
 if __name__ == '__main__':

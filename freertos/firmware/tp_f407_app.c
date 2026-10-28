@@ -1,5 +1,7 @@
 #include "tp_f407_app.h"
 #include "tp_f407_emergency.h"
+#include "tp_f407_iwdg.h"
+#include "stm32f4xx.h"
 #include <string.h>
 static tp_f407_app *instance;
 static tp_result valves(void *p,uint32_t mask) { return tp_f407_valves_set(&((tp_f407_app *)p)->valves,mask); }
@@ -24,6 +26,16 @@ static bool poll_log(void *p,tp_result *result,tp_event *event) {
 }
 static void record_event(void *p,const tp_event *event) {
     (void)tp_freertos_event_log_submit(&((tp_f407_app *)p)->events,event);
+}
+static void control_progress(void *p) {
+    (void)tp_freertos_health_heartbeat(&((tp_f407_app *)p)->health,0);
+}
+static void watchdog_feed(void *p) { (void)p; tp_f407_iwdg_feed(); }
+static void watchdog_fault(void *p,uint32_t failed) {
+    (void)p; (void)failed;
+    /* No task or interrupt may reactivate outputs while waiting for reset. */
+    __disable_irq(); tp_f407_emergency_off();
+    for (;;) { __NOP(); }
 }
 static void comm_error(void *p,unsigned port) {
     (void)port; tp_f407_app *a=p;
@@ -58,13 +70,18 @@ tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     tp_pid pid={0}; tp_init(&a->controller,&hal,&a->config.calibration,&pid,a->config.max_temperature_c);
     INIT(tp_service_init(&a->service,&a->controller,o->recipe,o->recipe_len,0));
     INIT(tp_service_attach_log(&a->service,a,request_log));
-    tp_runtime_io io={a,send,now,comm_error,record_event,poll_log,NULL};
+    tp_runtime_io io={a,send,now,comm_error,record_event,poll_log,control_progress};
     INIT(tp_runtime_init(&a->runtime,&a->service,&io,&a->config.slave_address,1,10));
     INIT(tp_runtime_attach_storage(&a->runtime,&a->store,&a->config));
     INIT(tp_f407_temperature_start(&a->temperature,500,256,tskIDLE_PRIORITY+1));
     INIT(tp_freertos_clock_start(&a->clock,&a->rtc,1000,3000,256,tskIDLE_PRIORITY+1));
     INIT(tp_f407_usart3_rtu_init(&a->uart,&a->runtime,0,512,tskIDLE_PRIORITY+2));
     INIT(tp_runtime_start(&a->runtime,768,tskIDLE_PRIORITY+3));
+    const uint32_t control_timeout=1000;
+    INIT(tp_freertos_health_start(&a->health,&control_timeout,1,100,256,
+                                  tskIDLE_PRIORITY+4,a,watchdog_feed,watchdog_fault));
+    /* Start last: scheduler must be started promptly after this returns. */
+    INIT(tp_f407_iwdg_start());
 #undef INIT
     return TP_OK;
 fail:

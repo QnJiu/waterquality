@@ -10,6 +10,7 @@
 #include "tp_freertos_clock.h"
 #include "tp_adc_reader.h"
 #include "tp_freertos_event_log.h"
+#include "tp_freertos_health.h"
 
 typedef struct {
     const tp_step *recipe; size_t recipe_len;
@@ -29,7 +30,7 @@ typedef struct {
     tp_f407_ads1220_spi spi; tp_ads1220 adc; tp_adc_reader reader;
     tp_f407_temperature temperature; tp_freertos_clock clock;
     tp_controller controller; tp_service service; tp_freertos_runtime runtime;
-    tp_f407_usart3_rtu uart;
+    tp_f407_usart3_rtu uart; tp_freertos_health health;
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
     tp_config config; tp_config_source config_source; uint32_t config_sequence;
     volatile uint32_t communication_errors;

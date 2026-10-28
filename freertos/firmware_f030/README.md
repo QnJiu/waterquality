@@ -102,6 +102,6 @@ USART 中断将字节和错误交给 32 项队列，单一任务处理协议；�
 
 ## 可选 STOP 休眠
 
-从控构建可启用 `-DTP_F030_SUBORDINATE=ON -DTP_F030_WAKE_INPUT=ON -DTP_F030_STOP_SLEEP=ON`。此选项与 `TP_F030_IDLE_SLEEP` 互斥，独占 LSE RTC、Alarm A、EXTI17 和 RTC 中断；RTC 配置不兼容或初始化失败时，继续使用普通 SysTick，不进入 STOP。主控必须先将连接到 PA8 的唤醒线拉高，等待从控恢复后再发送串口数据，并在事务结束后释放；等待时间需要实机测量。
+从控构建可启用 `-DTP_F030_SUBORDINATE=ON -DTP_F030_WAKE_INPUT=ON -DTP_F030_STOP_SLEEP=ON`。此选项与 `TP_F030_IDLE_SLEEP` 互斥，独占 LSE RTC、Alarm A、EXTI17 和 RTC 中断；RTC 配置不兼容或初始化失败时，继续使用普通 SysTick，不进入 STOP。主控必须先将连接到 PA8 的唤醒线拉高，等待从控恢复后再发送串口数据，并在事务结束后释放；F407 教学配置可启用 `TP_F407_TEACHING_WAKE` 实现参考唤醒，详见 F407 固件 README。等待时间需要实机测量。
 
 休眠期间使用 1024 Hz RTC 估算经过的时间并补偿 FreeRTOS 节拍及 TIM3 微秒时基。RTC 量化约 1 ms，采样和计时器停启也有额外误差；因此不能用此参考方案保证精确计时。闹钟清理或唤醒后的 RTC 读取失败触发平台断言。STOP 电流、唤醒延迟、通信和时钟恢复均尚未实机验证。

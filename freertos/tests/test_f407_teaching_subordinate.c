@@ -4,6 +4,15 @@
 
 static tp_result next_result=TP_OK;
 static unsigned calls;
+#ifdef TP_F407_TEACHING_WAKE
+static tp_result wake_result=TP_OK;
+static unsigned wake_calls;
+tp_result tp_f407_uart4_subordinate_use_pc8_wakeup(tp_f407_uart4_subordinate *uart, uint32_t delay) {
+    assert(uart && uart->subordinate.snapshot && delay==10);
+    wake_calls++;
+    return wake_result;
+}
+#endif
 tp_result tp_f407_uart4_subordinate_init(tp_f407_uart4_subordinate *uart,
     uint32_t period,uint32_t timeout,uint32_t freshness,uint32_t token,
     uint16_t stack,UBaseType_t priority) {
@@ -19,7 +28,14 @@ int main(void) {
     next_result=TP_IO_ERROR;
     assert(tp_f407_board_options(&options)==TP_IO_ERROR && calls==1);
     next_result=TP_OK;
+#ifdef TP_F407_TEACHING_WAKE
+    wake_result=TP_IO_ERROR;
+    assert(tp_f407_board_options(&options)==TP_IO_ERROR && calls==2 && wake_calls==1);
+    wake_result=TP_OK;
+    assert(tp_f407_board_options(&options)==TP_OK && calls==3 && wake_calls==2);
+#else
     assert(tp_f407_board_options(&options)==TP_OK && calls==2);
+#endif
     assert(options.subordinate && options.subordinate->snapshot);
     assert(options.interlocks_ok(options.interlocks_ctx));
     assert(options.resource_faults(options.resource_ctx)==0);

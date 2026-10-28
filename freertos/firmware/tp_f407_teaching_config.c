@@ -118,6 +118,10 @@ tp_result tp_f407_board_options(tp_f407_app_options *options) {
     /* Period and deadlines are examples; all objects live for the application. */
     tp_result r=tp_f407_uart4_subordinate_init(&subordinate,500,200,1500,1,512,tskIDLE_PRIORITY+2);
     if (r!=TP_OK) return r;
+#ifdef TP_F407_TEACHING_WAKE
+    r=tp_f407_uart4_subordinate_use_pc8_wakeup(&subordinate,10);
+    if (r!=TP_OK) return r;
+#endif
     options->subordinate=&subordinate.subordinate;
     return TP_OK;
 #else

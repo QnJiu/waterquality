@@ -36,7 +36,23 @@ tp_result tp_service_attach_config(tp_service *s, const tp_config *cfg,
 void tp_service_save_complete(tp_service *s, tp_result result) {
     if (s && s->save_status == 2) s->save_status = result == TP_OK ? 3 : 4;
 }
-static float word_float(const uint16_t *v) {
+tp_result tp_service_attach_log(tp_service *s,void *ctx,tp_result (*request)(void *,bool,uint32_t)) {
+    if(!s || !s->controller || !request || s->request_log) return TP_INVALID;
+    s->log_ctx=ctx; s->request_log=request; s->log_status=1; return TP_OK;
+}
+void tp_service_log_complete(tp_service *s,tp_result result,const tp_event *event) {
+    if(!s || s->log_status!=2) return;
+    memset(&s->log_event,0,sizeof(s->log_event));
+    if(result==TP_OK && event) { s->log_event=*event; s->log_status=3; }
+    else s->log_status=result==TP_INVALID ? 4 : 5;
+}
+static void log_words(const tp_service *s,uint16_t *v) {
+    uint64_t time; memcpy(&time,&s->log_event.utc_seconds,sizeof(time));
+    v[0]=s->log_status; v[1]=(uint16_t)(s->log_event.sequence>>16); v[2]=(uint16_t)s->log_event.sequence;
+    v[3]=s->log_event.type; v[4]=s->log_event.detail; v[5]=s->log_event.utc_valid ? 1u : 0u;
+    for(unsigned i=0;i<4;i++) v[6+i]=(uint16_t)(time>>(48u-16u*i));
+    v[10]=(uint16_t)(s->log_event.value>>16); v[11]=(uint16_t)s->log_event.value;
+}static float word_float(const uint16_t *v) {
     uint32_t u=join(v[0],v[1]); float f; memcpy(&f,&u,sizeof(f)); return f;
 }
 static uint16_t float_word(float f, bool low) {
@@ -99,7 +115,11 @@ tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, u
         for (uint16_t i=0;i<count;i++) values[i]=words[address-20+i];
         return TP_OK;
     }
-    if (!s || !s->controller || !values || !count ||
+    if (s && s->controller && values && count && address>=53 && (uint32_t)address+count<=65) {
+        uint16_t words[12]; log_words(s,words);
+        for(uint16_t i=0;i<count;i++) values[i]=words[address-53+i];
+        return TP_OK;
+    }    if (!s || !s->controller || !values || !count ||
         !((address <= 5 && (uint32_t)address + count <= 6) ||
           (address >= 10 && (uint32_t)address + count <= 19))) return TP_INVALID;
     for (uint16_t i = 0; i < count; i++) values[i] = read_one(s, (uint16_t)(address + i));
@@ -121,7 +141,13 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
         default: return TP_INVALID;
         }
     }
-    if (address==20 && count==27) return set_config_words(s,v);
+    if(address==50 && count==3) {
+        if(!s->request_log || v[0]>1 || (v[0]==0 && (v[1] || v[2]))) return TP_INVALID;
+        if(s->log_status==2) return TP_BUSY;
+        tp_result r=s->request_log(s->log_ctx,v[0]==0,join(v[1],v[2]));
+        if(r!=TP_OK) return r;
+        memset(&s->log_event,0,sizeof(s->log_event)); s->log_status=2; return TP_OK;
+    }    if (address==20 && count==27) return set_config_words(s,v);
     /* The schedule block must be written in one FC16 request; no partial changes. */
     if (address != 1 || count != 5 || v[0] > TP_MODE_DAILY || s->save_status == 2) return TP_INVALID;
     uint32_t seconds = join(v[1], v[2]);

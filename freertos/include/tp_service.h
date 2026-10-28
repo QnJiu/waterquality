@@ -3,6 +3,7 @@
 #include "tp_core.h"
 #include "tp_schedule.h"
 #include "tp_store.h"
+#include "tp_event_log.h"
 /* All service functions must run in the controller task. Communications tasks
  * must marshal requests to that task and read coherent snapshots; they must not
  * invoke callbacks concurrently with tick. Give stop requests priority. */
@@ -17,6 +18,10 @@ typedef struct {
     void *save_ctx;
     tp_result (*request_save)(void *, const tp_config *);
     uint8_t save_status; /* 0 unavailable, 1 idle, 2 pending, 3 saved, 4 failed */
+    void *log_ctx;
+    tp_result (*request_log)(void *, bool latest, uint32_t sequence);
+    uint8_t log_status; /* 0 unavailable, 1 idle, 2 pending, 3 found, 4 absent, 5 I/O error */
+    tp_event log_event;
 } tp_service;
 tp_result tp_service_init(tp_service *s, tp_controller *controller,
                           const tp_step *recipe, size_t recipe_len, uint32_t now_ms);
@@ -25,6 +30,10 @@ tp_result tp_service_init(tp_service *s, tp_controller *controller,
 tp_result tp_service_attach_config(tp_service *s, const tp_config *cfg,
     void *ctx, tp_result (*request_save)(void *, const tp_config *));
 void tp_service_save_complete(tp_service *s, tp_result result);
+/* One asynchronous query at a time; callback copies the request without waiting.
+ * Complete only from the service owner task. TP_INVALID means not found. */
+tp_result tp_service_attach_log(tp_service *,void *ctx,tp_result (*request)(void *,bool,uint32_t));
+void tp_service_log_complete(tp_service *,tp_result,const tp_event *);
 void tp_service_tick(tp_service *s, uint32_t now_ms, bool rtc_valid, int64_t utc_seconds);
 /* Functions implement the tp_modbus callbacks when called in the owner task. */
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values);

@@ -65,6 +65,7 @@ struct tp_f407_app {
     tp_f407_temperature temperature; tp_freertos_clock clock;
     tp_controller controller; tp_service service; tp_freertos_runtime runtime;
     tp_f407_usart3_rtu uart; tp_freertos_health health;
+    tp_trial_health trial_health; /* protected by task critical sections */
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
     uint16_t (*resource_faults)(void *); void *resource_ctx;
     tp_freertos_subordinate *subordinate;
@@ -72,4 +73,7 @@ struct tp_f407_app {
     volatile uint32_t communication_errors;
 };
 tp_result tp_f407_app_init(tp_f407_app *app, const tp_f407_app_options *options);
+/* Task context, one trial task only: consumes faults since previous sample.
+ * Checks idle preflight and task liveness; board-specific self-tests remain required. */
+bool tp_f407_app_trial_healthy(tp_f407_app *app);
 #endif

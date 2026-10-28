@@ -25,5 +25,18 @@ int main(void) {
     assert(tp_health_heartbeat(&h,0,210)==TP_TIMEOUT);
     assert(h.failed_mask==3);
     assert(!tp_health_all_started(&h,210));
+    tp_trial_health trial={0};
+    assert(!tp_trial_health_take(&trial));
+    tp_trial_health_observe(&trial,true);
+    assert(tp_trial_health_take(&trial));
+    assert(!tp_trial_health_take(&trial)); /* no new control loop */
+    tp_trial_health_observe(&trial,false);
+    tp_trial_health_observe(&trial,true); /* fault occurred between polls */
+    assert(!tp_trial_health_take(&trial));
+    tp_trial_health_observe(&trial,true);
+    assert(tp_trial_health_take(&trial));
+    tp_trial_health_observe(&trial,false);
+    assert(!tp_trial_health_take(&trial));
+    assert(!tp_trial_health_take(&trial)); /* still unhealthy */
     return 0;
 }

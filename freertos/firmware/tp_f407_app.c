@@ -48,10 +48,19 @@ static bool poll_log(void *p,tp_result *result,tp_event *event) {
     return tp_freertos_event_log_poll(&((tp_f407_app *)p)->events,result,event);
 }
 static void record_event(void *p,const tp_event *event) {
-    (void)tp_freertos_event_log_submit(&((tp_f407_app *)p)->events,event);
+    tp_f407_app *a=p;
+    if(event->type==TP_EVENT_FAILED) {
+        taskENTER_CRITICAL(); tp_trial_health_observe(&a->trial_health,false); taskEXIT_CRITICAL();
+    }
+    (void)tp_freertos_event_log_submit(&a->events,event);
 }
 static void control_progress(void *p) {
-    (void)tp_freertos_health_heartbeat(&((tp_f407_app *)p)->health,0);
+    tp_f407_app *a=p;
+    uint16_t faults=0;
+    bool healthy=a->controller.state==TP_IDLE && !a->service.maintenance &&
+                 preflight(a,&faults)==TP_OK;
+    taskENTER_CRITICAL(); tp_trial_health_observe(&a->trial_health,healthy); taskEXIT_CRITICAL();
+    (void)tp_freertos_health_heartbeat(&a->health,0);
 }
 static void watchdog_feed(void *p) { (void)p; tp_f407_iwdg_feed(); }
 static void watchdog_fault(void *p,uint32_t failed) {
@@ -63,6 +72,13 @@ static void watchdog_fault(void *p,uint32_t failed) {
 static void comm_error(void *p,unsigned port) {
     (void)port; tp_f407_app *a=p;
     taskENTER_CRITICAL(); a->communication_errors++; taskEXIT_CRITICAL();
+}
+bool tp_f407_app_trial_healthy(tp_f407_app *a) {
+    if(!a || a!=instance) return false;
+    bool alive=tp_freertos_health_all_started(&a->health);
+    bool healthy;
+    taskENTER_CRITICAL(); healthy=tp_trial_health_take(&a->trial_health); taskEXIT_CRITICAL();
+    return alive && healthy;
 }
 tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     if (!a || !o || instance || xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED ||

@@ -31,3 +31,15 @@ bool tp_health_all_started(tp_health *h,uint32_t now) {
     uint32_t expected=(1u<<h->count)-1u;
     return (h->seen_mask & expected)==expected;
 }
+
+void tp_trial_health_observe(tp_trial_health *h,bool healthy) {
+    if(!h) return;
+    h->fresh=true; h->current=healthy;
+    if(!healthy) h->fault_since_sample=true;
+}
+bool tp_trial_health_take(tp_trial_health *h) {
+    if(!h) return false;
+    bool result=h->fresh && h->current && !h->fault_since_sample;
+    h->fresh=false; h->fault_since_sample=false;
+    return result;
+}

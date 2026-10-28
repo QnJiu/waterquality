@@ -23,4 +23,11 @@ bool tp_health_can_feed(tp_health *, uint32_t now_ms);
 /* Requires a successful heartbeat from every task as well as live deadlines.
  * This is task liveness only, not a substitute for peripheral self-tests. */
 bool tp_health_all_started(tp_health *, uint32_t now_ms);
+/* Latches unhealthy control-loop observations until consumed by the trial task.
+ * Serialize all operations; zero initialization is valid. */
+typedef struct {
+    bool fresh, current, fault_since_sample;
+} tp_trial_health;
+void tp_trial_health_observe(tp_trial_health *,bool healthy);
+bool tp_trial_health_take(tp_trial_health *);
 #endif

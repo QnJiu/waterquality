@@ -17,7 +17,13 @@ BaseType_t xQueueReceive(QueueHandle_t q,void *v,TickType_t w) { (void)q;(void)v
 BaseType_t xQueueSend(QueueHandle_t q,const void *v,TickType_t w) { (void)q;(void)v;(void)w;return 0; }
 UBaseType_t uxQueueMessagesWaiting(QueueHandle_t q) { (void)q;return 0; }
 
-static int safe_count, sent_count;
+static int safe_count, sent_count, event_count;
+static uint16_t faults;
+static tp_event last_event;
+static tp_result preflight(void *ctx, uint16_t *out) {
+    (void)ctx; *out=faults; return faults ? TP_IO_ERROR : TP_OK;
+}
+static void event(void *ctx, const tp_event *e) { (void)ctx; event_count++; last_event=*e; }
 static unsigned sent_port;
 static uint8_t sent[256];
 static size_t sent_len;
@@ -46,5 +52,14 @@ int main(void) {
     memcpy(f.bytes,multi,sizeof(multi)); seal(&f); assert(is_stop(&rt,&f));
     c.state=TP_RUNNING; process(&rt,&f);
     assert(c.state==TP_FAILED && safe_count==2 && sent_count==2 && sent_port==1 && sent_len==8);
+    c.state=TP_FAILED; rt.io.event=event;
+    assert(tp_service_attach_preflight(&s,NULL,preflight)==TP_OK);
+    uint8_t check[]={2,6,0,0,0,10,0,0}; f.length=sizeof(check);
+    memcpy(f.bytes,check,sizeof(check)); seal(&f);
+    faults=TP_PREFLIGHT_ADC; process(&rt,&f);
+    assert(event_count==1 && last_event.type==TP_EVENT_PREFLIGHT && last_event.detail==TP_PREFLIGHT_ADC);
+    process(&rt,&f); assert(event_count==1);
+    faults=0; process(&rt,&f);
+    assert(event_count==2 && last_event.type==TP_EVENT_PREFLIGHT && last_event.detail==0);
     return 0;
 }

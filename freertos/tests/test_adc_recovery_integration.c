@@ -1,6 +1,7 @@
 #include "tp_adc_reader.h"
 #include "tp_service.h"
 #include "tp_modbus.h"
+#include "tp_event_transition.h"
 #include <assert.h>
 #include <math.h>
 #include <string.h>
@@ -74,7 +75,9 @@ int main(void) {
     assert(command(&m,10)==(6|0x80) && c.state==TP_RUNNING);
     f.now=50; tp_service_tick(&s,50,false,0);
     assert(c.state==TP_FAILED && c.fault==TP_FAULT_SENSOR && !f.adc.configured);
+    tp_operation_snapshot before=tp_operation_capture(&s); tp_event event;
     assert(command(&m,10)==(6|0x80) && s.preflight_faults==TP_PREFLIGHT_ADC);
+    assert(tp_operation_preflight_event(before,&s,&event) && event.type==TP_EVENT_PREFLIGHT && event.detail==TP_PREFLIGHT_ADC);
     assert(c.state==TP_FAILED && c.fault==TP_FAULT_SENSOR);
     assert(command(&m,3)==(6|0x80) && c.state==TP_FAILED && c.fault==TP_FAULT_SENSOR);
     assert(command(&m,1)==(6|0x80) && s.preflight_faults==TP_PREFLIGHT_ADC);
@@ -82,7 +85,11 @@ int main(void) {
     assert(command(&m,8)==(6|0x80) && !tp_adc_reader_ready(&f.reader));
     f.fail_write=false;
     assert(command(&m,8)==6 && tp_adc_reader_ready(&f.reader));
+    before=tp_operation_capture(&s);
     assert(command(&m,10)==6 && s.preflight_faults==0 && c.state==TP_FAILED);
+    assert(tp_operation_preflight_event(before,&s,&event) && event.type==TP_EVENT_PREFLIGHT && event.detail==0);
+    before=tp_operation_capture(&s);
+    assert(command(&m,10)==6 && !tp_operation_preflight_event(before,&s,&event));
     assert(command(&m,3)==6 && c.state==TP_IDLE);
     f.ready=true; f.now=60; tp_service_tick(&s,60,false,0);
     assert(command(&m,1)==6); tp_service_tick(&s,60,false,0);

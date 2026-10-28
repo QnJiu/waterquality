@@ -33,6 +33,10 @@ static void emit_transition(tp_freertos_runtime *rt,tp_run_state before) {
 static void emit_operation_events(tp_freertos_runtime *rt,tp_operation_snapshot before) {
     if (!rt->io.event) return;
     tp_event event;
+    if (tp_operation_preflight_event(before,rt->service,&event)) {
+        event.utc_valid=rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx,&event.utc_seconds);
+        rt->io.event(rt->io.ctx,&event);
+    }
     if (tp_operation_cal_event(before,rt->service,&event)) {
         event.utc_valid=rt->io.rtc_utc && rt->io.rtc_utc(rt->io.ctx,&event.utc_seconds);
         rt->io.event(rt->io.ctx,&event);

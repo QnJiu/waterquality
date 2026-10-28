@@ -35,6 +35,16 @@ class Client:
             raise ValueError('invalid slave address or timeout')
         self.port, self.address, self.timeout = port, address, timeout
 
+    def maintenance_status(self):
+        """Return None when older firmware does not implement this register."""
+        try:
+            value = self.read(131, 1)[0]
+        except ModbusError as e:
+            if str(e) == "device exception 2":
+                return None
+            raise
+        return {0: False, 1: True}.get(value)
+
     def exchange(self, request, expected):
         self.port.reset_input_buffer()
         packet = frame(bytes([self.address]) + request)
@@ -289,6 +299,8 @@ def main(argv=None):
                 print('state=%d fault=%d step=%d start_result=%d' % tuple(v[:4]))
                 print('concentration_mg_l=%s valid=%d' % (float32(v[4], v[5]) if v[6] else 'unavailable', v[6]))
                 print('save_status=%d waiting_next=%d preflight_faults=0x%04x' % tuple(v[7:10]))
+                maintenance = client.maintenance_status()
+                print('maintenance=%s' % ('unknown' if maintenance is None else 'active' if maintenance else 'inactive'))
     except (ImportError, OSError, ValueError, ModbusError) as e:
         print('Error: %s' % e, file=sys.stderr)
         return 1

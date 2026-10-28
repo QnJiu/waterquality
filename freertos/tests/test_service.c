@@ -98,8 +98,11 @@ int main(void) {
     assert(c.state==TP_IDLE && checks==3 && s.last_start_result==TP_IO_ERROR);
     check_faults=0; tp_service_tick(&s,2000,false,0);
     assert(c.state==TP_RUNNING && checks==4);
+    uint16_t maintenance_word;
+    assert(tp_service_read_holding(&s,131,1,&maintenance_word)==TP_OK && maintenance_word==0);
     before_safe=safe_count;
     assert(tp_service_enter_maintenance(&s)==TP_OK);
+    assert(tp_service_read_holding(&s,131,1,&maintenance_word)==TP_OK && maintenance_word==1);
     assert(s.maintenance && c.state==TP_FAILED && c.fault==TP_FAULT_STOP && safe_count==before_safe+1);
     assert(tp_service_enter_maintenance(&s)==TP_OK && safe_count==before_safe+1);
     assert(tp_service_write_holding(&s,0,1,&recovery)==TP_BUSY && recover_count==2);

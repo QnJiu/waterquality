@@ -278,6 +278,10 @@ tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, u
         return TP_OK;
     }
     tp_service *s = ctx;
+    if (s && s->controller && values && address==131 && count==1) {
+        values[0]=s->maintenance ? 1 : 0;
+        return TP_OK;
+    }
     if (s && s->controller && values && count && address>=128 && (uint32_t)address+count<=131) {
         bool valid=s->controller->state==TP_RUNNING && s->controller->temperature_valid;
         float temperature=valid ? s->controller->last_temperature_c : 0;

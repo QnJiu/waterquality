@@ -14,6 +14,7 @@ def read_status(client):
     """The temperature and status are separate snapshots."""
     v = client.read(10, 10)
     t = client.read(128, 3)
+    maintenance = client.maintenance_status()
     states = ('空闲', '运行', '完成', '故障')
     state = states[v[0]] if v[0] < len(states) else str(v[0])
     result = '%.3f mg/L' % float32(v[4], v[5]) if v[6] == 1 else '无有效结果'
@@ -21,8 +22,9 @@ def read_status(client):
     return ('状态：%s  故障码：%d  步骤：%d\n'
             '最近启动结果：%d  浓度：%s\n'
             '保存状态：%d  等待下一步：%s  自检故障位：0x%04X\n'
-            '温度：%s') % (state, v[1], v[2], v[3], result, v[7],
-                              '是' if v[8] == 1 else '否', v[9], temp)
+            '温度：%s  升级维护：%s') % (state, v[1], v[2], v[3], result, v[7],
+                              '是' if v[8] == 1 else '否', v[9], temp,
+                              '未知' if maintenance is None else '是' if maintenance else '否')
 
 
 def read_calibration_status(client):

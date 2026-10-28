@@ -18,6 +18,9 @@ class FakeClient:
         self.calls = []
         self.valid = valid
 
+    def maintenance_status(self):
+        return None
+
     def read(self, address, count):
         self.calls.append((address, count))
         if address == 10:
@@ -34,6 +37,7 @@ class StatusTest(unittest.TestCase):
         self.assertIn('1.250 mg/L', text)
         self.assertIn('25.50 °C', text)
         self.assertIn('等待下一步：是', text)
+        self.assertIn('升级维护：未知', text)
 
     def test_invalid_values_are_not_displayed(self):
         text = read_status(FakeClient(0))

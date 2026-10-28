@@ -26,6 +26,16 @@ class Tests(unittest.TestCase):
         self.assertEqual(m.Client(p, 1).read(10, 2), [1, 2])
         self.assertEqual(p.sent, bytes.fromhex('0103000a0002e409'))
 
+    def test_maintenance_status_and_old_device(self):
+        for value, expected in [(0, False), (1, True), (2, None)]:
+            reply = m.frame(bytes([1, 3, 2, 0, value]))
+            self.assertIs(m.Client(Port(reply), 1).maintenance_status(), expected)
+        old_reply = m.frame(bytes([1, 0x83, 2]))
+        self.assertIsNone(m.Client(Port(old_reply), 1).maintenance_status())
+        other_error = m.frame(bytes([1, 0x83, 4]))
+        with self.assertRaises(m.ModbusError):
+            m.Client(Port(other_error), 1).maintenance_status()
+
     def test_schedule_and_command(self):
         p = Port(m.frame(bytes.fromhex('011000010005')))
         m.Client(p, 1).schedule(2, 3600, 60, -300)

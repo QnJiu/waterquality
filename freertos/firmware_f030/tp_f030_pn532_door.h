@@ -11,6 +11,9 @@ typedef struct {
     uint32_t command_timeout_ms, scan_interval_ms;
     uint8_t scan_retries;
     uint32_t unlock_ms, freshness_ms, first_request_id;
+    /* Optional nonblocking physical bus/PN532 reset and synchronization. */
+    void *recovery_ctx;
+    tp_result (*recover_hardware)(void *);
 } tp_f030_door_config;
 
 typedef struct {
@@ -22,7 +25,7 @@ typedef struct {
 tp_result tp_f030_pn532_door_init(tp_f030_pn532_door *,const tp_pn532_i2c_bus *,
                                   const tp_f030_door_config *);
 /* Owner task only, after bus recovery and physical PN532 reset/synchronization.
- * The subordinate's latched fault handler must be rearmed by its owner too. */
+ * The subordinate task rearms its fault handler after a recovery attempt. */
 tp_result tp_f030_pn532_door_recover(tp_f030_pn532_door *);
 /* Suitable for tp_f030_subordinate_on_door_fault. */
 void tp_f030_pn532_door_abort(void *);
@@ -32,4 +35,6 @@ void tp_f030_pn532_door_abort(void *);
 tp_result tp_f030_door_board_prepare(tp_f030_door_config *);
 /* Authentication task only; TP_OK means queued, not accepted. */
 tp_result tp_f030_door_authorize(uint32_t request_id,bool approved);
+/* Maintenance task: queues recovery; TP_OK means queued, not completed. */
+tp_result tp_f030_door_request_recovery(void);
 #endif

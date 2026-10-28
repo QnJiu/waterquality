@@ -36,6 +36,26 @@ int main(void) {
     tp_init(&c,&hal,NULL,NULL,100);
     tp_step recipe[]={ {.kind=TP_STEP_WAIT,.timeout_ms=1000,.arg.wait={1000}}, {.kind=TP_STEP_END} };
     tp_service s; assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    /* Rewriting an unchanged schedule must preserve its trigger history. */
+    tp_step end_recipe[]={ {.kind=TP_STEP_END} };
+    tp_controller schedule_controller; tp_service schedule_service;
+    tp_init(&schedule_controller,&hal,NULL,NULL,100);
+    assert(tp_service_init(&schedule_service,&schedule_controller,end_recipe,1,0)==TP_OK);
+    uint16_t same_daily[]={TP_MODE_DAILY,0,60,1,0};
+    assert(tp_service_write_holding(&schedule_service,1,5,same_daily)==TP_OK);
+    tp_service_tick(&schedule_service,1000,true,946684860LL);
+    assert(schedule_controller.state==TP_COMPLETE && schedule_service.schedule.daily_fired);
+    assert(tp_service_write_holding(&schedule_service,1,5,same_daily)==TP_OK);
+    tp_service_tick(&schedule_service,2000,true,946684861LL);
+    assert(schedule_controller.state==TP_COMPLETE && schedule_service.schedule.daily_fired);
+    uint16_t same_periodic[]={TP_MODE_PERIODIC,0,10,0,0};
+    assert(tp_service_write_holding(&schedule_service,1,5,same_periodic)==TP_OK);
+    tp_service_tick(&schedule_service,7000,false,0);
+    assert(tp_service_write_holding(&schedule_service,1,5,same_periodic)==TP_OK);
+    tp_service_tick(&schedule_service,12000,false,0);
+    assert(schedule_service.schedule.last_period_ms==12000);
+    assert(schedule_controller.state==TP_COMPLETE);
+    safe_count=0;
     uint16_t version[3];
     assert(tp_service_read_holding(&s,119,3,version)==TP_OK);
     assert(version[0]==0 && version[1]==0 && version[2]==0);

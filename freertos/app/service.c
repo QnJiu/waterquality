@@ -417,8 +417,15 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
     uint32_t seconds = join(v[1], v[2]);
     if (seconds > 0x7fffffffu / 1000u || (s->request_save && !seconds)) return TP_INVALID;
     int32_t signed_offset = v[4] <= 32767u ? v[4] : (int32_t)v[4] - 65536;
-    tp_result result = tp_schedule_configure(&s->schedule, (tp_mode)v[0], seconds * 1000u,
+    tp_schedule candidate;
+    tp_result result = tp_schedule_configure(&candidate, (tp_mode)v[0], seconds * 1000u,
         v[3], (int16_t)signed_offset, s->now_ms, s->controller->state == TP_RUNNING);
+    if (result == TP_OK && (s->schedule.mode != candidate.mode ||
+        s->schedule.period_ms != candidate.period_ms ||
+        s->schedule.daily_minute != candidate.daily_minute ||
+        s->schedule.utc_offset_minutes != candidate.utc_offset_minutes)) {
+        s->schedule = candidate;
+    }
     if (result == TP_OK && s->request_save) {
         s->config.period_seconds = seconds;
         s->config.mode = (uint8_t)v[0];

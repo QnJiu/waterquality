@@ -150,7 +150,7 @@ static int query_last_result(float expected) {
     }
     return 0;
 }
-static int check_two_ports(void) {
+static int check_two_ports(uint16_t state) {
     uint8_t requests[2][8]={{1,3,0,10,0,1,0,0},{2,3,0,20,0,1,0,0}};
     for (unsigned port=0;port<2;port++) {
         uint16_t c=crc(requests[port],6);
@@ -163,8 +163,8 @@ static int check_two_ports(void) {
         if (xQueueReceive(responses,&reply,pdMS_TO_TICKS(1000))!=pdPASS ||
             reply.port>=2 || (seen & (1u<<reply.port)) || reply.length!=7 ||
             reply.bytes[0]!=reply.port+1 || reply.bytes[1]!=3 || reply.bytes[2]!=2 ||
-            reply.bytes[3]!=(reply.port==0 ? 0 : 0x3f) ||
-            reply.bytes[4]!=(reply.port==0 ? 0 : 0x80) ||
+            reply.bytes[3]!=(reply.port==0 ? (state >> 8) : 0x3f) ||
+            reply.bytes[4]!=(reply.port==0 ? (state & 0xff) : 0x80) ||
             crc(reply.bytes,5)!=(uint16_t)(reply.bytes[5] | (uint16_t)reply.bytes[6]<<8)) return 0;
         seen |= 1u<<reply.port;
     }
@@ -172,8 +172,10 @@ static int check_two_ports(void) {
 }
 static void check(void *arg) {
     (void)arg; uint16_t values[9];
-    if (!check_two_ports()) goto failed;
-    if (!command(1)) goto failed;
+    if (!check_two_ports(TP_IDLE)) goto failed;
+    if (!command(1) || !wait_for(TP_RUNNING,1,true,values)) goto failed;
+    /* Keep both communication ports active while a controlled run is waiting. */
+    for (unsigned i=0;i<100;i++) if (!check_two_ports(TP_RUNNING)) goto failed;
     /* Each completed step must wait for a separate advance command. */
     for(uint16_t next=1;next<=5;next++) {
         if (!wait_for(TP_RUNNING,next,true,values) || !command(5)) goto failed;

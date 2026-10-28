@@ -20,6 +20,7 @@ tp_result tp_stage_commands_execute(void *ctx,const tp_upgrade_commands *unused,
     tp_stage_commands *s=ctx;
     if(!s || !s->initialized || (n && !data)) return TP_INVALID;
     tp_result r=TP_INVALID;
+    bool temporary=false;
     switch(cmd) {
     case TP_UP_CMD_STATUS:
         if(!n && s->opened) r=TP_OK;
@@ -41,7 +42,7 @@ tp_result tp_stage_commands_execute(void *ctx,const tp_upgrade_commands *unused,
         else if(n && !s->opened) {
             r=tp_stage_receiver_cancel_manifest(&s->receiver,&s->boot,&s->storage,
                 s->capacity,s->public_key,s->product_id,data,n);
-            if(r==TP_OK) s->opened=true; /* Include the resulting state in the reply. */
+            if(r==TP_OK) { s->opened=true; temporary=true; } /* Include state in reply. */
         }
         break;
     case TP_UP_CMD_WRITE:
@@ -62,5 +63,6 @@ tp_result tp_stage_commands_execute(void *ctx,const tp_upgrade_commands *unused,
         reply->state_available=state==TP_OK;
         if(cmd==TP_UP_CMD_STATUS && r==TP_OK) reply->result=state;
     }
+    if(temporary) s->opened=false;
     return reply->result;
 }

@@ -137,6 +137,12 @@ int main(void) {
     assert(!cancel_gate.locked && cancel_reply.state.phase==TP_DOWNLOAD_CANCELLED && f.erases==before_cancel);
     assert(tp_stage_session_execute(&cancel_session,NULL,TP_UP_CMD_CANCEL,b1,116,&cancel_reply)==TP_OK);
     assert(!cancel_gate.locked && f.erases==before_cancel);
+    /* The command endpoint also supports repeated independent cancellations. */
+    assert(tp_stage_commands_init(&commands,&u.boot,&storage,image.capacity,c.public_key,c.product_id)==TP_OK);
+    assert(tp_stage_commands_execute(&commands,NULL,TP_UP_CMD_CANCEL,b1,116,&cancel_reply)==TP_OK);
+    assert(cancel_reply.state_available && !commands.opened);
+    assert(tp_stage_commands_execute(&commands,NULL,TP_UP_CMD_CANCEL,b1,116,&cancel_reply)==TP_OK);
+    assert(cancel_reply.state.phase==TP_DOWNLOAD_CANCELLED && !commands.opened && f.erases==before_cancel);
     /* Receive and install through one lock-owned session. */
     init(&stage_meta,&unused); f.erases=0;
     gate g={0}; tp_stage_session session;

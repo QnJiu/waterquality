@@ -16,6 +16,15 @@ endif()
 option(TP_BUILD_HOST_TESTS "Build host-side checks; this does not build STM32 firmware" ON)
 if(TP_BUILD_HOST_TESTS)
     enable_testing()
+    # Exercise the upstream FreeModbus stack with a deterministic host-only port.
+    add_executable(test_freemodbus tests/test_freemodbus.c
+        third_party/FreeModbus/mb.c third_party/FreeModbus/rtu/mbrtu.c
+        third_party/FreeModbus/rtu/mbcrc.c third_party/FreeModbus/functions/mbfuncholding.c
+        third_party/FreeModbus/functions/mbutils.c)
+    target_include_directories(test_freemodbus PRIVATE tests/freemodbus_port
+        third_party/FreeModbus/include third_party/FreeModbus/rtu)
+    target_link_libraries(test_freemodbus PRIVATE tp_core)
+    add_test(NAME freemodbus_host COMMAND test_freemodbus)
     add_executable(tp_simulator examples/simulator.c)
     target_link_libraries(tp_simulator PRIVATE tp_core)
     add_test(NAME simulator_normal COMMAND tp_simulator)

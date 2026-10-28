@@ -142,4 +142,4 @@ python tools/tp_modbus.py --port COM3 set-clock 1700000000
 python tools/tp_modbus.py --port COM3 clock-status
 ```
 
-`clock-status` 输出最后校时状态及最新时钟快照；快照在校时期间无效，状态与快照分别读取，可能受并发操作影响。
+`clock-status` 一次读取地址 122–127，输出最后校时状态及最新时钟快照；地址 123–124 读出为零，校时期间快照无效。

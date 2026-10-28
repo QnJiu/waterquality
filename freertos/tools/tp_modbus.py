@@ -95,11 +95,10 @@ class Client:
         self.exchange(struct.pack('>BHHBI', 16, 123, 2, 4, seconds), 0)
 
     def clock_status(self):
-        status = self.read(122, 1)[0]
+        status, _, _, valid, high, low = self.read(122, 6)
         names = ('unavailable', 'idle', 'pending', 'verified', 'failed')
         if status >= len(names):
             raise ModbusError('invalid clock status')
-        valid, high, low = self.read(125, 3)
         if valid not in (0, 1):
             raise ModbusError('invalid clock availability')
         return {'state': names[status], 'utc_seconds': ((high << 16) | low) if valid else None}

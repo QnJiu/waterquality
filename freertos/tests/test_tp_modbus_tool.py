@@ -40,11 +40,11 @@ class Tests(unittest.TestCase):
         self.assertEqual(p.sent, m.frame(bytes.fromhex('0110007b0002046553f100')))
         for invalid in (True, 946684799, 4102444800):
             with self.assertRaises(ValueError): m.Client(p, 1).set_clock(invalid)
-        replies = m.frame(bytes.fromhex('0103020003')) + m.frame(bytes.fromhex('01030600016553f100'))
+        replies = m.frame(bytes.fromhex('01030c00030000000000016553f100'))
         p = Port(replies)
         self.assertEqual(m.Client(p, 1).clock_status(), {'state': 'verified', 'utc_seconds': 1700000000})
-        self.assertEqual(p.sent, m.frame(bytes.fromhex('0103007d0003')))
-        replies = m.frame(bytes.fromhex('0103020002')) + m.frame(bytes.fromhex('010306000000000000'))
+        self.assertEqual(p.sent, m.frame(bytes.fromhex('0103007a0006')))
+        replies = m.frame(bytes.fromhex('01030c000200000000000000000000'))
         self.assertIsNone(m.Client(Port(replies), 1).clock_status()['utc_seconds'])
 
     def test_auto_calibration_commands_and_status(self):

@@ -171,6 +171,10 @@ int main(void) {
     assert(tp_service_write_holding(&s,123,1,time_words)==TP_INVALID);
     assert(tp_service_write_holding(&s,123,2,time_words)==TP_OK && clock_request==1700000000u);
     assert(tp_service_read_holding(&s,122,1,&clock_word)==TP_OK && clock_word==2);
+    uint16_t clock_registers[6];
+    assert(tp_service_read_holding(&s,122,6,clock_registers)==TP_OK &&
+           clock_registers[0]==2 && !clock_registers[1] && !clock_registers[2] &&
+           !clock_registers[3] && !clock_registers[4] && !clock_registers[5]);
     tp_service_tick(&s,3,true,1700000000LL);
     assert(tp_service_read_holding(&s,125,3,time_snapshot)==TP_OK && time_snapshot[0]==0);
     assert(tp_service_write_holding(&s,123,2,time_words)==TP_BUSY);

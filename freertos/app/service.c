@@ -268,14 +268,13 @@ tp_result tp_service_attach_log_stats(tp_service *s,void *ctx,void (*snapshot)(v
 }
 tp_result tp_service_read_holding(void *ctx, uint16_t address, uint16_t count, uint16_t *values) {
     tp_service *clock_service=ctx;
-    if (clock_service && clock_service->controller && values && count && address>=125 && (uint32_t)address+count<=128) {
-        uint16_t words[3]={clock_service->clock_valid ? 1u : 0u,
-                           (uint16_t)(clock_service->clock_utc>>16), (uint16_t)clock_service->clock_utc};
-        for (uint16_t i=0;i<count;i++) values[i]=words[address-125+i];
-        return TP_OK;
-    }
-    if (clock_service && clock_service->controller && values && address==122 && count==1) {
-        values[0]=clock_service->clock_status ? clock_service->clock_status(clock_service->clock_ctx) : 0;
+    if (clock_service && clock_service->controller && values && count && address>=122 && (uint32_t)address+count<=128) {
+        uint8_t status=clock_service->clock_status ? clock_service->clock_status(clock_service->clock_ctx) : 0;
+        bool valid=clock_service->clock_valid && status!=2;
+        uint32_t utc=valid ? clock_service->clock_utc : 0;
+        /* 123 and 124 are write-only; reading them returns zero. */
+        uint16_t words[6]={status,0,0,valid ? 1u : 0u,(uint16_t)(utc>>16),(uint16_t)utc};
+        for (uint16_t i=0;i<count;i++) values[i]=words[address-122+i];
         return TP_OK;
     }
     tp_service *s = ctx;

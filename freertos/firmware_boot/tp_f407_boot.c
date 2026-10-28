@@ -1,4 +1,5 @@
 #include "tp_f407_boot.h"
+#include "tp_factory_provision.h"
 #include <string.h>
 tp_result tp_f407_boot_init(tp_f407_boot *b,const tp_f407_boot_options *o) {
     if(!b || !o || !o->fram_bus.write || !o->fram_bus.write_read || !o->image_read || !o->product_id) return TP_INVALID;
@@ -17,4 +18,9 @@ tp_result tp_f407_boot_init(tp_f407_boot *b,const tp_f407_boot_options *o) {
 tp_result tp_f407_boot_prepare(tp_f407_boot *b,tp_boot_target *target) {
     if(!b || !target) return TP_INVALID;
     return tp_boot_target_prepare(&b->target,target);
+}
+
+tp_result tp_f407_boot_factory_provision(tp_f407_boot *b,const uint8_t *manifest,size_t size) {
+    if (!b) return TP_INVALID;
+    return tp_factory_provision(&b->signed_boot,&b->target.metadata,manifest,size);
 }

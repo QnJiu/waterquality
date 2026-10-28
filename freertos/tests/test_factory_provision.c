@@ -25,10 +25,11 @@ static void init(fake *f,tp_f407_boot *b) {
     memcpy(o.public_key,test_public,64); assert(tp_f407_boot_init(b,&o)==TP_OK);
 }
 static tp_result provision(tp_f407_boot *b,const uint8_t *manifest) {
-    return tp_factory_provision(&b->signed_boot,&b->target.metadata,manifest,TP_SIGNED_MANIFEST_SIZE);
+    return tp_f407_boot_factory_provision(b,manifest,TP_SIGNED_MANIFEST_SIZE);
 }
 int main(void) {
     fake f; tp_f407_boot b; tp_boot_target target; uint8_t bad[TP_SIGNED_MANIFEST_SIZE];
+    assert(tp_f407_boot_factory_provision(NULL,test_manifest0,TP_SIGNED_MANIFEST_SIZE)==TP_INVALID);
     init(&f,&b); memcpy(bad,test_manifest0,sizeof(bad)); bad[60]^=1;
     assert(provision(&b,bad)==TP_INVALID && f.writes==0);
     f.image[0][16]^=1; assert(provision(&b,test_manifest0)==TP_INVALID && f.writes==0); f.image[0][16]^=1;

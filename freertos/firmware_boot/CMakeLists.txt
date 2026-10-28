@@ -17,8 +17,29 @@ elseif(TP_BOOT_BOARD_CONFIG)
 else()
     set(BOARD unconfigured.c)
 endif()
+set(TP_BOOT_FACTORY_MANIFEST "" CACHE FILEPATH "Build factory-only firmware using this signed TPU1 manifest")
+if(TP_BOOT_FACTORY_MANIFEST)
+    if(NOT TP_BOOT_REFERENCE_BOARD AND NOT TP_BOOT_BOARD_CONFIG)
+        message(FATAL_ERROR "Factory firmware requires a configured board")
+    endif()
+    if(NOT EXISTS "${TP_BOOT_FACTORY_MANIFEST}")
+        message(FATAL_ERROR "Factory manifest not found")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${TP_BOOT_FACTORY_MANIFEST}")
+    file(READ "${TP_BOOT_FACTORY_MANIFEST}" manifest_hex HEX)
+    string(LENGTH "${manifest_hex}" manifest_length)
+    if(NOT manifest_length EQUAL 232 OR NOT manifest_hex MATCHES "^54505531")
+        message(FATAL_ERROR "Factory manifest must be a 116-byte TPU1 manifest")
+    endif()
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," manifest_initializer "${manifest_hex}")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/factory_manifest.c"
+        "#include <stdint.h>\nconst uint8_t tp_factory_manifest[116]={${manifest_initializer}};\n")
+    set(BOOT_ENTRY factory_main.c "${CMAKE_CURRENT_BINARY_DIR}/factory_manifest.c")
+else()
+    set(BOOT_ENTRY main.c)
+endif()
 set_source_files_properties(${DEVICE}/Source/system_stm32f4xx.c PROPERTIES COMPILE_DEFINITIONS SystemInit=tp_vendor_system_init)
-add_executable(tp_f407_boot.elf main.c tp_f407_boot.c tp_f407_boot_flash.c ${ROOT}/firmware/tp_f407_i2c.c ${BOARD}
+add_executable(tp_f407_boot.elf ${BOOT_ENTRY} tp_f407_boot.c tp_f407_boot_flash.c ${ROOT}/firmware/tp_f407_i2c.c ${BOARD}
     ${ROOT}/firmware/tp_f407_system_init.c ${ROOT}/firmware/tp_f407_handoff.c ${ROOT}/firmware/tp_f407_emergency.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${ROOT}/drivers/upgrade_fram.c ${ROOT}/bootloader/boot.c ${ROOT}/bootloader/boot_target.c

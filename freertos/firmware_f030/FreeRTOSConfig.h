@@ -21,7 +21,11 @@ extern uint32_t SystemCoreClock;
 #define configTOTAL_HEAP_SIZE                   (3u * 1024u)
 #define configCHECK_FOR_STACK_OVERFLOW          2
 #define configUSE_MALLOC_FAILED_HOOK             1
+#ifdef TP_F030_IDLE_SLEEP
+#define configUSE_IDLE_HOOK                     1
+#else
 #define configUSE_IDLE_HOOK                     0
+#endif
 #define configUSE_TICK_HOOK                     0
 #define configUSE_TIMERS                        0
 #define configTIMER_TASK_PRIORITY               2

@@ -21,4 +21,6 @@ tp_result tp_signed_boot_download_verify(void *,const tp_download_manifest *);
 /* Boot verify callback: always rereads the persisted manifest and image, and
  * independently checks signature, product, bank, version, size and digest. */
 tp_result tp_signed_boot_verify(void *,uint8_t,uint32_t);
+/* Authenticates and hashes again; size is written only after full success. */
+tp_result tp_signed_boot_verify_size(void *,uint8_t,uint32_t,uint32_t *size);
 #endif

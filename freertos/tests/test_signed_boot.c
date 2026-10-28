@@ -59,6 +59,8 @@ int main(void) {
     assert(tp_signed_boot_download_verify(&ctx,&m)==TP_OK);
     memset(&ctx.signature.authenticated,0,sizeof(ctx.signature.authenticated)); ctx.signature.ready=false; ctx.has_manifest=false;
     assert(tp_signed_boot_verify(&ctx,1,2)==TP_OK);
+    uint32_t verified_size=77; assert(tp_signed_boot_verify_size(&ctx,1,2,&verified_size)==TP_OK && verified_size==3);
+    verified_size=77; assert(tp_signed_boot_verify_size(&ctx,1,3,&verified_size)==TP_INVALID && verified_size==77);
     assert(tp_signed_boot_verify(&ctx,1,3)==TP_INVALID);
     assert(tp_boot_stage(&boot,1,2)==TP_OK);
     uint8_t selected=99; assert(tp_boot_select(&boot,&selected)==TP_OK && selected==1);

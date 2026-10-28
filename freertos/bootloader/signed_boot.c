@@ -41,9 +41,9 @@ tp_result tp_signed_boot_download_verify(void *context,const tp_download_manifes
     return TP_OK;
 }
 
-tp_result tp_signed_boot_verify(void *context,uint8_t bank,uint32_t version) {
+tp_result tp_signed_boot_verify_size(void *context,uint8_t bank,uint32_t version,uint32_t *size) {
     tp_signed_boot *ctx=context;
-    if(!ctx || bank>1 || !version || !ctx->manifests.read) return TP_INVALID;
+    if(!ctx || !size || bank>1 || !version || !ctx->manifests.read) return TP_INVALID;
     uint8_t record[RECORD_SIZE];
     tp_result r=ctx->manifests.read(ctx->manifests.ctx,bank,0,record,sizeof(record));
     if(r!=TP_OK) return r;
@@ -57,5 +57,10 @@ tp_result tp_signed_boot_verify(void *context,uint8_t bank,uint32_t version) {
     r=tp_signed_manifest_authenticate(&verifier,record,TP_SIGNED_MANIFEST_SIZE,&manifest);
     if(r!=TP_OK) return r;
     if(manifest.bank!=bank || manifest.version!=version) return TP_INVALID;
-    return tp_signed_manifest_verify_image(&verifier,&manifest);
+    r=tp_signed_manifest_verify_image(&verifier,&manifest);
+    if(r==TP_OK) *size=manifest.size;
+    return r;
+}
+tp_result tp_signed_boot_verify(void *context,uint8_t bank,uint32_t version) {
+    uint32_t size; return tp_signed_boot_verify_size(context,bank,version,&size);
 }

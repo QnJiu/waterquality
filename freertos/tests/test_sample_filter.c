@@ -40,5 +40,32 @@ int main(void) {
     const float bad[]={NAN}; f.samples=bad; f.next=0;
     assert(tp_start(&c,recipe,2,800)==TP_OK); tp_tick(&c,800);
     assert(c.state==TP_FAILED && c.fault==TP_FAULT_SENSOR);
+    /* Replacing a reading after calculating must invalidate the old result. */
+    const float values[]={10,1,0,2}; f.samples=values; f.next=0;
+    tp_calibration cal={.slope=1,.intercept=0,.turbidity_factor=0,
+                        .min_signal=0.01f,.max_concentration=10};
+    tp_init(&c,&hal,&cal,NULL,100);
+    tp_step result_recipe[]={
+        {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_BLANK,0,1}},
+        {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_REACTED,0,1}},
+        {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_TURBIDITY,0,1}},
+        {.kind=TP_STEP_CALCULATE},
+        {.kind=TP_STEP_READ,.timeout_ms=1000,.arg.read={TP_READ_REACTED,0,1}},
+        {.kind=TP_STEP_END}
+    };
+    assert(tp_start(&c,result_recipe,6,0)==TP_OK);
+    for(unsigned i=0;i<4;i++) tp_tick(&c,i*50);
+    assert(c.result_valid && fabsf(c.result_mg_l-1.0f)<0.0001f);
+    tp_tick(&c,200); assert(!c.result_valid && c.readings[TP_READ_REACTED]==2);
+    tp_tick(&c,250); assert(c.state==TP_COMPLETE && !c.result_valid);
+    /* A subsequent calculation makes the new result valid. */
+    tp_step recalculated[7];
+    for(unsigned i=0;i<5;i++) recalculated[i]=result_recipe[i];
+    recalculated[5]=(tp_step){.kind=TP_STEP_CALCULATE};
+    recalculated[6]=(tp_step){.kind=TP_STEP_END}; f.next=0;
+    assert(tp_start(&c,recalculated,7,300)==TP_OK);
+    for(unsigned i=0;i<7;i++) tp_tick(&c,300+i*50);
+    assert(c.state==TP_COMPLETE && c.result_valid &&
+           fabsf(c.result_mg_l-log10f(5.0f))<0.0001f);
     puts("sample filtering checks passed"); return 0;
 }

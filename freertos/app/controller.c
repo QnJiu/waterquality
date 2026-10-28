@@ -83,6 +83,12 @@ void tp_tick(tp_controller *c, uint32_t now) {
         c->last_sample_ms = now - TP_SAMPLE_PERIOD_MS;
         if (s->kind == TP_STEP_PUMP && c->hal.pump_start(c->hal.ctx, s->arg.pump.steps,
                 s->arg.pump.frequency_hz) != TP_OK) { fail(c, TP_FAULT_PUMP); return; }
+        /* A new reading supersedes the previous value and any concentration
+         * calculated from it. Only a later CALCULATE can publish a result. */
+        if (s->kind == TP_STEP_READ) {
+            c->valid_readings &= (uint8_t)~(1u << s->arg.read.slot);
+            c->result_valid = false;
+        }
         if (s->kind == TP_STEP_HEAT) { c->target_c = s->arg.heat.target_c; c->heating = true; }
     }
     float temp = 0;

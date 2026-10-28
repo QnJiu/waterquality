@@ -1,7 +1,9 @@
 #include "tp_f407_i2c.h"
 #include "stm32f4xx.h"
 #include "stm32f4xx_ll_gpio.h"
+#ifndef TP_F407_I2C_POLL_ONLY
 #include "task.h"
+#endif
 #define TIMEOUT_CYCLES (16u * 1000u * 30u)
 #define ERROR_FLAGS (I2C_SR1_BERR | I2C_SR1_ARLO | I2C_SR1_AF | I2C_SR1_OVR | I2C_SR1_TIMEOUT)
 static bool elapsed(uint32_t start) { return (uint32_t)(DWT->CYCCNT-start) >= TIMEOUT_CYCLES; }
@@ -37,19 +39,27 @@ static tp_result tx_bytes(const uint8_t *data, size_t n, uint32_t start) {
     return wait_sr1(I2C_SR1_BTF,start);
 }
 static tp_result lock(tp_f407_i2c *bus) {
+    #ifdef TP_F407_I2C_POLL_ONLY
+    return bus && bus->initialized ? TP_OK : TP_INVALID;
+    #else
     if (!bus || !bus->mutex) return TP_INVALID;
     BaseType_t state=xTaskGetSchedulerState();
     /* Boot loading is single-threaded before the scheduler starts. */
     if (state==taskSCHEDULER_NOT_STARTED) return TP_OK;
     if (state!=taskSCHEDULER_RUNNING) return TP_BUSY;
     return xSemaphoreTake(bus->mutex,pdMS_TO_TICKS(30))==pdTRUE ? TP_OK : TP_BUSY;
+    #endif
 }
 static void release(tp_f407_i2c *bus, tp_result result) {
     if (result!=TP_OK) {
         I2C2->CR1 |= I2C_CR1_STOP;
         configure_peripheral(); /* A physically stuck bus remains an error. */
     }
+    #ifdef TP_F407_I2C_POLL_ONLY
+    (void)bus;
+    #else
     if (xTaskGetSchedulerState()==taskSCHEDULER_RUNNING) (void)xSemaphoreGive(bus->mutex);
+    #endif
 }
 static tp_result write_bus(void *ctx, uint8_t dev, const uint8_t *data, size_t n) {
     tp_f407_i2c *bus=ctx;
@@ -86,9 +96,15 @@ static tp_result read_bus(void *ctx, uint8_t dev, const uint8_t *tx, size_t tn, 
     release(bus,r); return r;
 }
 tp_result tp_f407_i2c_init(tp_f407_i2c *bus) {
-    if (!bus || SystemCoreClock!=16000000u ||
+    if (!bus) return TP_INVALID;
+    #ifdef TP_F407_I2C_POLL_ONLY
+    bus->initialized=false;
+    #endif
+    if (SystemCoreClock!=16000000u ||
         (RCC->CFGR & (RCC_CFGR_SWS | RCC_CFGR_HPRE | RCC_CFGR_PPRE1))!=0) return TP_INVALID;
+    #ifndef TP_F407_I2C_POLL_ONLY
     bus->mutex=xSemaphoreCreateMutex(); if (!bus->mutex) return TP_IO_ERROR;
+    #endif
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN; RCC->APB1ENR |= RCC_APB1ENR_I2C2EN;
     (void)RCC->AHB1ENR; (void)RCC->APB1ENR;
@@ -101,7 +117,11 @@ tp_result tp_f407_i2c_init(tp_f407_i2c *bus) {
     LL_GPIO_SetPinPull(GPIOB,LL_GPIO_PIN_11,LL_GPIO_PULL_NO);
     LL_GPIO_SetPinMode(GPIOB,LL_GPIO_PIN_10,LL_GPIO_MODE_ALTERNATE);
     LL_GPIO_SetPinMode(GPIOB,LL_GPIO_PIN_11,LL_GPIO_MODE_ALTERNATE);
-    configure_peripheral(); return TP_OK;
+    configure_peripheral();
+    #ifdef TP_F407_I2C_POLL_ONLY
+    bus->initialized=true;
+    #endif
+    return TP_OK;
 }
 tp_i2c_io tp_f407_i2c_io(tp_f407_i2c *bus) {
     tp_i2c_io io={bus,write_bus,read_bus}; return io;

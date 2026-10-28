@@ -11,7 +11,7 @@ else()
     set(BOARD unconfigured.c)
 endif()
 set_source_files_properties(${DEVICE}/Source/system_stm32f4xx.c PROPERTIES COMPILE_DEFINITIONS SystemInit=tp_vendor_system_init)
-add_executable(tp_f407_boot.elf main.c tp_f407_boot.c ${BOARD}
+add_executable(tp_f407_boot.elf main.c tp_f407_boot.c tp_f407_boot_flash.c ${ROOT}/firmware/tp_f407_i2c.c ${BOARD}
     ${ROOT}/firmware/tp_f407_system_init.c ${ROOT}/firmware/tp_f407_handoff.c ${ROOT}/firmware/tp_f407_emergency.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${ROOT}/drivers/upgrade_fram.c ${ROOT}/bootloader/boot.c ${ROOT}/bootloader/boot_target.c
@@ -19,8 +19,8 @@ add_executable(tp_f407_boot.elf main.c tp_f407_boot.c ${BOARD}
     ${ROOT}/third_party/tinycrypt/source/ecc.c ${ROOT}/third_party/tinycrypt/source/ecc_dsa.c
     ${ROOT}/third_party/tinycrypt/source/sha256.c ${ROOT}/third_party/tinycrypt/source/utils.c)
 target_include_directories(tp_f407_boot.elf PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${ROOT}/firmware ${ROOT}/include
-    ${DEVICE}/Include ${ROOT}/third_party/CMSIS-Core/Include ${ROOT}/third_party/tinycrypt/include)
-target_compile_definitions(tp_f407_boot.elf PRIVATE STM32F407xx)
+    ${DEVICE}/Include ${ROOT}/third_party/CMSIS-Core/Include ${ROOT}/third_party/tinycrypt/include ${ROOT}/third_party/STM32F4-LL/Inc)
+target_compile_definitions(tp_f407_boot.elf PRIVATE STM32F407xx TP_F407_I2C_POLL_ONLY)
 target_compile_options(tp_f407_boot.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -ffunction-sections -fdata-sections)
 target_link_options(tp_f407_boot.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard --specs=nosys.specs
     -Wl,--defsym=TP_FLASH_ORIGIN=0x08000000 -Wl,--defsym=TP_FLASH_LENGTH=0x20000 -T${ROOT}/firmware/stm32f407vg.ld

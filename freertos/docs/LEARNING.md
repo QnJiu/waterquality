@@ -21,6 +21,17 @@ ctest --test-dir build --output-on-failure
 
 正常示例最后显示 `result_valid=1`、`safe=1`；`interlock` 模拟互锁故障，最后显示 `result_valid=0`、`safe=1`。`periodic` 和 `daily` 分别通过 Modbus 配置周期与每日定时，在模拟时间到 60 秒时自动启动完整流程；每日模式使用模拟 RTC。`recover` 模拟互锁故障后，先尝试清故障、恢复输入，再清故障并重新完成检测；`sensor` 模拟传感器故障；`recover-sensor` 演示传感器问题未排除时恢复失败，排除后发送 Modbus 命令 11 恢复 ADC、自检并清故障，再重新测量；`stop-rinse` 模拟清洗时停机。`safe=1` 表示模拟器检查到输出进入安全状态；模拟值不代表实际仪器的测量精度。
 
+## Windows 交叉编译路径
+
+某些 Windows 版 `arm-none-eabi-gcc` 在项目路径含中文时无法链接。可在 PowerShell 中为项目目录临时映射一个空闲盘符，并通过该盘符配置和编译；例如 W 盘未使用时：
+
+```powershell
+subst W: "E:\ai_dir\project_enbeded\水质检测"
+cmake -S W:/freertos/firmware -B W:/freertos/build-f407-example -G Ninja -DCMAKE_TOOLCHAIN_FILE=W:/freertos/firmware/arm-gcc.cmake
+cmake --build W:/freertos/build-f407-example
+```
+
+以上是默认心跳固件。业务配置及 F030 构建选项分别见 `firmware/README.md` 和 `firmware_f030/README.md`；配置、构建和指定源文件时均使用同一英文盘符。完成后可用 `subst W: /D` 解除映射；再次构建这个目录时需要重新映射相同盘符，或重新配置构建目录。映射不复制项目文件，先确认 W 盘未被占用。
 ## 2. 按顺序阅读
 
 1. `examples/simulator.c`：模拟配方、设备输入和 Modbus 命令，观察一次流程。

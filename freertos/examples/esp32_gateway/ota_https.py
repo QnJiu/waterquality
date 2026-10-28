@@ -4,13 +4,17 @@ import ssl
 
 
 def split_url(url):
-    if not url.startswith("https://") or "\r" in url or "\n" in url or "#" in url:
+    if (not isinstance(url, str) or not url.startswith("https://") or "#" in url or
+            any(ord(c) <= 32 or ord(c) == 127 for c in url)):
         raise ValueError("HTTPS URL required")
     rest = url[8:]
-    host, sep, path = rest.partition("/")
-    if not host or any(c in host for c in "@:? "):
+    slash = rest.find("/")
+    query = rest.find("?")
+    end = min(i for i in (slash, query, len(rest)) if i >= 0)
+    host, path = rest[:end], rest[end:]
+    if not host or any(c in host for c in "@:"):
         raise ValueError("invalid HTTPS host")
-    return host, "/" + path if sep else "/"
+    return host, ("/" + path if path.startswith("?") else path or "/")
 
 
 def line(sock, budget):

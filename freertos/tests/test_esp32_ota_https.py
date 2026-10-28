@@ -52,8 +52,14 @@ class Tests(unittest.TestCase):
 
     def test_refuse_unsafe_urls(self):
         for url in ('http://server/a', 'https://user@server/a', 'https://server/a\r\nInjected: x',
-                    'https://server:8443/a', 'https://server/a#fragment'):
+                    'https://server:8443/a', 'https://server/a#fragment',
+                    'https://server/a b', 'https://server/a\tHTTP/1.1', 'https://server/a\x00'):
             with self.subTest(url=url), self.assertRaises(ValueError): https.split_url(url)
+
+    def test_query_without_path(self):
+        self.assertEqual(https.split_url('https://example.com?token=abc'),
+                         ('example.com', '/?token=abc'))
+        self.assertEqual(https.split_url('https://example.com'), ('example.com', '/'))
 
     def test_bad_response(self):
         cases = [b'HTTP/1.1 302 Found\r\n\r\n',

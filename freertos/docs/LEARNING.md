@@ -11,6 +11,7 @@ cd freertos
 cmake -S . -B build -G Ninja
 cmake --build build
 .\build\tp_simulator.exe
+.\build\tp_simulator.exe journal
 .\build\tp_simulator.exe interlock
 .\build\tp_simulator.exe sensor
 .\build\tp_simulator.exe stop-rinse
@@ -23,7 +24,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-正常示例最后显示 `result_valid=1`、`safe=1`；`interlock` 模拟互锁故障，最后显示 `result_valid=0`、`safe=1`。`controlled` 展示受控模式每一步完成后等待，并模拟发送 Modbus 命令 5 继续；`periodic` 和 `daily` 分别通过 Modbus 配置周期与每日定时，在模拟时间到 60 秒时自动启动完整流程；周期示例继续运行到 120 秒，再完成第二次检测，每日模式使用模拟 RTC。`recover` 模拟互锁故障后，先尝试清故障、恢复输入，再清故障并重新完成检测；`sensor` 模拟传感器故障；`recover-sensor` 演示传感器问题未排除时恢复失败，排除后发送 Modbus 命令 11 恢复 ADC、自检并清故障，再重新测量；`stop-rinse` 模拟清洗时停机。正常完成时 `signals` 显示通过 Modbus 读取的空白、反应后和浊度模拟信号，`result` 显示计算浓度。`safe=1` 表示模拟器检查到输出进入安全状态；模拟值不代表实际仪器的测量精度。
+正常示例最后显示 `result_valid=1`、`safe=1`；`journal` 在模拟测量完成后重新读取内存日志，并通过 Modbus 查询浓度；`interlock` 模拟互锁故障，最后显示 `result_valid=0`、`safe=1`。`controlled` 展示受控模式每一步完成后等待，并模拟发送 Modbus 命令 5 继续；`periodic` 和 `daily` 分别通过 Modbus 配置周期与每日定时，在模拟时间到 60 秒时自动启动完整流程；周期示例继续运行到 120 秒，再完成第二次检测，每日模式使用模拟 RTC。`recover` 模拟互锁故障后，先尝试清故障、恢复输入，再清故障并重新完成检测；`sensor` 模拟传感器故障；`recover-sensor` 演示传感器问题未排除时恢复失败，排除后发送 Modbus 命令 11 恢复 ADC、自检并清故障，再重新测量；`stop-rinse` 模拟清洗时停机。正常完成时 `signals` 显示通过 Modbus 读取的空白、反应后和浊度模拟信号，`result` 显示计算浓度。`safe=1` 表示模拟器检查到输出进入安全状态；模拟值不代表实际仪器的测量精度。
 
 ## 总设计要求对应到哪里
 

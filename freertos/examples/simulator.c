@@ -80,8 +80,9 @@ int main(int argc,char **argv) {
     bool fault_interlock=argc==2 && !strcmp(argv[1],"interlock");
     bool fault_sensor=argc==2 && !strcmp(argv[1],"sensor");
     bool stop_rinse=argc==2 && !strcmp(argv[1],"stop-rinse");
-    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse)) {
-        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse]\n"); return 2;
+    bool recover=argc==2 && !strcmp(argv[1],"recover");
+    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover)) {
+        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover]\n"); return 2;
     }
     plant x={.temperature=20,.interlock=true};
     tp_hal hal={&x,valves,pump,pump_poll,temperature,heater,adc,interlock,safe};
@@ -94,9 +95,9 @@ int main(int argc,char **argv) {
     tp_modbus modbus={&service,1,tp_service_read_holding,tp_service_write_holding};
     if(command(&modbus,1)!=TP_OK) return 1;
     size_t last=(size_t)-1;
-    for(x.now=0;x.now<30000 && controller.state==TP_RUNNING;x.now+=50) {
+    for(x.now=0;x.now<60000 && controller.state==TP_RUNNING;x.now+=50) {
         x.temperature+=(x.heater*2.0f-(x.temperature-20)*0.02f)*0.05f;
-        if(fault_interlock && x.pump_active) x.interlock=false;
+        if((fault_interlock || recover) && x.pump_active) x.interlock=false;
         if(fault_sensor && recipe[controller.index].kind==TP_STEP_READ) x.sensor_error=true;
         if(stop_rinse && x.pump_active && x.valves==RINSE && command(&modbus,2)!=TP_OK) return 1;
         if(controller.awaiting_advance && command(&modbus,5)!=TP_OK) return 1;
@@ -106,6 +107,21 @@ int main(int argc,char **argv) {
                    (unsigned long)controller.index,(double)x.temperature,(double)x.heater);
             last=controller.index;
         }
+    }
+    if(recover) {
+        if(controller.state!=TP_FAILED || controller.fault!=TP_FAULT_INTERLOCK ||
+           x.valves || x.heater!=0 || x.pump_active || !x.safe_count) return 1;
+        /* A failed preflight must keep the fault latched until the input is restored. */
+        if(command(&modbus,3)==TP_OK || controller.state!=TP_FAILED) return 1;
+        x.interlock=true;
+        if(command(&modbus,3)!=TP_OK || command(&modbus,1)!=TP_OK) return 1;
+        x.pump_count=0;
+        for(;x.now<60000 && controller.state==TP_RUNNING;x.now+=50) {
+            x.temperature+=(x.heater*2.0f-(x.temperature-20)*0.02f)*0.05f;
+            if(controller.awaiting_advance && command(&modbus,5)!=TP_OK) return 1;
+            tp_service_tick(&service,x.now,false,0);
+        }
+        printf("recovery: input restored, fault cleared, measurement restarted\n");
     }
     printf("state=%d fault=%d result_valid=%d result=%.4f safe=%u\n",controller.state,
            controller.fault,controller.result_valid,(double)controller.result_mg_l,x.safe_count);

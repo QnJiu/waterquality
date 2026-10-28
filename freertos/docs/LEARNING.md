@@ -11,10 +11,11 @@ cmake -S . -B build -G Ninja
 cmake --build build
 .\build\tp_simulator.exe
 .\build\tp_simulator.exe interlock
+.\build\tp_simulator.exe recover
 ctest --test-dir build --output-on-failure
 ```
 
-正常示例最后显示 `result_valid=1`、`safe=1`；`interlock` 模拟互锁故障，最后显示 `result_valid=0`、`safe=1`。`sensor` 模拟传感器故障，`stop-rinse` 模拟清洗时停机。`safe=1` 表示模拟器检查到输出进入安全状态；模拟值不代表实际仪器的测量精度。
+正常示例最后显示 `result_valid=1`、`safe=1`；`interlock` 模拟互锁故障，最后显示 `result_valid=0`、`safe=1`。`recover` 模拟互锁故障后，先尝试清故障、恢复输入，再清故障并重新完成检测；`sensor` 模拟传感器故障，`stop-rinse` 模拟清洗时停机。`safe=1` 表示模拟器检查到输出进入安全状态；模拟值不代表实际仪器的测量精度。
 
 ## 2. 按顺序阅读
 

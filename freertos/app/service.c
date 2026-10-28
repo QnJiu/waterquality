@@ -295,7 +295,14 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
             else if (standard_running(s)) tp_auto_standard_cancel(&s->auto_standard);
             else tp_stop(s->controller);
             return TP_OK;
-        case 3: return tp_clear_fault(s->controller);
+        case 3:
+            if (s->controller->state!=TP_FAILED) return TP_INVALID;
+            /* Keep the failure latched until the configured checks pass. */
+            if (s->preflight) {
+                s->controller->hal.safe_outputs(s->controller->hal.ctx);
+                if (run_preflight(s)!=TP_OK) return TP_IO_ERROR;
+            }
+            return tp_clear_fault(s->controller);
         case 5: return s->maintenance ? TP_BUSY : tp_advance(s->controller, s->now_ms);
         case 6: return start_auto_cal(s);
         case 7: return apply_auto_cal(s);

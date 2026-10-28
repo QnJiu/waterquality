@@ -135,6 +135,12 @@ int main(void) {
     tp_stop(&c); check_faults=0;
     assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_OK);
     assert(c.state==TP_FAILED && c.fault==TP_FAULT_STOP && s.preflight_faults==0);
+    check_faults=TP_PREFLIGHT_OVERTEMPERATURE;
+    assert(tp_service_write_holding(&s,0,1,&clear)==TP_IO_ERROR);
+    assert(c.state==TP_FAILED && c.fault==TP_FAULT_STOP && s.preflight_faults==TP_PREFLIGHT_OVERTEMPERATURE);
+    check_faults=0;
+    assert(tp_service_write_holding(&s,0,1,&clear)==TP_OK && c.state==TP_IDLE);
+    assert(tp_service_write_holding(&s,0,1,&clear)==TP_INVALID);
     assert(tp_service_enter_maintenance(&s)==TP_OK);
     assert(tp_service_write_holding(&s,0,1,&diagnose)==TP_BUSY);
     puts("service checks passed"); return 0;

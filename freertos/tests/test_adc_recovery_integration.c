@@ -76,13 +76,14 @@ int main(void) {
     assert(c.state==TP_FAILED && c.fault==TP_FAULT_SENSOR && !f.adc.configured);
     assert(command(&m,10)==(6|0x80) && s.preflight_faults==TP_PREFLIGHT_ADC);
     assert(c.state==TP_FAILED && c.fault==TP_FAULT_SENSOR);
-    assert(command(&m,3)==6 && c.state==TP_IDLE);
+    assert(command(&m,3)==(6|0x80) && c.state==TP_FAILED && c.fault==TP_FAULT_SENSOR);
     assert(command(&m,1)==(6|0x80) && s.preflight_faults==TP_PREFLIGHT_ADC);
     f.fail_write=true;
     assert(command(&m,8)==(6|0x80) && !tp_adc_reader_ready(&f.reader));
     f.fail_write=false;
     assert(command(&m,8)==6 && tp_adc_reader_ready(&f.reader));
-    assert(command(&m,10)==6 && s.preflight_faults==0 && c.state==TP_IDLE);
+    assert(command(&m,10)==6 && s.preflight_faults==0 && c.state==TP_FAILED);
+    assert(command(&m,3)==6 && c.state==TP_IDLE);
     f.ready=true; f.now=60; tp_service_tick(&s,60,false,0);
     assert(command(&m,1)==6); tp_service_tick(&s,60,false,0);
     f.now=61; tp_service_tick(&s,61,false,0);

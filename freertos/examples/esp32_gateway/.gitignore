@@ -3,3 +3,5 @@ __pycache__/
 
 signed.tpu
 app.bin
+ota_manifest.tmp
+ota_image.tmp

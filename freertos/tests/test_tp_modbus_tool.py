@@ -157,6 +157,14 @@ class Tests(unittest.TestCase):
         event = m.Client(p, 1).log()
         self.assertEqual(event, {'sequence': 7, 'type': 2, 'detail': 0, 'utc': 42, 'value_bits': 0x3f800000})
 
+    def test_read_schedule(self):
+        p = Port(m.frame(bytes([1, 3, 10]) + struct.pack('>5H', 2, 1, 2, 90, 65506)))
+        self.assertEqual(m.Client(p, 1).get_schedule(), (2, 65538, 90, -30))
+        self.assertEqual(p.sent, m.frame(bytes.fromhex('010300010005')))
+        p = Port(m.frame(bytes([1, 3, 10]) + struct.pack('>5H', 3, 0, 0, 0, 0)))
+        with self.assertRaises(m.ModbusError):
+            m.Client(p, 1).get_schedule()
+
     def test_exception_corruption_and_timeout(self):
         for reply in (m.frame(bytes.fromhex('018302')), bytes.fromhex('01030200000000'), b''):
             with self.assertRaises(m.ModbusError): m.Client(Port(reply), 1, .001).read(10, 1)

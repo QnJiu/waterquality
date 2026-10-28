@@ -82,6 +82,12 @@ class Client:
             raise ValueError('invalid command')
         self.exchange(struct.pack('>BHH', 6, 0, command), 0)
 
+    def get_schedule(self):
+        mode, high, low, minute, offset = self.read(1, 5)
+        if mode not in range(3):
+            raise ModbusError('unknown schedule mode')
+        return mode, (high << 16) | low, minute, offset if offset < 32768 else offset - 65536
+
     def schedule(self, mode, seconds, minute, offset):
         if mode not in range(3) or not 1 <= seconds <= 2147483 or not 0 <= minute < 1440 or not -720 <= offset <= 840:
             raise ValueError('invalid schedule')

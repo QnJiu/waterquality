@@ -92,7 +92,7 @@ class App:
         self.period = tk.StringVar(value='60')
         self.minute = tk.StringVar(value='0')
         self.offset = tk.StringVar(value='0')
-        self.message = tk.StringVar(value='填写串口后点击读取状态')
+        self.message = tk.StringVar(value='填写串口后读取状态和模式；模式输入框初始值不是设备配置')
         self.status = tk.StringVar(value='尚未读取')
         self.cal_status = tk.StringVar(value='标定及核查状态尚未读取')
         self.clock_status = tk.StringVar(value='时钟状态尚未读取')
@@ -125,6 +125,7 @@ class App:
                                   ('UTC偏移分钟', self.offset, 5)):
             ttk.Label(settings, text=label).pack(side='left')
             ttk.Entry(settings, textvariable=var, width=width).pack(side='left', padx=3)
+        ttk.Button(settings, text='读取模式', command=lambda: self.start('schedule_read')).pack(side='left')
         ttk.Button(settings, text='设置模式', command=self.set_mode).pack(side='left')
         ttk.Button(settings, text='读取参数', command=lambda: self.start('config_read')).pack(side='left', padx=2)
         ttk.Button(settings, text='保存配置', command=lambda: self.start('command', 4)).pack(side='left', padx=2)
@@ -194,7 +195,7 @@ class App:
         except ValueError as error:
             self.message.set(str(error)); return
         self.busy = True
-        if operation not in ('status', 'cal_status', 'clock_status', 'event', 'config_read'):
+        if operation not in ('status', 'cal_status', 'clock_status', 'event', 'config_read', 'schedule_read'):
             self.status.set('命令发送后状态可能变化，请重新读取')
             self.cal_status.set('命令发送后标定及核查状态可能变化，请重新读取')
             self.clock_status.set('时间或状态可能变化，请重新读取时钟')
@@ -213,6 +214,8 @@ class App:
                         result = read_clock_status(client)
                     elif operation == 'event':
                         result = read_event(client, value)
+                    elif operation == 'schedule_read':
+                        result = client.get_schedule()
                     elif operation == 'config_read':
                         result = (client.get_config(), (port, str(baud), str(address)))
                     elif operation == 'config_write':
@@ -258,6 +261,13 @@ class App:
             elif operation == 'clock_status':
                 self.clock_status.set(result)
                 self.message.set('时钟快照已读取')
+            elif operation == 'schedule_read':
+                mode, period, minute, offset = result
+                self.mode.set(('受控', '周期', '每日')[mode])
+                self.period.set(str(period))
+                self.minute.set(str(minute))
+                self.offset.set(str(offset))
+                self.message.set('已读取设备模式快照；修改后需设置并保存配置')
             elif operation == 'config_read':
                 self.show_config(*result)
                 self.message.set('参数已读取；写入后需保存并确认保存状态')

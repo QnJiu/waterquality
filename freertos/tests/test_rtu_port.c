@@ -41,5 +41,33 @@ int main(void) {
     assert(f.received[0]==1 && f.errors[0]==1);
     f.busy=true; b[0]=1; crc(b); send_frame(&p[0],b,80000);
     assert(f.received[0]==2 && f.errors[0]==2 && f.errors[1]==0);
+    /* Two UART tasks can deliver bytes interleaved; an error on one must not
+     * disturb the frame being assembled on the other. */
+    fake concurrent={0}; tp_rtu_port ports[2];
+    concurrent.modbus[0]=(tp_modbus){.address=1,.read_holding=read_regs};
+    concurrent.modbus[1]=(tp_modbus){.address=2,.read_holding=read_regs};
+    assert(tp_rtu_port_init(&ports[0],0,9600,11,&concurrent,submit,error)==TP_OK);
+    assert(tp_rtu_port_init(&ports[1],1,19200,11,&concurrent,submit,error)==TP_OK);
+    uint8_t first[8]={1,3,0,0,0,1}, second[8]={2,3,0,0,0,1};
+    crc(first); crc(second);
+    for (unsigned cycle=0;cycle<100;cycle++) {
+        uint32_t start=cycle*20000;
+        for (unsigned i=0;i<8;i++) {
+            tp_rtu_port_byte(&ports[0],first[i],start+i*1000);
+            tp_rtu_port_byte(&ports[1],second[i],start+i*1000);
+        }
+        tp_rtu_port_poll(&ports[1],start+14000);
+        tp_rtu_port_poll(&ports[0],start+14000);
+    }
+    assert(concurrent.replies[0]==100 && concurrent.replies[1]==100);
+    for (unsigned i=0;i<8;i++) {
+        tp_rtu_port_byte(&ports[0],first[i],2000000+i*1000);
+        tp_rtu_port_byte(&ports[1],second[i],2000000+i*1000);
+        if (i==3) tp_rtu_port_error(&ports[0],2000000+i*1000);
+    }
+    tp_rtu_port_poll(&ports[0],2014000);
+    tp_rtu_port_poll(&ports[1],2014000);
+    assert(concurrent.errors[0]==1 && concurrent.errors[1]==0);
+    assert(concurrent.replies[0]==100 && concurrent.replies[1]==101);
     puts("RTU port integration checks passed"); return 0;
 }

@@ -1,11 +1,12 @@
-/* Reference STM32F407VG: 1 MiB flash, 128 KiB contiguous SRAM.
-   CCM SRAM is intentionally unused; layout is not an OTA partition. */
+/* STM32F407VG reference. Flash origin and size are supplied by the build.
+   CCM SRAM is intentionally unused. */
 ENTRY(Reset_Handler)
-MEMORY { FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 1024K
+MEMORY { FLASH (rx) : ORIGIN = TP_FLASH_ORIGIN, LENGTH = TP_FLASH_LENGTH
          RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 128K }
 _estack = ORIGIN(RAM) + LENGTH(RAM);
 SECTIONS {
   .isr_vector : { KEEP(*(.isr_vector)) } > FLASH
+  ASSERT((ADDR(.isr_vector) & 511) == 0, "vector table must be 512-byte aligned")
   .text : { *(.text*) *(.rodata*) KEEP(*(.init)) KEEP(*(.fini)) . = ALIGN(4); } > FLASH
   .ARM.extab : { *(.ARM.extab*) } > FLASH
   .ARM.exidx : { __exidx_start = .; *(.ARM.exidx*) __exidx_end = .; } > FLASH

@@ -27,6 +27,8 @@ static tp_result start(tp_service *s) {
         s->last_start_result=TP_BUSY; return TP_BUSY;
     }
     if (s->controller->state!=TP_RUNNING && s->controller->state!=TP_FAILED && run_preflight(s)!=TP_OK) {
+        /* A rejected new measurement must not publish the previous result as current. */
+        s->controller->result_valid=false;
         s->last_start_result=TP_IO_ERROR; return TP_IO_ERROR;
     }
     s->last_start_result=tp_start(s->controller,s->recipe,s->recipe_len,s->now_ms);

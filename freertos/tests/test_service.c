@@ -55,6 +55,25 @@ int main(void) {
     tp_service_tick(&schedule_service,12000,false,0);
     assert(schedule_service.schedule.last_period_ms==12000);
     assert(schedule_controller.state==TP_COMPLETE);
+    /* A failed manual or scheduled start must not leave an old result valid. */
+    tp_controller result_controller; tp_service result_service;
+    tp_init(&result_controller,&hal,NULL,NULL,100);
+    assert(tp_service_init(&result_service,&result_controller,end_recipe,1,0)==TP_OK);
+    assert(tp_service_attach_preflight(&result_service,NULL,preflight)==TP_OK);
+    result_controller.state=TP_COMPLETE; result_controller.result_valid=true;
+    result_controller.result_mg_l=1.5f; check_faults=TP_PREFLIGHT_LEVEL;
+    uint16_t result_begin=1, result_words[4];
+    assert(tp_service_write_holding(&result_service,0,1,&result_begin)==TP_IO_ERROR);
+    assert(tp_service_read_holding(&result_service,13,4,result_words)==TP_OK);
+    assert(result_words[0]==TP_IO_ERROR && result_words[3]==0);
+    assert(result_service.preflight_faults==TP_PREFLIGHT_LEVEL);
+    result_controller.result_valid=true;
+    uint16_t result_periodic[]={TP_MODE_PERIODIC,0,1,0,0};
+    assert(tp_service_write_holding(&result_service,1,5,result_periodic)==TP_OK);
+    tp_service_tick(&result_service,1000,false,0);
+    assert(result_service.last_start_result==TP_IO_ERROR && !result_controller.result_valid);
+    assert(tp_service_read_holding(&result_service,16,1,result_words)==TP_OK && result_words[0]==0);
+    check_faults=0; checks=0;
     safe_count=0;
     uint16_t version[3];
     assert(tp_service_read_holding(&s,119,3,version)==TP_OK);

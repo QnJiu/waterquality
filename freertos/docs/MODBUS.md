@@ -57,3 +57,19 @@
 启动前自检由 F407 装配层执行，手动与定时启动均使用相同检查；任一故障会拒绝启动并保持输出安全，寄存器 13 报 I/O 错误，19 给出原因。温度采样尚未就绪时也会拒绝启动，可待采样有效后重试。试剂与液位来源由装配方提供，运行期间仍须由互锁回调持续检查安全条件。
 
 维护模式由控制任务内部锁存，进入时执行安全输出；维护期间启动和单步推进返回忙，定时触发被跳过。清除故障不会解除维护，需重启并重新初始化服务。F407 组合升级服务会在修改升级状态前申请维护，等待控制任务确认；状态查询不会触发维护。板级必须实际装配该服务并确保 Flash 擦写期间的安全输出和看门狗策略。
+
+## 教学用串口命令行
+
+`tools/tp_modbus.py` 通过 pyserial 访问设备，默认 115200、8N1、从站地址 1，与 F407 参考串口一致。先安装 `python -m pip install pyserial`，在 `freertos` 目录下运行：
+
+```text
+python tools/tp_modbus.py --port COM3 status
+python tools/tp_modbus.py --port COM3 schedule daily 3600 480 480
+python tools/tp_modbus.py --port COM3 command save
+python tools/tp_modbus.py --port COM3 command start
+python tools/tp_modbus.py --port COM3 command stop
+python tools/tp_modbus.py --port COM3 log
+python tools/tp_modbus.py --port COM3 log --sequence 1
+```
+
+`--baud`、`--address`、`--timeout` 可按设备配置调整。`schedule` 写入 RAM，需执行 `command save` 并读取状态确认保存成功；启动和保存的响应表示请求已接受，实际结果应查看状态。日志返回原始 `value_bits`；完成事件可将其按 IEEE 754 float 解码。工具按单个请求同步运行，不自动重试写命令。需要实际设备、已配置的板级入口及适配 RS485 的串口。

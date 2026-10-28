@@ -116,6 +116,7 @@ if(TP_BUILD_HOST_TESTS)
                 "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_secure_upgrade_interop.py -v)
             add_test(NAME sign_manifest_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_sign_manifest.py -v)
         endif()
+        add_test(NAME tp_modbus_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_tp_modbus_tool.py -v)
         add_test(NAME upgrade_interop COMMAND ${CMAKE_COMMAND} -E env
             "TP_UP_SIM_LIB=$<TARGET_FILE:upgrade_simulator>"
             "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_upgrade_interop.py -v)

@@ -11,6 +11,7 @@
 #include "tp_adc_reader.h"
 #include "tp_freertos_event_log.h"
 #include "tp_freertos_health.h"
+#include "tp_freertos_subordinate.h"
 
 typedef struct {
     const tp_step *recipe; size_t recipe_len;
@@ -20,6 +21,8 @@ typedef struct {
     const tp_adc_channel *channels; size_t channel_count;
     uint8_t adc_registers[4]; uint32_t adc_timeout_ms;
     tp_config defaults;
+    /* Optional initialized master; UART task owns its link. */
+    tp_freertos_subordinate *subordinate;
 } tp_f407_app_options;
 /* Keep this object and all option pointers alive for the lifetime of the system.
  * Single instance, pre-scheduler only. On any error reset before retrying and do
@@ -34,6 +37,7 @@ typedef struct {
     tp_f407_usart3_rtu uart; tp_freertos_health health;
     bool (*interlocks_ok)(void *); void *interlocks_ctx;
     uint16_t (*resource_faults)(void *); void *resource_ctx;
+    tp_freertos_subordinate *subordinate;
     tp_config config; tp_config_source config_source; uint32_t config_sequence;
     volatile uint32_t communication_errors;
 } tp_f407_app;

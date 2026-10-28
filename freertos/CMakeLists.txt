@@ -25,6 +25,10 @@ if(TP_BUILD_HOST_TESTS)
         target_link_libraries(test_${name} PRIVATE tp_core)
         add_test(NAME ${name} COMMAND test_${name})
     endforeach()
+    add_executable(test_freertos_subordinate tests/test_freertos_subordinate.c os/freertos_subordinate.c)
+    target_include_directories(test_freertos_subordinate PRIVATE tests/freertos_stub)
+    target_link_libraries(test_freertos_subordinate PRIVATE tp_core)
+    add_test(NAME freertos_subordinate COMMAND test_freertos_subordinate)
 endif()
 
 

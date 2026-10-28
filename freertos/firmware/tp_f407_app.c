@@ -10,9 +10,15 @@ static tp_result pump_poll(void *p,bool *done) { return tp_f407_pump_poll(&((tp_
 static tp_result temperature(void *p,float *c) { return tp_f407_temperature_read(&((tp_f407_app *)p)->temperature,c); }
 static tp_result heater(void *p,float fraction) { return tp_f407_heater_set(&((tp_f407_app *)p)->heater,fraction); }
 static tp_result adc_read(void *p,uint8_t ch,float *v) { return tp_adc_reader_read(&((tp_f407_app *)p)->reader,ch,(uint32_t)xTaskGetTickCount(),v); }
-static bool interlocks(void *p) { tp_f407_app *a=p; return a->interlocks_ok(a->interlocks_ctx); }
+static bool interlocks(void *p) {
+    tp_f407_app *a=p;
+    return a->interlocks_ok(a->interlocks_ctx) &&
+           (!a->subordinate || tp_freertos_subordinate_healthy(a->subordinate));
+}
 static uint16_t resource_faults(void *p) {
-    tp_f407_app *a=p; return a->resource_faults(a->resource_ctx);
+    tp_f407_app *a=p; uint16_t faults=a->resource_faults(a->resource_ctx);
+    if(a->subordinate) faults|=tp_freertos_subordinate_resource_faults(a->subordinate);
+    return faults;
 }
 static tp_result preflight(void *p,uint16_t *faults) {
     tp_f407_app *a=p;
@@ -52,10 +58,12 @@ static void comm_error(void *p,unsigned port) {
 tp_result tp_f407_app_init(tp_f407_app *a,const tp_f407_app_options *o) {
     if (!a || !o || instance || xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED ||
         !o->recipe || !o->recipe_len || !o->valves || !o->interlocks_ok || !o->resource_faults ||
-        !o->channels || !o->channel_count || tp_config_validate(&o->defaults)!=TP_OK ||
+        !o->channels || !o->channel_count || (o->subordinate && !o->subordinate->snapshot) ||
+        tp_config_validate(&o->defaults)!=TP_OK ||
         tp_valve_policy_validate(o->valves)!=TP_OK) return TP_INVALID;
     instance=a; memset(a,0,sizeof(*a)); a->interlocks_ok=o->interlocks_ok; a->interlocks_ctx=o->interlocks_ctx;
     a->resource_faults=o->resource_faults; a->resource_ctx=o->resource_ctx;
+    a->subordinate=o->subordinate;
     tp_result r;
 #define INIT(expr) do { r=(expr); if (r!=TP_OK) goto fail; } while (0)
     INIT(tp_f407_valves_init(&a->valves,o->valves));

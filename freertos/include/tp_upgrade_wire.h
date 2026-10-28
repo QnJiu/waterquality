@@ -9,6 +9,9 @@
 typedef struct {
     const tp_upgrade_commands *commands;
     void *send_ctx;
+    void *execute_ctx;
+    tp_result (*execute)(void *,const tp_upgrade_commands *,tp_upgrade_command,
+                         const uint8_t *,size_t,tp_upgrade_reply *);
     /* Must copy the complete frame before return. May block in upgrade task. */
     tp_result (*send)(void *,const uint8_t *,size_t);
     uint8_t raw[TP_UP_WIRE_RAW_MAX];
@@ -18,6 +21,11 @@ typedef struct {
 
 tp_result tp_upgrade_wire_init(tp_upgrade_wire *,const tp_upgrade_commands *,void *,
                                tp_result (*send)(void *,const uint8_t *,size_t));
+/* Configure before receiving bytes. Executor must always populate reply, even
+ * on failure. NULL restores the default command executor. */
+void tp_upgrade_wire_set_executor(tp_upgrade_wire *,void *,
+    tp_result (*)(void *,const tp_upgrade_commands *,tp_upgrade_command,
+                 const uint8_t *,size_t,tp_upgrade_reply *));
 /* Deliver ordered bytes from one owner. Frame errors return TP_INVALID, send
  * errors propagate; a delimiter starts a new frame after any error. */
 tp_result tp_upgrade_wire_byte(tp_upgrade_wire *,uint8_t);

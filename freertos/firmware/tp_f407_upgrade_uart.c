@@ -85,9 +85,21 @@ static void upgrade_task(void *arg) {
         (void)ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(5));
     }
 }
-tp_result tp_f407_upgrade_uart_init(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
-                                    uint32_t timeout,uint16_t stack,UBaseType_t priority) {
+static tp_result shared_execute(void *ctx,const tp_upgrade_commands *commands,tp_upgrade_command command,
+                                const uint8_t *data,size_t length,tp_upgrade_reply *reply) {
+    tp_f407_upgrade_uart *u=ctx;
+    if (!u->try_lock(u->lock_ctx)) {
+        memset(reply,0,sizeof(*reply)); reply->result=TP_BUSY; return TP_BUSY;
+    }
+    tp_result r=tp_upgrade_command_execute(commands,command,data,length,reply);
+    u->unlock(u->lock_ctx);
+    return r;
+}
+static tp_result init(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
+                      uint32_t timeout,uint16_t stack,UBaseType_t priority,void *lock_ctx,
+                      bool (*try_lock)(void *),void (*unlock)(void *)) {
     if (!u || !commands || !commands->upgrade || !commands->authenticate || instance || !stack ||
+        (!!try_lock != !!unlock) ||
         priority >= configMAX_PRIORITIES || SystemCoreClock!=16000000u ||
         (RCC->CFGR & (RCC_CFGR_SWS | RCC_CFGR_HPRE | RCC_CFGR_PPRE1)) != 0 ||
         xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED)
@@ -95,6 +107,10 @@ tp_result tp_f407_upgrade_uart_init(tp_f407_upgrade_uart *u,const tp_upgrade_com
     memset(u,0,sizeof(*u));
     tp_result r=tp_upgrade_stream_init(&u->stream,commands,u,send_response,timeout);
     if (r!=TP_OK) return r;
+    if (try_lock) {
+        u->lock_ctx=lock_ctx; u->try_lock=try_lock; u->unlock=unlock;
+        tp_upgrade_wire_set_executor(&u->stream.wire,u,shared_execute);
+    }
     u->events=xQueueCreate(RX_EVENTS,sizeof(tp_upgrade_uart_event));
     if (!u->events) return TP_IO_ERROR;
     instance=u;
@@ -102,4 +118,15 @@ tp_result tp_f407_upgrade_uart_init(tp_f407_upgrade_uart *u,const tp_upgrade_com
         instance=NULL; vQueueDelete(u->events); u->events=NULL; return TP_IO_ERROR;
     }
     return TP_OK;
+}
+
+tp_result tp_f407_upgrade_uart_init(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
+                                    uint32_t timeout,uint16_t stack,UBaseType_t priority) {
+    return init(u,commands,timeout,stack,priority,NULL,NULL,NULL);
+}
+tp_result tp_f407_upgrade_uart_init_shared(tp_f407_upgrade_uart *u,const tp_upgrade_commands *commands,
+    uint32_t timeout,uint16_t stack,UBaseType_t priority,void *ctx,
+    bool (*try_lock)(void *),void (*unlock)(void *)) {
+    if (!try_lock || !unlock) return TP_INVALID;
+    return init(u,commands,timeout,stack,priority,ctx,try_lock,unlock);
 }

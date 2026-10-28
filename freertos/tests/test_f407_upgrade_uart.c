@@ -10,7 +10,14 @@ static tp_upgrade_uart_event queue[RX_EVENTS];
 static unsigned head,count;
 static TickType_t ticks;
 static unsigned commands_run;
-static bool task_failure;
+static bool task_failure, held, unavailable;
+static unsigned unlocks;
+static uint8_t response[128]; static size_t response_len;
+static bool try_lock(void *ctx) { assert(ctx==&held); if(unavailable) return false; assert(!held); held=true; return true; }
+static void unlock(void *ctx) { assert(ctx==&held && held); held=false; unlocks++; }
+static tp_result capture(void *ctx,const uint8_t *data,size_t n) {
+    (void)ctx; assert(!held && n<=sizeof(response)); memcpy(response,data,n); response_len=n; return TP_OK;
+}
 QueueHandle_t xQueueCreate(unsigned n,size_t size) {
     assert(n==RX_EVENTS && size==sizeof(queue[0])); head=count=0; return queue;
 }
@@ -42,7 +49,7 @@ uint32_t ulTaskNotifyTake(BaseType_t clear,TickType_t wait) { (void)clear; (void
 tp_result tp_upgrade_command_execute(const tp_upgrade_commands *c,tp_upgrade_command cmd,
                                      const uint8_t *data,size_t n,tp_upgrade_reply *reply) {
     (void)c; (void)data; assert(cmd==TP_UP_CMD_STATUS && n==0);
-    commands_run++; memset(reply,0,sizeof(*reply)); reply->result=TP_OK; return TP_OK;
+    assert(held); commands_run++; memset(reply,0,sizeof(*reply)); reply->result=TP_OK; return TP_OK;
 }
 static tp_result auth(void *ctx,const uint8_t *p,size_t n,tp_download_manifest *m) {
     (void)ctx; (void)p; (void)n; (void)m; return TP_INVALID;
@@ -64,9 +71,17 @@ int main(void) {
     SystemCoreClock=16000000u; task_failure=true;
     assert(tp_f407_upgrade_uart_init(&u,&commands,50,2048,2)==TP_IO_ERROR);
     task_failure=false;
-    assert(tp_f407_upgrade_uart_init(&u,&commands,50,2048,2)==TP_OK);
+    assert(tp_f407_upgrade_uart_init_shared(&u,&commands,50,2048,2,&held,try_lock,NULL)==TP_INVALID);
+    assert(tp_f407_upgrade_uart_init_shared(&u,&commands,50,2048,2,&held,try_lock,unlock)==TP_OK);
     hardware_start(); fake_usart.SR=USART_SR_TXE | USART_SR_TC;
-    frame_bytes(frame,0,n); upgrade_step(&u); assert(commands_run==1);
+    u.stream.wire.send=capture;
+    unavailable=true; frame_bytes(frame,0,n); upgrade_step(&u);
+    assert(commands_run==0 && unlocks==0 && response_len>=10);
+    /* This STATUS response has no escaped header/body bytes. */
+    assert(response[0]==0x7e && response[2]==(TP_UP_CMD_STATUS|0x80) && response[7]==TP_BUSY && response[8]==0);
+    unavailable=false; frame_bytes(frame,0,n); upgrade_step(&u);
+    assert(commands_run==1 && unlocks==1 && !held && response[7]==TP_OK);
+    u.stream.wire.send=send_response;
     /* An errored byte invalidates the partial request; the next frame works. */
     frame_bytes(frame,0,n/2); push(frame[n/2],USART_SR_FE);
     frame_bytes(frame,n/2+1,n); upgrade_step(&u); assert(commands_run==1);

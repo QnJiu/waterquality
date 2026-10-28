@@ -35,6 +35,11 @@ tp_result tp_upgrade_wire_init(tp_upgrade_wire *w,const tp_upgrade_commands *c,v
     if(!w || !c || !send) return TP_INVALID;
     memset(w,0,sizeof(*w)); w->commands=c; w->send_ctx=ctx; w->send=send; return TP_OK;
 }
+void tp_upgrade_wire_set_executor(tp_upgrade_wire *w,void *ctx,
+    tp_result (*execute)(void *,const tp_upgrade_commands *,tp_upgrade_command,
+                         const uint8_t *,size_t,tp_upgrade_reply *)) {
+    if(w) { w->execute_ctx=ctx; w->execute=execute; }
+}
 void tp_upgrade_wire_reset(tp_upgrade_wire *w) {
     if(w) { w->length=0; w->started=false; w->escaped=false; w->discard=false; }
 }
@@ -45,8 +50,9 @@ static tp_result execute(tp_upgrade_wire *w) {
     if(payload>TP_UP_WIRE_PAYLOAD_MAX || n!=payload+8 ||
        crc(p,n-2)!=((uint16_t)p[n-2] | ((uint16_t)p[n-1]<<8))) return TP_INVALID;
     uint16_t seq=(uint16_t)p[2] | ((uint16_t)p[3]<<8);
-    uint8_t cmd=p[1]; tp_upgrade_reply reply;
-    (void)tp_upgrade_command_execute(w->commands,(tp_upgrade_command)cmd,p+6,payload,&reply);
+    uint8_t cmd=p[1]; tp_upgrade_reply reply={0}; reply.result=TP_INVALID;
+    if(w->execute) (void)w->execute(w->execute_ctx,w->commands,(tp_upgrade_command)cmd,p+6,payload,&reply);
+    else (void)tp_upgrade_command_execute(w->commands,(tp_upgrade_command)cmd,p+6,payload,&reply);
     uint8_t body[48]={0}; body[0]=(uint8_t)reply.result; body[1]=reply.state_available?1:0;
     size_t body_len=2;
     if(reply.state_available) {

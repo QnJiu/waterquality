@@ -14,8 +14,17 @@ typedef struct {
     QueueHandle_t events;
     TaskHandle_t task;
     volatile bool overflow;
+    void *lock_ctx;
+    bool (*try_lock)(void *);
+    void (*unlock)(void *);
 } tp_f407_upgrade_uart;
 tp_result tp_f407_upgrade_uart_init(tp_f407_upgrade_uart *, const tp_upgrade_commands *,
                                     uint32_t frame_timeout_ms, uint16_t stack_words,
                                     UBaseType_t priority);
+/* The shared lock also protects trial confirmation and all image modifications.
+ * Lock acquisition is nonblocking; a busy request gets TP_BUSY and can be
+ * retried. The lock is released before the response is transmitted. */
+tp_result tp_f407_upgrade_uart_init_shared(tp_f407_upgrade_uart *, const tp_upgrade_commands *,
+    uint32_t frame_timeout_ms, uint16_t stack_words, UBaseType_t priority,
+    void *lock_ctx, bool (*try_lock)(void *), void (*unlock)(void *));
 #endif

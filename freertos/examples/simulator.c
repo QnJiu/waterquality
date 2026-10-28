@@ -8,7 +8,7 @@
 typedef struct {
     uint32_t now, pump_done, valves;
     float temperature, heater;
-    bool interlock, pump_active, sensor_error;
+    bool interlock, pump_active, sensor_error, adc_ready;
     unsigned safe_count, pump_count;
     uint32_t pump_valves[4];
 } plant;
@@ -31,8 +31,8 @@ static tp_result temperature(void *p,float *value) {
 static tp_result heater(void *p,float value) { ((plant *)p)->heater=value; return TP_OK; }
 static tp_result adc(void *p,uint8_t channel,float *value) {
     static const float samples[]={1.0f,0.5f,0.1f};
-    if(((plant *)p)->sensor_error || channel>=3) return TP_IO_ERROR;
     plant *x=p;
+    if(x->sensor_error || channel>=3) { x->adc_ready=false; return TP_IO_ERROR; }
     /* For calibration the selected standard determines the reacted signal. */
     if (x->valves==16 || x->valves==32) {
         *value=channel==0 ? 1.0f : (channel==1 ? (x->valves==16 ? 1.0f : 0.1f) : 0.0f);
@@ -46,7 +46,15 @@ static void safe(void *p) {
 static uint16_t resources(void *p) { (void)p; return 0; }
 static tp_result preflight(void *p,uint16_t *faults) {
     tp_preflight_io io={p,interlock,temperature,resources,80.0f};
-    return tp_preflight_check(&io,faults);
+    tp_result r=tp_preflight_check(&io,faults);
+    if(r==TP_INVALID) return r;
+    if(!((plant *)p)->adc_ready) *faults|=TP_PREFLIGHT_ADC;
+    return *faults ? TP_IO_ERROR : TP_OK;
+}
+static tp_result recover_adc(void *p) {
+    plant *x=p;
+    if(x->sensor_error) return TP_IO_ERROR;
+    x->adc_ready=true; return TP_OK;
 }
 static uint16_t crc(const uint8_t *p,size_t n) {
     uint16_t value=0xffff;
@@ -111,7 +119,7 @@ static tp_result save_example(void *ctx,const tp_config *config) {
     (void)ctx; (void)config; return TP_OK;
 }
 static int calibration_example(void) {
-    plant x={.temperature=20,.interlock=true};
+    plant x={.temperature=20,.interlock=true,.adc_ready=true};
     tp_hal hal={&x,valves,pump,pump_poll,temperature,heater,adc,interlock,safe};
     tp_config cfg={.calibration={1,0,0,0.01f,10},.kp=0.2f,.ki=0.02f,
         .output_max=1,.integral_max=20,.max_temperature_c=80,.period_seconds=60,.slave_address=1};
@@ -147,19 +155,21 @@ int main(int argc,char **argv) {
     bool fault_sensor=argc==2 && !strcmp(argv[1],"sensor");
     bool stop_rinse=argc==2 && !strcmp(argv[1],"stop-rinse");
     bool recover=argc==2 && !strcmp(argv[1],"recover");
+    bool recover_sensor=argc==2 && !strcmp(argv[1],"recover-sensor");
     bool periodic=argc==2 && !strcmp(argv[1],"periodic");
     bool daily=argc==2 && !strcmp(argv[1],"daily");
-    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover && !periodic && !daily)) {
-        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|periodic|daily|calibration]\n"); return 2;
+    if(argc>2 || (argc==2 && !fault_interlock && !fault_sensor && !stop_rinse && !recover && !recover_sensor && !periodic && !daily)) {
+        fprintf(stderr,"usage: tp_simulator [interlock|sensor|stop-rinse|recover|recover-sensor|periodic|daily|calibration]\n"); return 2;
     }
-    plant x={.temperature=20,.interlock=true};
+    plant x={.temperature=20,.interlock=true,.adc_ready=true};
     tp_hal hal={&x,valves,pump,pump_poll,temperature,heater,adc,interlock,safe};
     tp_calibration calibration={1,0,0,0.01f,10};
     tp_pid pid={.kp=0.2f,.ki=0.02f,.output_max=1,.integral_max=20};
     tp_controller controller; tp_init(&controller,&hal,&calibration,&pid,80);
     tp_service service;
     if(tp_service_init(&service,&controller,recipe,sizeof(recipe)/sizeof(recipe[0]),0)!=TP_OK ||
-       tp_service_attach_preflight(&service,&x,preflight)!=TP_OK) return 1;
+       tp_service_attach_preflight(&service,&x,preflight)!=TP_OK ||
+       tp_service_attach_adc_recovery(&service,&x,recover_adc)!=TP_OK) return 1;
     tp_modbus modbus={&service,1,tp_service_read_holding,tp_service_write_holding};
     bool automatic=periodic || daily;
     if(automatic) {
@@ -171,7 +181,7 @@ int main(int argc,char **argv) {
         (automatic && controller.state==TP_IDLE));x.now+=50) {
         x.temperature+=(x.heater*2.0f-(x.temperature-20)*0.02f)*0.05f;
         if((fault_interlock || recover) && x.pump_active) x.interlock=false;
-        if(fault_sensor && recipe[controller.index].kind==TP_STEP_READ) x.sensor_error=true;
+        if((fault_sensor || recover_sensor) && recipe[controller.index].kind==TP_STEP_READ) x.sensor_error=true;
         if(stop_rinse && x.pump_active && x.valves==RINSE && command(&modbus,2)!=TP_OK) return 1;
         if(controller.awaiting_advance && (automatic || command(&modbus,5)!=TP_OK)) return 1;
         tp_service_tick(&service,x.now,daily,946684800LL+(int64_t)(x.now/1000u));
@@ -182,6 +192,23 @@ int main(int argc,char **argv) {
                    (unsigned long)controller.index,(double)x.temperature,(double)x.heater);
             last=controller.index;
         }
+    }
+    if(recover_sensor) {
+        if(controller.state!=TP_FAILED || controller.fault!=TP_FAULT_SENSOR ||
+           x.valves || x.heater!=0 || x.pump_active || x.adc_ready) return 1;
+        /* Clearing fails while ADC configuration is invalid; recovery also fails
+         * while the simulated physical problem is present. */
+        if(command(&modbus,3)==TP_OK || command(&modbus,8)==TP_OK) return 1;
+        x.sensor_error=false;
+        if(command(&modbus,8)!=TP_OK || command(&modbus,3)!=TP_OK ||
+           command(&modbus,1)!=TP_OK) return 1;
+        x.pump_count=0;
+        for(;x.now<60000 && controller.state==TP_RUNNING;x.now+=50) {
+            x.temperature+=(x.heater*2.0f-(x.temperature-20)*0.02f)*0.05f;
+            if(controller.awaiting_advance && command(&modbus,5)!=TP_OK) return 1;
+            tp_service_tick(&service,x.now,false,0);
+        }
+        printf("sensor recovery: ADC restored, fault cleared, measurement restarted\n");
     }
     if(recover) {
         if(controller.state!=TP_FAILED || controller.fault!=TP_FAULT_INTERLOCK ||

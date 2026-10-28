@@ -10,6 +10,6 @@
 
 ## 主机模拟
 
-在本目录用 CMake 构建主机目标后，运行 `build/tp_simulator`（Windows 为 `build/tp_simulator.exe`）观察受控模式下的阀门、泵、加热、采样和浓度计算；追加 `interlock` 或 `sensor` 参数可注入对应故障，`stop-rinse` 可在清洗泵运行时发送停机命令。示例依次模拟取样、空白和浊度读取、加试剂、加热保温、反应读数、计算、清洗和排液；阀位与泵参数只是演示值。程序以 Modbus RTU 帧发送启动和逐步命令，输出步骤、模拟温度和最终状态，并在运行结束时检查安全输出。运行 `build/tp_simulator calibration` 可演示模拟两点自动标定、应用和标液核查。`ctest --test-dir build --output-on-failure` 包含上述模拟场景。模拟时间不依赖真实时钟。
+在本目录用 CMake 构建主机目标后，运行 `build/tp_simulator`（Windows 为 `build/tp_simulator.exe`）观察受控模式下的阀门、泵、加热、采样和浓度计算；追加 `interlock` 或 `sensor` 参数可注入对应故障，`stop-rinse` 可在清洗泵运行时发送停机命令。示例依次模拟取样、空白和浊度读取、加试剂、加热保温、反应读数、计算、清洗和排液；阀位与泵参数只是演示值。程序以 Modbus RTU 帧发送启动和逐步命令，输出步骤、模拟温度和最终状态，并在运行结束时检查安全输出。运行 `build/tp_simulator recover` 或 `build/tp_simulator recover-sensor` 可分别演示互锁及 ADC 故障恢复，后者依次模拟排除故障、恢复 ADC 配置、清故障并重新启动。运行 `build/tp_simulator calibration` 可演示模拟两点自动标定、应用和标液核查。`ctest --test-dir build --output-on-failure` 包含上述模拟场景。模拟时间不依赖真实时钟。
 
 示例的配方、温度模型、光信号和标定系数均为人为构造，仅用于学习软件调用关系，不能作为仪器配方、硬件性能或测量准确度的依据。它不模拟 FreeRTOS 调度、串口时序或真实器件通信。

@@ -23,7 +23,8 @@ cloud = load('cloud', 'cloud.py')
 class CloudTest(unittest.TestCase):
     def setUp(self):
         self.status = {'state': 2, 'fault': 0, 'step': 15, 'start_result': 0,
-                       'result_valid': True, 'concentration_mg_l': 0.3}
+                       'result_valid': True, 'concentration_mg_l': 0.3,
+                       'save_status': 3, 'waiting_next': 1, 'preflight_faults': 128}
 
     def test_property_message(self):
         class Client:
@@ -37,6 +38,9 @@ class CloudTest(unittest.TestCase):
         self.assertEqual(client.message['method'], 'thing.event.property.post')
         self.assertEqual(client.message['params']['Concentration'], 0.3)
         self.assertEqual(client.message['params']['ResultValid'], 1)
+        self.assertEqual(client.message['params']['SaveStatus'], 3)
+        self.assertEqual(client.message['params']['WaitingNext'], 1)
+        self.assertEqual(client.message['params']['PreflightFaults'], 128)
 
     def test_invalid_or_nonfinite_concentration(self):
         self.status['result_valid'] = False

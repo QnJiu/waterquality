@@ -10,6 +10,9 @@ def property_message(status, message_id):
         "Step": status["step"],
         "StartResult": status["start_result"],
         "ResultValid": int(status["result_valid"]),
+        "SaveStatus": status["save_status"],
+        "WaitingNext": status["waiting_next"],
+        "PreflightFaults": status["preflight_faults"],
     }
     if status["result_valid"]:
         value = status["concentration_mg_l"]

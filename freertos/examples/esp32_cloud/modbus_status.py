@@ -19,7 +19,7 @@ def request(address, start, count):
 
 
 def status_request(address):
-    return request(address, 10, 7)
+    return request(address, 10, 10)
 
 
 def parse_status(frame, address):
@@ -29,11 +29,13 @@ def parse_status(frame, address):
         raise ValueError("wrong Modbus address")
     if frame[1] == 0x83 and len(frame) == 5:
         raise ValueError("Modbus exception %d" % frame[2])
-    if len(frame) != 19 or frame[1] != 3 or frame[2] != 14:
+    if len(frame) != 25 or frame[1] != 3 or frame[2] != 20:
         raise ValueError("unexpected Modbus response")
-    state, fault, step, start_result, concentration, valid = struct.unpack(">HHHHfH", frame[3:-2])
+    state, fault, step, start_result, concentration, valid, save_status, waiting_next, preflight_faults = struct.unpack(">HHHHfHHHH", frame[3:-2])
     return {"state": state, "fault": fault, "step": step,
             "start_result": start_result, "result_valid": bool(valid),
+            "save_status": save_status, "waiting_next": waiting_next,
+            "preflight_faults": preflight_faults,
             "concentration_mg_l": concentration if valid else None}
 
 
@@ -70,7 +72,7 @@ def read_frame(uart, direction, address, clock, start, count, timeout_ms):
 
 
 def read_status(uart, direction, address, clock, timeout_ms=1000):
-    return parse_status(read_frame(uart, direction, address, clock, 10, 7, timeout_ms), address)
+    return parse_status(read_frame(uart, direction, address, clock, 10, 10, timeout_ms), address)
 
 
 def parse_confirmed_version(frame, address):

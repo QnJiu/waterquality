@@ -40,13 +40,14 @@ class UART:
 
 class StatusTest(unittest.TestCase):
     def test_read_status_and_direction(self):
-        payload = struct.pack('>BBBHHHHfH', 1, 3, 14, 2, 0, 15, 0, 0.301, 1)
+        payload = struct.pack('>BBBHHHHfHHHH', 1, 3, 20, 2, 0, 15, 0, 0.301, 1, 3, 1, 128)
         uart, direction = UART(response(payload)), Direction()
         status = mod.read_status(uart, direction, 1, Clock())
-        self.assertEqual(uart.written.hex(), '0103000a0007240a')
+        self.assertEqual(uart.written, mod.request(1, 10, 10))
         self.assertEqual(direction.levels, [1, 0])
         self.assertEqual(status['state'], 2)
         self.assertTrue(status['result_valid'])
+        self.assertEqual((status['save_status'], status['waiting_next'], status['preflight_faults']), (3, 1, 128))
         self.assertAlmostEqual(status['concentration_mg_l'], 0.301, places=5)
 
     def test_confirmed_version_is_read_from_separate_registers(self):
@@ -62,7 +63,7 @@ class StatusTest(unittest.TestCase):
             mod.parse_confirmed_version(b'\x01\x03\x06' + bytes(8), 1)
 
     def test_invalid_result_is_not_reported(self):
-        payload = struct.pack('>BBBHHHHfH', 1, 3, 14, 3, 2, 0, 0, 12.0, 0)
+        payload = struct.pack('>BBBHHHHfHHHH', 1, 3, 20, 3, 2, 0, 0, 12.0, 0, 0, 0, 32768)
         self.assertIsNone(mod.parse_status(response(payload), 1)['concentration_mg_l'])
 
     def test_exception_crc_and_timeout(self):

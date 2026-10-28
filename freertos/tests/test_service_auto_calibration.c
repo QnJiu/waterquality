@@ -4,7 +4,7 @@
 #include <math.h>
 #include <stdio.h>
 
-typedef struct { unsigned reads,checks,safe,saves; bool fail_second; tp_config saved; } fake;
+typedef struct { unsigned reads,checks,safe,saves,recoveries; bool fail_second; tp_config saved; } fake;
 static tp_result valves(void *p,uint32_t m) {(void)p;(void)m;return TP_OK;}
 static tp_result pump(void *p,int32_t n,uint32_t hz) {(void)p;(void)n;(void)hz;return TP_OK;}
 static tp_result poll(void *p,bool *done) {(void)p;*done=true;return TP_OK;}
@@ -19,6 +19,7 @@ static void safe(void *p) {((fake *)p)->safe++;}
 static tp_result preflight(void *p,uint16_t *faults) {
     fake *f=p; f->checks++; *faults=(f->fail_second && f->checks==2) ? TP_PREFLIGHT_REAGENT : 0; return TP_OK;
 }
+static tp_result recover(void *p) { ((fake *)p)->recoveries++; return TP_OK; }
 static tp_result save(void *p,const tp_config *cfg) {fake *f=p; f->saved=*cfg; f->saves++; return TP_OK;}
 static uint16_t crc(const uint8_t *p,size_t n) {
     uint16_t c=0xffff; while(n--) {c^=*p++; for(unsigned i=0;i<8;i++) c=(uint16_t)((c>>1)^((c&1)?0xa001:0));} return c;
@@ -42,6 +43,7 @@ int main(void) {
                    .max_temperature_c=100,.period_seconds=1,.slave_address=1};
     assert(tp_service_attach_config(&s,&cfg,&f,save)==TP_OK);
     assert(tp_service_attach_preflight(&s,&f,preflight)==TP_OK);
+    assert(tp_service_attach_adc_recovery(&s,&f,recover)==TP_OK);
     assert(tp_service_attach_auto_calibration(&s,recipe,4,recipe,4,0,5,0.01f)==TP_OK);
     tp_modbus m={&s,1,tp_service_read_holding,tp_service_write_holding}; uint8_t r[32];
     exchange(&m,6,0,6,r); assert(r[1]==6 && s.auto_cal.state==TP_AUTO_CAL_LOW);
@@ -74,6 +76,27 @@ int main(void) {
     uint16_t controlled[]={TP_MODE_CONTROLLED,0,1,0,0};
     assert(tp_service_write_holding(&s,1,5,controlled)==TP_OK);
     assert(tp_service_attach_auto_standard(&s,recipe,4,0,0.01f)==TP_OK);
+    /* Model the boundary where the controller is complete but the owning
+     * automatic operation has not yet published its final state. */
+    uint16_t words[27], points[18]={0}, check[10]={0};
+    assert(tp_service_read_holding(&s,20,27,words)==TP_OK);
+    for (unsigned kind=0;kind<2;kind++) {
+        c.state=TP_COMPLETE;
+        s.auto_cal.state=kind ? TP_AUTO_CAL_COMPLETE : TP_AUTO_CAL_LOW;
+        s.auto_standard.state=kind ? TP_STANDARD_RUNNING : TP_STANDARD_IDLE;
+        unsigned saves=f.saves, safes=f.safe;
+        uint16_t save_cmd=4, recovery_cmd=8, cal_cmd=6, apply_cmd=7;
+        assert(tp_service_write_holding(&s,0,1,&save_cmd)==TP_BUSY);
+        assert(tp_service_write_holding(&s,0,1,&recovery_cmd)==TP_BUSY);
+        assert(tp_service_write_holding(&s,0,1,&cal_cmd)==TP_BUSY);
+        assert(tp_service_write_holding(&s,0,1,&apply_cmd)==TP_BUSY);
+        assert(tp_service_write_holding(&s,20,27,words)!=TP_OK);
+        assert(tp_service_write_holding(&s,70,18,points)!=TP_OK);
+        assert(tp_service_write_holding(&s,92,10,check)==TP_BUSY);
+        assert(tp_service_write_holding(&s,1,5,controlled)==TP_BUSY);
+        assert(f.saves==saves && f.safe==safes && f.recoveries==0);
+    }
+    s.auto_cal.state=TP_AUTO_CAL_COMPLETE; s.auto_standard.state=TP_STANDARD_IDLE;
     f.reads=0; f.checks=0;
     exchange(&m,6,0,9,r); assert(r[1]==6 && s.auto_standard.state==TP_STANDARD_RUNNING);
     exchange(&m,6,0,6,r); assert(r[1]==0x86);

@@ -54,7 +54,7 @@ tp_result tp_service_attach_auto_calibration(tp_service *s,
 }
 static tp_result start_auto_cal(tp_service *s) {
     if (!s->cal_attached || !s->request_save) return TP_INVALID;
-    if (s->maintenance || s->save_status==2 || calibration_running(s) ||
+    if (s->maintenance || s->save_status==2 || calibration_running(s) || standard_running(s) ||
         s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED) return TP_BUSY;
     tp_auto_calibration candidate;
     tp_result r=tp_auto_cal_init(&candidate,s->controller,s->cal_recipes[0],s->cal_lengths[0],
@@ -160,7 +160,8 @@ static void config_words(const tp_config *c, uint16_t *v) {
     v[24]=(uint16_t)(c->period_seconds>>16); v[25]=(uint16_t)c->period_seconds; v[26]=c->slave_address;
 }
 static tp_result set_config_words(tp_service *s, const uint16_t *v) {
-    if (!s->request_save || s->controller->state==TP_RUNNING || s->save_status==2 || v[26]>255)
+    if (!s->request_save || s->controller->state==TP_RUNNING || calibration_running(s) ||
+        standard_running(s) || s->save_status==2 || v[26]>255)
         return TP_INVALID;
     tp_config c = s->config;
     c.calibration.slope=word_float(v); c.calibration.intercept=word_float(v+2);
@@ -174,8 +175,8 @@ static tp_result set_config_words(tp_service *s, const uint16_t *v) {
 }
 /* Apply both standards atomically; the normal configuration save remains explicit. */
 static tp_result calibrate_words(tp_service *s, const uint16_t *v) {
-    if (!s->request_save || s->controller->state==TP_RUNNING || s->save_status==2)
-        return TP_INVALID;
+    if (!s->request_save || s->controller->state==TP_RUNNING || calibration_running(s) ||
+        standard_running(s) || s->save_status==2) return TP_INVALID;
     tp_calibration_point low={word_float(v),word_float(v+2),word_float(v+4),word_float(v+6)};
     tp_calibration_point high={word_float(v+8),word_float(v+10),word_float(v+12),word_float(v+14)};
     tp_config candidate=s->config;
@@ -185,7 +186,8 @@ static tp_result calibrate_words(tp_service *s, const uint16_t *v) {
     apply_config(s,&candidate); s->save_status=1; return TP_OK;
 }
 static tp_result check_standard_words(tp_service *s,const uint16_t *v) {
-    if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s)) return TP_BUSY;
+    if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s) ||
+        standard_running(s)) return TP_BUSY;
     tp_calibration_point point={word_float(v),word_float(v+2),word_float(v+4),word_float(v+6)};
     float actual; bool passed;
     s->standard_check_status=0; s->standard_check_actual=0;
@@ -196,7 +198,8 @@ static tp_result check_standard_words(tp_service *s,const uint16_t *v) {
 }
 static tp_result apply_auto_cal(tp_service *s) {
     if (!s->cal_attached || !s->request_save || s->maintenance || s->save_status==2 ||
-        s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED) return TP_BUSY;
+        s->controller->state==TP_RUNNING || s->controller->state==TP_FAILED ||
+        calibration_running(s) || standard_running(s)) return TP_BUSY;
     tp_config candidate=s->config;
     if (tp_auto_cal_result(&s->auto_cal,&candidate.calibration)!=TP_OK ||
         tp_config_validate(&candidate)!=TP_OK) return TP_INVALID;
@@ -330,11 +333,13 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
             return run_preflight(s);
         case 8:
             if (!s->recover_adc) return TP_INVALID;
-            if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s)) return TP_BUSY;
+            if (s->maintenance || s->controller->state==TP_RUNNING || calibration_running(s) ||
+                standard_running(s)) return TP_BUSY;
             s->controller->hal.safe_outputs(s->controller->hal.ctx);
             return s->recover_adc(s->recover_ctx);
         case 4:
-            if (!s->request_save || s->save_status==2 || s->controller->state==TP_RUNNING) return TP_BUSY;
+            if (!s->request_save || s->save_status==2 || s->controller->state==TP_RUNNING ||
+                calibration_running(s) || standard_running(s)) return TP_BUSY;
             if (s->request_save(s->save_ctx,&s->config)!=TP_OK) { s->save_status=4; return TP_IO_ERROR; }
             s->save_status=2; return TP_OK;
         default: return TP_INVALID;
@@ -352,6 +357,7 @@ tp_result tp_service_write_holding(void *ctx, uint16_t address, uint16_t count, 
     if (address==92 && count==10) return check_standard_words(s,v);
     /* The schedule block must be written in one FC16 request; no partial changes. */
     if (address != 1 || count != 5 || v[0] > TP_MODE_DAILY || s->save_status == 2) return TP_INVALID;
+    if (calibration_running(s) || standard_running(s)) return TP_BUSY;
     uint32_t seconds = join(v[1], v[2]);
     if (seconds > 0x7fffffffu / 1000u || (s->request_save && !seconds)) return TP_INVALID;
     int32_t signed_offset = v[4] <= 32767u ? v[4] : (int32_t)v[4] - 65536;

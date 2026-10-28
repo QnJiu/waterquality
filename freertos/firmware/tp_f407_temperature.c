@@ -41,7 +41,7 @@ static void temperature_task(void *arg) {
 }
 tp_result tp_f407_temperature_start(tp_f407_temperature *s,uint32_t max_age,
                                     uint16_t stack,UBaseType_t priority) {
-    if (!s || instance || max_age<50u || max_age>0x7fffffffu || !stack ||
+    if (!s || instance || max_age<50u || max_age>0x7fffffffu || !stack || priority>=configMAX_PRIORITIES ||
         SystemCoreClock!=16000000u || (RCC->CFGR & (RCC_CFGR_SWS | RCC_CFGR_HPRE | RCC_CFGR_PPRE2)) ||
         xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
     s->samples=xQueueCreate(1,sizeof(tp_temperature_sample));

@@ -38,6 +38,7 @@ tp_result tp_freertos_subordinate_tick(tp_freertos_subordinate *s,uint32_t us,ui
 static void wake(void *ctx,bool active) { assert(ctx==&wake_changes); wake_level=active; wake_changes++; }
 int main(void) {
     tp_f407_uart4_subordinate u;
+    assert(tp_f407_uart4_subordinate_init(&u,50,20,100,1,128,configMAX_PRIORITIES)==TP_INVALID);
     assert(tp_f407_uart4_subordinate_init(&u,50,20,100,1,128,2)==TP_OK);
     assert(tp_f407_uart4_subordinate_set_wakeup(&u,&wake_changes,wake,19)==TP_INVALID);
     assert(tp_f407_uart4_subordinate_set_wakeup(&u,&wake_changes,wake,3)==TP_OK);

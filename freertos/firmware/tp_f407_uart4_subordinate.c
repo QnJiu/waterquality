@@ -128,7 +128,7 @@ static void uart_task(void *ctx) {
 tp_result tp_f407_uart4_subordinate_init(tp_f407_uart4_subordinate *u,
     uint32_t period,uint32_t timeout,uint32_t freshness,uint32_t first,
     uint16_t stack_words,UBaseType_t priority) {
-    if(!u || instance || !stack_words || xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED)
+    if(!u || instance || !stack_words || priority>=configMAX_PRIORITIES || xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED)
         return TP_INVALID;
     tp_result r=tp_f407_timebase_init(); if(r!=TP_OK) return r;
     memset(u,0,sizeof(*u));

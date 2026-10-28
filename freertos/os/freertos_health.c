@@ -21,7 +21,7 @@ static void supervisor(void *arg) {
 tp_result tp_freertos_health_start(tp_freertos_health *h,const uint32_t *timeouts,uint8_t count,
     uint32_t period,uint16_t stack,UBaseType_t priority,void *ctx,
     void (*feed)(void *),void (*fault)(void *,uint32_t)) {
-    if(!h || !timeouts || !period || !stack || !feed ||
+    if(!h || !timeouts || !period || !stack || !feed || priority>=configMAX_PRIORITIES ||
        xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
     tp_health checked;
     if(tp_health_init(&checked,timeouts,count)!=TP_OK) return TP_INVALID;

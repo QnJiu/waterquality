@@ -27,7 +27,7 @@ static void poll_clock(void *arg) {
 tp_result tp_freertos_clock_start(tp_freertos_clock *clock,tp_ds3231 *rtc,
     uint32_t poll_ms,uint32_t max_age_ms,uint16_t stack_words,UBaseType_t priority) {
     if (!clock || !rtc || !poll_ms || poll_ms>0x7fffffffu ||
-        max_age_ms<poll_ms || max_age_ms>0x7fffffffu || !stack_words ||
+        max_age_ms<poll_ms || max_age_ms>0x7fffffffu || !stack_words || priority>=configMAX_PRIORITIES ||
         xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
     clock->rtc=rtc; clock->poll_ms=poll_ms; clock->max_age_ms=max_age_ms; clock->task=NULL;
     clock->set_requests=NULL; clock->set_status=1;

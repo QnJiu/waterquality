@@ -213,7 +213,7 @@ tp_result tp_runtime_enable_startup_preflight(tp_freertos_runtime *rt, uint32_t 
     return TP_OK;
 }
 tp_result tp_runtime_start(tp_freertos_runtime *rt, uint16_t stack_words, UBaseType_t priority) {
-    if (!rt || !rt->requests || !rt->stops || rt->owner || !stack_words) return TP_INVALID;
+    if (!rt || !rt->requests || !rt->stops || rt->owner || !stack_words || priority>=configMAX_PRIORITIES) return TP_INVALID;
     if (rt->save_requests && xTaskCreate(storage_task, "tp-storage", stack_words, rt,
                                          priority > 0 ? priority - 1 : 0, &rt->storage_task) != pdPASS)
         return TP_IO_ERROR;

@@ -94,7 +94,7 @@ static void uart_task(void *arg) {
 }
 tp_result tp_f407_usart1_rtu_init(tp_f407_usart1_rtu *u,tp_freertos_runtime *rt,
     unsigned port,uint16_t stack_words,UBaseType_t priority) {
-    if (!u || !rt || instance || !stack_words || port>=rt->port_count ||
+    if (!u || !rt || instance || !stack_words || priority>=configMAX_PRIORITIES || port>=rt->port_count ||
         SystemCoreClock!=16000000u || (RCC->CFGR & (RCC_CFGR_SWS | RCC_CFGR_HPRE | RCC_CFGR_PPRE1 | RCC_CFGR_PPRE2)) ||
         xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
     memset(u,0,sizeof(*u)); u->runtime=rt; u->port_number=port;

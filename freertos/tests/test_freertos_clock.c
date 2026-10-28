@@ -41,6 +41,7 @@ tp_result tp_ds3231_read_utc(tp_ds3231 *rtc,int64_t *seconds) {
 #include "../os/freertos_clock.c"
 int main(void) {
     tp_freertos_clock c; tp_ds3231 rtc; uint32_t requested; int64_t now=0;
+    assert(tp_freertos_clock_start(&c,&rtc,1000,3000,128,configMAX_PRIORITIES)==TP_INVALID);
     assert(tp_freertos_clock_start(&c,&rtc,1000,3000,128,1)==TP_OK);
     poll_once(&c,false,0); assert(tp_freertos_clock_now(&c,&now) && now==1700000000);
     assert(tp_freertos_clock_set(&c,0)==TP_INVALID);

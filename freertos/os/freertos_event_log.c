@@ -27,7 +27,7 @@ static void run(void *ctx) {
 }
 tp_result tp_freertos_event_log_start(tp_freertos_event_log *log,const tp_event_log_io *io,
                                       uint16_t stack_words,UBaseType_t priority) {
-    if(!log || !io || !io->read || !io->write || io->size<64 || io->size%32 || !stack_words ||
+    if(!log || !io || !io->read || !io->write || io->size<64 || io->size%32 || !stack_words || priority>=configMAX_PRIORITIES ||
        xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
     memset(log,0,sizeof(*log)); log->io=*io; log->queue=xQueueCreate(TP_EVENT_QUEUE_DEPTH,sizeof(tp_event_log_job));
     if(!log->queue) return TP_IO_ERROR;

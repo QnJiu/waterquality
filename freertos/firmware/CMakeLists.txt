@@ -33,7 +33,7 @@ if(TP_F407_BUSINESS)
 else()
     set(ENTRY main.c)
 endif()
-add_executable(tp_f407.elf ${ENTRY} tp_f407_system_init.c tp_f407_iwdg.c tp_f407_emergency.c tp_f407_app.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_timebase.c tp_f407_usart3_rtu.c tp_f407_uart4_subordinate.c tp_f407_upgrade_uart.c tp_f407_image_flash.c tp_f407_flash_controller.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
+add_executable(tp_f407.elf ${ENTRY} tp_f407_system_init.c tp_f407_handoff.c tp_f407_iwdg.c tp_f407_emergency.c tp_f407_app.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_timebase.c tp_f407_usart3_rtu.c tp_f407_uart4_subordinate.c tp_f407_upgrade_uart.c tp_f407_image_flash.c tp_f407_flash_controller.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${KERNEL}/tasks.c ${KERNEL}/queue.c ${KERNEL}/list.c ${KERNEL}/timers.c
     ${KERNEL}/portable/GCC/ARM_CM4F/port.c ${KERNEL}/portable/MemMang/heap_4.c
@@ -49,7 +49,7 @@ target_compile_options(tp_f407.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp
     -mfloat-abi=hard -ffunction-sections -fdata-sections)
 target_link_options(tp_f407.elf PRIVATE -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16
     -mfloat-abi=hard --specs=nosys.specs -Wl,--defsym=TP_FLASH_ORIGIN=${TP_FLASH_ORIGIN} -Wl,--defsym=TP_FLASH_LENGTH=${TP_FLASH_LENGTH} -T${CMAKE_CURRENT_LIST_DIR}/stm32f407vg.ld
-    -Wl,--gc-sections -Wl,--undefined=tp_boot_target_prepare -Wl,--undefined=tp_upgrade_fram_init -Wl,--undefined=tp_upgrade_fram_store -Wl,--undefined=tp_f407_app_init -Wl,--undefined=tp_f407_upgrade_uart_init -Wl,--undefined=tp_image_sha256_verify -Wl,--undefined=tp_f407_flash_controller_init -Wl,--undefined=tp_f407_image_write -Wl,--undefined=tp_f407_image_erase -Wl,--undefined=tp_secure_upgrade_init -Wl,--undefined=tp_signed_boot_verify -Wl,--undefined=tp_signed_boot_download_verify -Wl,--undefined=tp_signed_boot_authenticate -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/tp_f407.map)
+    -Wl,--gc-sections -Wl,--undefined=tp_f407_handoff -Wl,--undefined=tp_boot_target_prepare -Wl,--undefined=tp_upgrade_fram_init -Wl,--undefined=tp_upgrade_fram_store -Wl,--undefined=tp_f407_app_init -Wl,--undefined=tp_f407_upgrade_uart_init -Wl,--undefined=tp_image_sha256_verify -Wl,--undefined=tp_f407_flash_controller_init -Wl,--undefined=tp_f407_image_write -Wl,--undefined=tp_f407_image_erase -Wl,--undefined=tp_secure_upgrade_init -Wl,--undefined=tp_signed_boot_verify -Wl,--undefined=tp_signed_boot_download_verify -Wl,--undefined=tp_signed_boot_authenticate -Wl,-Map=${CMAKE_CURRENT_BINARY_DIR}/tp_f407.map)
 target_link_libraries(tp_f407.elf PRIVATE m)
 add_custom_command(TARGET tp_f407.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:tp_f407.elf> ${CMAKE_CURRENT_BINARY_DIR}/tp_f407.bin

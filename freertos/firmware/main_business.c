@@ -3,6 +3,9 @@
 #include "stm32f4xx.h"
 #include "tp_f407_board_config.h"
 #include "tp_f407_emergency.h"
+#ifdef TP_F407_DIAGNOSTICS
+#include "tp_f407_diagnostics.h"
+#endif
 
 /* Inspect in a debugger after a failed start. */
 volatile tp_result tp_startup_result = TP_BUSY;
@@ -27,6 +30,10 @@ int main(void) {
     if(tp_startup_result!=TP_OK) halt();
     tp_startup_result=tp_f407_app_init(&app,&options);
     if(tp_startup_result!=TP_OK) halt();
+#ifdef TP_F407_DIAGNOSTICS
+    tp_startup_result=tp_f407_diagnostics_start(&app);
+    if(tp_startup_result!=TP_OK) halt();
+#endif
     vTaskStartScheduler();
     halt();
 }

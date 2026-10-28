@@ -1,9 +1,14 @@
 #include "tp_service.h"
+#include "tp_modbus.h"
 #include <assert.h>
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
 static void set_float(uint16_t *p,float f) { uint32_t b; memcpy(&b,&f,4); p[0]=(uint16_t)(b>>16); p[1]=(uint16_t)b; }
+static uint16_t crc(const uint8_t *p,size_t n) {
+    uint16_t c=0xffff; while(n--) { c^=*p++; for(unsigned i=0;i<8;i++) c=(uint16_t)((c>>1)^((c&1)?0xa001:0)); } return c;
+}
+static void append_crc(uint8_t *p,size_t n) { uint16_t c=crc(p,n); p[n]=(uint8_t)c; p[n+1]=(uint8_t)(c>>8); }
 static tp_config captured;
 static tp_result save(void *ctx,const tp_config *cfg) { (void)ctx; captured=*cfg; return TP_OK; }
 int main(void) {
@@ -45,5 +50,24 @@ int main(void) {
     assert(fabsf(captured.calibration.slope-5)<0.0001f);
     assert(tp_service_write_holding(&s,70,18,standards)==TP_INVALID);
     tp_service_save_complete(&s,TP_OK);
+    /* Exercise the complete RTU frame path, including readback and rejection. */
+    tp_modbus port={&s,1,tp_service_read_holding,tp_service_write_holding};
+    uint8_t request[45]={1,16,0,70,0,18,36}, response[32]; size_t n;
+    for (unsigned i=0;i<18;i++) { request[7+2*i]=(uint8_t)(standards[i]>>8); request[8+2*i]=(uint8_t)standards[i]; }
+    append_crc(request,43);
+    assert(tp_modbus_frame(&port,request,sizeof(request),response,sizeof(response),&n)==TP_OK);
+    assert(n==8 && response[1]==16 && response[3]==70 && response[5]==18 && crc(response,n)==0);
+    uint8_t readback[]={1,3,0,20,0,2,0,0}; append_crc(readback,6);
+    assert(tp_modbus_frame(&port,readback,sizeof(readback),response,sizeof(response),&n)==TP_OK);
+    assert(n==9 && response[1]==3 && response[2]==4 && crc(response,n)==0);
+    uint32_t bits=((uint32_t)response[3]<<24)|((uint32_t)response[4]<<16)|((uint32_t)response[5]<<8)|response[6];
+    float slope; memcpy(&slope,&bits,sizeof(slope)); assert(fabsf(slope-5)<0.0001f);
+    /* Make the high point identical to the low point and verify exception and unchanged configuration. */
+    memcpy(request+7+10*2,request+7+2*2,4); append_crc(request,43);
+    assert(tp_modbus_frame(&port,request,sizeof(request),response,sizeof(response),&n)==TP_OK);
+    assert(n==5 && response[1]==0x90 && response[2]==2 && crc(response,n)==0);
+    assert(fabsf(s.config.calibration.slope-5)<0.0001f);
+    request[44]^=1;
+    assert(tp_modbus_frame(&port,request,sizeof(request),response,sizeof(response),&n)==TP_INVALID && n==0);
     puts("configuration service checks passed"); return 0;
 }

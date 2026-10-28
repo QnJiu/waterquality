@@ -198,6 +198,20 @@ int main(void) {
     clock_state=3;
     tp_service_tick(&s,2,true,1700000000LL);
     assert(c.state==TP_RUNNING && s.schedule.daily_fired);
+    /* A scheduled measurement is skipped while a configuration save is pending. */
+    tp_init(&c,&hal,NULL,NULL,100);
+    assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    saved.mode=TP_MODE_PERIODIC; saved.period_seconds=2;
+    assert(tp_service_attach_config(&s,&saved,NULL,save_config)==TP_OK);
+    assert(tp_service_write_holding(&s,0,1,&save)==TP_OK);
+    s.last_start_result=TP_IO_ERROR;
+    tp_service_tick(&s,2000,false,0);
+    assert(c.state==TP_IDLE && s.last_start_result==TP_IO_ERROR && s.schedule.last_period_ms==2000);
+    tp_service_save_complete(&s,TP_OK);
+    tp_service_tick(&s,3999,false,0);
+    assert(c.state==TP_IDLE);
+    tp_service_tick(&s,4000,false,0);
+    assert(c.state==TP_RUNNING && s.last_start_result==TP_OK);
     puts("service checks passed"); return 0;
 }
 

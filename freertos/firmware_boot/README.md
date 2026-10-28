@@ -19,6 +19,16 @@ cmake --build <构建目录>
 
 使用 `-DTP_BOOT_REFERENCE_BOARD=ON -DTP_BOOT_IDENTITY_SOURCE=<身份源文件绝对路径>` 构建。身份源文件须包含 `tp_f407_boot_identity.h`，定义 `const uint32_t tp_f407_boot_product_id` 和 `const uint8_t tp_f407_boot_public_key[64]`；公钥为 P-256 的大端 X、Y 坐标拼接，产品 ID 非零。启动器自身及公钥需要通过适当的芯片写保护与生产流程保护，不能把公开测试密钥当作可信部署密钥。构建时缺少身份源会报错；空公钥或零产品 ID 会使启动停机，实际签名验证还会检查公钥和签名有效性。不得同时指定自定义板级文件。首次安装仍需可信烧录镜像，并通过受控生产流程安装签名清单与启动元数据；可使用 `../bootloader/README.md` 中的工厂初始化接口。
 
+### 准备工厂身份文件
+
+已有 P-256 PEM 公钥、签名清单和槽位二进制镜像后，可先在电脑上运行（需要 Python `cryptography`）：
+
+```powershell
+python ../tools/prepare_factory.py --public-key public.pem --manifest manifest.bin --image app.bin --output identity.c
+```
+
+工具核对签名、镜像长度和摘要、清单字段及参考 F407 槽位启动向量，然后生成 `TP_BOOT_IDENTITY_SOURCE` 使用的 C 文件；输出文件已存在时拒绝覆盖。公钥须来自可信来源；此工具不生成私钥、不烧录设备，也不能检查实际 Flash 布局或硬件状态。请在同一个可信环境中使用生成的身份文件构建工厂固件及普通启动器。
+
 ### 工厂首次初始化固件
 
 首次安装可单独构建工厂初始化入口，使用 `../tools/sign_manifest.py` 生成与槽位镜像匹配的 TPU1 清单，并提供与普通启动器一致的可信产品身份和公钥。例如，在参考板构建参数中增加：

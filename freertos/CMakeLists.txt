@@ -279,6 +279,7 @@ if(TP_BUILD_HOST_TESTS)
                 "TP_SECURE_SIM_LIB=$<TARGET_FILE:secure_upgrade_simulator>"
                 "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_secure_upgrade_interop.py -v)
             add_test(NAME sign_manifest_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_sign_manifest.py -v)
+            add_test(NAME prepare_factory_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_prepare_factory.py -v)
         endif()
         add_test(NAME upgrade_client_tool COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_upgrade_client.py -v)
         add_test(NAME esp32_gateway COMMAND "${Python3_EXECUTABLE}" -m unittest discover -s "${CMAKE_CURRENT_SOURCE_DIR}/tests" -p test_esp32_gateway.py -v)

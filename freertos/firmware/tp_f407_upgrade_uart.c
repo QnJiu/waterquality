@@ -59,26 +59,29 @@ void USART2_IRQHandler(void) {
     vTaskNotifyGiveFromISR(u->task,&wake);
     portYIELD_FROM_ISR(wake);
 }
+static void upgrade_step(tp_f407_upgrade_uart *u) {
+    taskENTER_CRITICAL();
+    bool lost=u->overflow;
+    if (lost) { u->overflow=false; (void)xQueueReset(u->events); }
+    taskEXIT_CRITICAL();
+    if (lost) tp_upgrade_stream_reset(&u->stream);
+    tp_upgrade_uart_event event;
+    while (xQueueReceive(u->events,&event,0)==pdPASS) {
+        if (u->overflow) break;
+        if (event.error) tp_upgrade_stream_reset(&u->stream);
+        else (void)tp_upgrade_stream_byte(&u->stream,event.byte,event.ms);
+    }
+    taskENTER_CRITICAL();
+    bool idle=!u->overflow && !uxQueueMessagesWaiting(u->events) && !(USART2->SR & RX_FLAGS);
+    uint32_t now=(uint32_t)xTaskGetTickCount();
+    if (idle) tp_upgrade_stream_poll(&u->stream,now);
+    taskEXIT_CRITICAL();
+}
 static void upgrade_task(void *arg) {
     tp_f407_upgrade_uart *u=arg;
     hardware_start();
     for (;;) {
-        taskENTER_CRITICAL();
-        bool lost=u->overflow;
-        if (lost) { u->overflow=false; (void)xQueueReset(u->events); }
-        taskEXIT_CRITICAL();
-        if (lost) tp_upgrade_stream_reset(&u->stream);
-        tp_upgrade_uart_event event;
-        while (xQueueReceive(u->events,&event,0)==pdPASS) {
-            if (u->overflow) break;
-            if (event.error) tp_upgrade_stream_reset(&u->stream);
-            else (void)tp_upgrade_stream_byte(&u->stream,event.byte,event.ms);
-        }
-        taskENTER_CRITICAL();
-        bool idle=!u->overflow && !uxQueueMessagesWaiting(u->events) && !(USART2->SR & RX_FLAGS);
-        uint32_t now=(uint32_t)xTaskGetTickCount();
-        if (idle) tp_upgrade_stream_poll(&u->stream,now);
-        taskEXIT_CRITICAL();
+        upgrade_step(u);
         (void)ulTaskNotifyTake(pdTRUE,pdMS_TO_TICKS(5));
     }
 }

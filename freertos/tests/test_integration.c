@@ -4,13 +4,13 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
-typedef struct { unsigned valve_calls,pump_calls,safe_calls; bool interlock; } fake;
+typedef struct { unsigned valve_calls,pump_calls,safe_calls; bool interlock, adc_bad; } fake;
 static tp_result valve(void *p,uint32_t mask) { fake *f=p; assert(mask==1); f->valve_calls++; return TP_OK; }
 static tp_result pump(void *p,int32_t steps,uint32_t hz) { fake *f=p; assert(steps==10 && hz==100); f->pump_calls++; return TP_OK; }
 static tp_result poll(void *p,bool *done) { (void)p; *done=true; return TP_OK; }
 static tp_result temp(void *p,float *c) { (void)p; *c=20; return TP_OK; }
 static tp_result heater(void *p,float f) { (void)p; (void)f; return TP_OK; }
-static tp_result adc(void *p,uint8_t ch,float *v) { (void)p; const float values[]={1.0f,0.5f,0.1f}; if (ch>=3) return TP_INVALID; *v=values[ch]; return TP_OK; }
+static tp_result adc(void *p,uint8_t ch,float *v) { const float values[]={1.0f,0.5f,0.1f}; if (ch>=3) return TP_INVALID; *v=((fake *)p)->adc_bad ? NAN : values[ch]; return TP_OK; }
 static bool interlock(void *p) { return ((fake *)p)->interlock; }
 static void safe(void *p) { ((fake *)p)->safe_calls++; }
 static uint16_t crc(const uint8_t *p,size_t n) {
@@ -54,6 +54,15 @@ static void measurement_snapshot(void) {
     exchange(&m,3,132,7,response); assert(response[4]==0);
     tp_service_tick(&s,500,false,0);
     exchange(&m,6,0,2,response);
+    exchange(&m,3,132,7,response); assert(response[4]==0);
+    /* After a successful measurement and stop, a bad ADC sample must trip
+     * the controller and cannot publish either the old result or readings. */
+    exchange(&m,6,0,3,response);
+    f.adc_bad=true; unsigned safe_before=f.safe_calls;
+    exchange(&m,6,0,1,response); tp_service_tick(&s,600,false,0);
+    exchange(&m,3,10,7,response);
+    assert(response[4]==TP_FAILED && response[6]==TP_FAULT_SENSOR && response[16]==0);
+    assert(f.safe_calls==safe_before+1);
     exchange(&m,3,132,7,response); assert(response[4]==0);
 }
 

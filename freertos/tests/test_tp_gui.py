@@ -6,6 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'tools'))
+from tp_modbus import ModbusError
 from tp_gui import App, read_status, read_calibration_status, read_clock_status, read_event, parse_config, CONFIG_LABELS
 
 
@@ -20,6 +21,9 @@ class FakeClient:
 
     def maintenance_status(self):
         return None
+
+    def readings(self):
+        return {'blank': 1.25 if self.valid else None, 'reacted': None, 'turbidity': 0.5 if self.valid else None}
 
     def read(self, address, count):
         self.calls.append((address, count))
@@ -38,6 +42,18 @@ class StatusTest(unittest.TestCase):
         self.assertIn('25.50 °C', text)
         self.assertIn('等待下一步：是', text)
         self.assertIn('升级维护：未知', text)
+        self.assertIn('空白：1.2500', text)
+        self.assertIn('反应后：无', text)
+        self.assertIn('浊度：0.5000', text)
+
+    def test_old_device_and_other_errors(self):
+        client = FakeClient(1)
+        def unsupported(): raise ModbusError('device exception 2')
+        client.readings = unsupported
+        self.assertIn('设备不支持采样信号查询', read_status(client))
+        def failure(): raise ModbusError('device exception 4')
+        client.readings = failure
+        with self.assertRaises(ModbusError): read_status(client)
 
     def test_invalid_values_are_not_displayed(self):
         text = read_status(FakeClient(0))

@@ -7,14 +7,22 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
-from tp_modbus import Client, FLOAT_FIELDS, float32
+from tp_modbus import Client, FLOAT_FIELDS, ModbusError, float32
 
 
 def read_status(client):
-    """The temperature and status are separate snapshots."""
+    """Status, temperature and signal readings are separate snapshots."""
     v = client.read(10, 10)
     t = client.read(128, 3)
     maintenance = client.maintenance_status()
+    try:
+        readings = client.readings()
+        signal = '  '.join('%s：%s' % (label, '无' if readings[name] is None else '%.4f' % readings[name])
+                           for name, label in (('blank', '空白'), ('reacted', '反应后'), ('turbidity', '浊度')))
+    except ModbusError as error:
+        if str(error) != 'device exception 2':
+            raise
+        signal = '设备不支持采样信号查询'
     states = ('空闲', '运行', '完成', '故障')
     state = states[v[0]] if v[0] < len(states) else str(v[0])
     result = '%.3f mg/L' % float32(v[4], v[5]) if v[6] == 1 else '无有效结果'
@@ -22,9 +30,9 @@ def read_status(client):
     return ('状态：%s  故障码：%d  步骤：%d\n'
             '最近启动结果：%d  浓度：%s\n'
             '保存状态：%d  等待下一步：%s  自检故障位：0x%04X\n'
-            '温度：%s  升级维护：%s') % (state, v[1], v[2], v[3], result, v[7],
+            '温度：%s  升级维护：%s\n采样信号：%s') % (state, v[1], v[2], v[3], result, v[7],
                               '是' if v[8] == 1 else '否', v[9], temp,
-                              '未知' if maintenance is None else '是' if maintenance else '否')
+                              '未知' if maintenance is None else '是' if maintenance else '否', signal)
 
 
 def read_calibration_status(client):

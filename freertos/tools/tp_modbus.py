@@ -35,6 +35,12 @@ class Client:
             raise ValueError('invalid slave address or timeout')
         self.port, self.address, self.timeout = port, address, timeout
 
+    def readings(self):
+        """Read the three signals and their validity mask in one request."""
+        words = self.read(132, 7)
+        return {name: float32(words[1+2*i], words[2+2*i]) if words[0] & (1 << i) else None
+                for i, name in enumerate(('blank', 'reacted', 'turbidity'))}
+
     def maintenance_status(self):
         """Return None when older firmware does not implement this register."""
         try:
@@ -263,9 +269,7 @@ def main(argv=None):
             elif args.action == 'clock-status':
                 print(json.dumps(client.clock_status()))
             elif args.action == 'readings':
-                words = client.read(132, 7)
-                print(json.dumps({name: float32(words[1+2*i], words[2+2*i]) if words[0] & (1 << i) else None
-                                  for i, name in enumerate(('blank', 'reacted', 'turbidity'))}))
+                print(json.dumps(client.readings()))
             elif args.action == 'temperature':
                 valid, high, low = client.read(128, 3)
                 print(json.dumps({'temperature_c': float32(high, low) if valid else None}))

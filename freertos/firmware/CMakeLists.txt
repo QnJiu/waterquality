@@ -5,14 +5,26 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(ROOT ${CMAKE_CURRENT_LIST_DIR}/..)
 set(KERNEL ${ROOT}/third_party/FreeRTOS-Kernel)
 set(DEVICE ${ROOT}/third_party/STM32F4-CMSIS)
-add_executable(tp_f407.elf main.c tp_f407_iwdg.c tp_f407_emergency.c tp_f407_app.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_usart3_rtu.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
+option(TP_F407_BUSINESS "Build the configured business entry point" OFF)
+set(TP_F407_BOARD_CONFIG "" CACHE FILEPATH "Board configuration implementation")
+if(TP_F407_BUSINESS)
+    set(ENTRY main_business.c)
+    if(TP_F407_BOARD_CONFIG)
+        list(APPEND ENTRY "${TP_F407_BOARD_CONFIG}")
+    else()
+        list(APPEND ENTRY tp_f407_unconfigured.c)
+    endif()
+else()
+    set(ENTRY main.c)
+endif()
+add_executable(tp_f407.elf ${ENTRY} tp_f407_iwdg.c tp_f407_emergency.c tp_f407_app.c tp_f407_i2c.c tp_f407_ads1220_spi.c tp_f407_usart3_rtu.c tp_f407_valves.c tp_f407_pump.c tp_f407_heater.c tp_f407_temperature.c
     ${DEVICE}/Source/startup_stm32f407xx.s ${DEVICE}/Source/system_stm32f4xx.c
     ${KERNEL}/tasks.c ${KERNEL}/queue.c ${KERNEL}/list.c ${KERNEL}/timers.c
     ${KERNEL}/portable/GCC/ARM_CM4F/port.c ${KERNEL}/portable/MemMang/heap_4.c
     ${ROOT}/os/freertos_health.c ${ROOT}/os/freertos_runtime.c ${ROOT}/os/freertos_event_log.c ${ROOT}/os/freertos_clock.c ${ROOT}/app/preflight.c ${ROOT}/app/health.c ${ROOT}/app/event_transition.c ${ROOT}/app/clock_cache.c ${ROOT}/app/valve_policy.c ${ROOT}/app/pulse_counter.c ${ROOT}/app/heater_duty.c ${ROOT}/app/controller.c ${ROOT}/app/measurement.c
     ${ROOT}/app/schedule.c ${ROOT}/app/service.c ${ROOT}/storage/config_store.c ${ROOT}/storage/event_log.c ${ROOT}/drivers/mb85rc16.c ${ROOT}/drivers/ds3231.c ${ROOT}/drivers/ntc.c ${ROOT}/drivers/ads1220.c ${ROOT}/drivers/adc_reader.c
     ${ROOT}/protocol/modbus_rtu.c ${ROOT}/protocol/rtu_receiver.c ${ROOT}/protocol/rtu_port.c)
-target_include_directories(tp_f407.elf PRIVATE ${ROOT}/include ${ROOT}/config
+target_include_directories(tp_f407.elf PRIVATE ${CMAKE_CURRENT_LIST_DIR} ${ROOT}/include ${ROOT}/config
     ${KERNEL}/include ${KERNEL}/portable/GCC/ARM_CM4F ${DEVICE}/Include
     ${ROOT}/third_party/CMSIS-Core/Include ${ROOT}/third_party/STM32F4-LL/Inc)
 target_compile_definitions(tp_f407.elf PRIVATE STM32F407xx)

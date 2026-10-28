@@ -150,3 +150,24 @@ tp_result tp_f407_uart4_subordinate_set_wakeup(tp_f407_uart4_subordinate *u,
     set_wake(ctx,false);
     return TP_OK;
 }
+
+/* PC8 is free in the reference peripheral map; connect it to F030 PA8. */
+static void pc8_wake(void *ctx,bool active) {
+    (void)ctx;
+    GPIOC->BSRR=active ? LL_GPIO_PIN_8 : (LL_GPIO_PIN_8 << 16);
+}
+tp_result tp_f407_uart4_subordinate_use_pc8_wakeup(tp_f407_uart4_subordinate *u,
+                                                   uint32_t delay_ms) {
+    if(!u || u!=instance || u->set_wake || !delay_ms ||
+       delay_ms>=u->subordinate.link.poll.master.response_timeout_ms-1u ||
+       xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED) return TP_INVALID;
+    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOCEN;
+    (void)RCC->AHB1ENR;
+    tp_result r=tp_f407_uart4_subordinate_set_wakeup(u,NULL,pc8_wake,delay_ms);
+    if(r!=TP_OK) return r;
+    LL_GPIO_SetPinOutputType(GPIOC,LL_GPIO_PIN_8,LL_GPIO_OUTPUT_PUSHPULL);
+    LL_GPIO_SetPinPull(GPIOC,LL_GPIO_PIN_8,LL_GPIO_PULL_NO);
+    LL_GPIO_SetPinSpeed(GPIOC,LL_GPIO_PIN_8,LL_GPIO_SPEED_FREQ_LOW);
+    LL_GPIO_SetPinMode(GPIOC,LL_GPIO_PIN_8,LL_GPIO_MODE_OUTPUT);
+    return TP_OK;
+}

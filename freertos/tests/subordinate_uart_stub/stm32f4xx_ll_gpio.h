@@ -1,5 +1,11 @@
 #ifndef LL_GPIO_H
 #define LL_GPIO_H
+#define LL_GPIO_PIN_8 256u
+#define LL_GPIO_OUTPUT_PUSHPULL 0u
+#define LL_GPIO_PULL_NO 0u
+#define LL_GPIO_SPEED_FREQ_LOW 0u
+#define LL_GPIO_MODE_OUTPUT 1u
+#define LL_GPIO_SetPinOutputType(a,b,c) ((void)(a),(void)(b),(void)(c))
 #define LL_GPIO_PIN_10 1024u
 #define LL_GPIO_PIN_11 2048u
 #define LL_GPIO_SetAFPin_8_15(a,b,c) ((void)(a),(void)(b),(void)(c))

@@ -3,7 +3,7 @@
 #include <stdint.h>
 typedef struct { uint32_t AHB1ENR, APB1ENR, APB2ENR, CFGR; } RCC_TypeDef;
 typedef struct { uint32_t SR,DR,CR1,CR2,CR3,BRR; } USART_TypeDef;
-typedef struct { int unused; } GPIO_TypeDef;
+typedef struct { uint32_t BSRR; } GPIO_TypeDef;
 typedef struct { uint32_t VTOR; } SCB_Type;
 extern SCB_Type fake_scb;
 #define SCB (&fake_scb)

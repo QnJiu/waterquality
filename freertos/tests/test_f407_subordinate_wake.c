@@ -52,5 +52,16 @@ int main(void) {
     assert(send_request(&u,frame,sizeof(frame))==TP_OK);
     u.subordinate.link.poll.master.pending=false; service_wakeup(&u,40);
     assert(!wake_level && !u.transmitting); /* timed out before sending */
+    /* Exercise the reference GPIO adapter separately from the custom callback. */
+    scheduler=taskSCHEDULER_NOT_STARTED; u.set_wake=NULL;
+    fake_rcc.AHB1ENR=0; fake_gpio.BSRR=0;
+    assert(tp_f407_uart4_subordinate_use_pc8_wakeup(&u,19)==TP_INVALID);
+    assert(fake_rcc.AHB1ENR==0 && fake_gpio.BSRR==0);
+    assert(tp_f407_uart4_subordinate_use_pc8_wakeup(&u,3)==TP_OK);
+    assert((fake_rcc.AHB1ENR & RCC_AHB1ENR_GPIOCEN) && fake_gpio.BSRR==(256u<<16));
+    scheduler=taskSCHEDULER_RUNNING; ticks=50; u.subordinate.link.poll.master.pending=true;
+    assert(send_request(&u,frame,sizeof(frame))==TP_OK && fake_gpio.BSRR==256u);
+    u.subordinate.link.poll.master.pending=false; service_wakeup(&u,51);
+    assert(fake_gpio.BSRR==(256u<<16));
     return 0;
 }

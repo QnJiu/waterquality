@@ -27,4 +27,7 @@ tp_result tp_f407_uart4_subordinate_init(tp_f407_uart4_subordinate *,
  * The request timeout includes the wake delay. */
 tp_result tp_f407_uart4_subordinate_set_wakeup(tp_f407_uart4_subordinate *,
     void *ctx, void (*set_wake)(void *, bool), uint32_t delay_ms);
+/* Reference output: PC8 push-pull, active high, connected to F030 PA8.
+ * Owns PC8 for the lifetime of the UART port. */
+tp_result tp_f407_uart4_subordinate_use_pc8_wakeup(tp_f407_uart4_subordinate *,uint32_t delay_ms);
 #endif

@@ -36,7 +36,7 @@ if(TP_F030_SUBORDINATE)
 else()
     set(ENTRY main.c)
 endif()
-add_executable(tp_f030.elf ${ENTRY}
+add_executable(tp_f030.elf ${ENTRY} tp_f030_rtc.c tp_f030_rtc_time.c
     ${DEVICE}/Source/startup_stm32f030x8.s ${DEVICE}/Source/system_stm32f0xx.c
     ${KERNEL}/tasks.c ${KERNEL}/queue.c ${KERNEL}/list.c
     ${KERNEL}/portable/GCC/ARM_CM0/port.c ${KERNEL}/portable/MemMang/heap_4.c)

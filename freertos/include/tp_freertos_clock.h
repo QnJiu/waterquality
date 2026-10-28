@@ -20,6 +20,7 @@ tp_result tp_freertos_clock_start(tp_freertos_clock *clock, tp_ds3231 *rtc,
  * The clock task writes and verifies the device. Only one request may be pending. */
 tp_result tp_freertos_clock_set(tp_freertos_clock *clock, uint32_t seconds);
 uint8_t tp_freertos_clock_set_status(tp_freertos_clock *clock);
-/* Nonblocking and task-safe, suitable for a runtime rtc_utc callback wrapper. */
+/* Nonblocking and task-safe. A failed setting keeps time invalid until a
+ * later setting is verified, even if ordinary device reads succeed. */
 bool tp_freertos_clock_now(tp_freertos_clock *clock, int64_t *utc_seconds);
 #endif

@@ -57,6 +57,9 @@ uint8_t tp_freertos_clock_set_status(tp_freertos_clock *clock) {
 }
 bool tp_freertos_clock_now(tp_freertos_clock *clock,int64_t *utc) {
     tp_clock_snapshot s;
-    if (!clock || !clock->snapshot || !utc || tp_freertos_clock_set_status(clock)==2 || xQueuePeek(clock->snapshot,&s,0)!=pdPASS) return false;
+    if (!clock || !clock->snapshot || !utc) return false;
+    uint8_t status=tp_freertos_clock_set_status(clock);
+    /* A failed write can leave a partially updated RTC: require verified re-setting. */
+    if (status==2 || status==4 || xQueuePeek(clock->snapshot,&s,0)!=pdPASS) return false;
     return tp_clock_snapshot_now(&s,(uint32_t)xTaskGetTickCount(),clock->max_age_ms,utc);
 }

@@ -56,5 +56,12 @@ int main(void) {
     assert(tp_freertos_clock_set_status(&c)==4 && !tp_freertos_clock_now(&c,&now));
     set_fail=false; read_fail=true; poll_once(&c,false,0);
     assert(!tp_freertos_clock_now(&c,&now));
+    /* Even a later successful read cannot prove a failed write was complete. */
+    read_fail=false; device_time=1700004560; poll_once(&c,false,0);
+    assert(tp_freertos_clock_set_status(&c)==4 && !tp_freertos_clock_now(&c,&now));
+    assert(tp_freertos_clock_set(&c,1700004567)==TP_OK);
+    assert(xQueueReceive(c.set_requests,&requested,0)==pdPASS);
+    poll_once(&c,true,requested);
+    assert(tp_freertos_clock_set_status(&c)==3 && tp_freertos_clock_now(&c,&now) && now==1700004567);
     assert(critical==0); return 0;
 }

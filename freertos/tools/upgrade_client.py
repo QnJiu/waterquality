@@ -182,10 +182,14 @@ def upload(client, manifest, manifest_id, image, retries=3):
     for attempt in range(retries + 1):
         try:
             result, state = client.command(FINISH)
-        except TimeoutError:
+        except TimeoutError as exc:
             if attempt == retries:
-                raise
+                raise TimeoutError("finish response lost; upgrade result is unknown. "
+                                   "Check the device version and boot status after reconnecting") from exc
             continue
+        except ConnectionError as exc:
+            raise ConnectionError("connection lost after finish request; upgrade result is unknown. "
+                                  "Check the device version and boot status after reconnecting") from exc
         if result != OK:
             raise ProtocolError("finish failed: %d" % result)
         state = match_state(state, manifest_id, image)

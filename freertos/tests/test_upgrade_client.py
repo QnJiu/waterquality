@@ -137,6 +137,26 @@ class Tests(unittest.TestCase):
         self.assertEqual(client.writes, [0, 256, 512])
         self.assertEqual(client.storage, image)
 
+    def test_finish_without_response_reports_unknown_result(self):
+        class LostFinish(FakeClient):
+            def command(self, cmd, payload=b""):
+                if cmd == u.FINISH:
+                    raise TimeoutError()
+                return super().command(cmd, payload)
+
+        client = LostFinish(b"data", bytes(32))
+        with self.assertRaisesRegex(TimeoutError, "result is unknown"):
+            u.upload(client, b"manifest", bytes(32), b"data", retries=1)
+
+        class Disconnected(LostFinish):
+            def command(self, cmd, payload=b""):
+                if cmd == u.FINISH:
+                    raise ConnectionError("closed")
+                return super().command(cmd, payload)
+
+        with self.assertRaisesRegex(ConnectionError, "result is unknown"):
+            u.upload(Disconnected(b"data", bytes(32)), b"manifest", bytes(32), b"data")
+
     def test_mismatched_identity_does_not_write(self):
         client = FakeClient(b"data", bytes(32))
         with self.assertRaises(u.ProtocolError):

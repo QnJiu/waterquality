@@ -192,6 +192,27 @@ class Tests(unittest.TestCase):
         self.assertEqual(client.writes, [0, 256, 512])
         self.assertEqual(client.storage, image)
 
+    def test_begin_retries_after_request_or_reply_is_lost(self):
+        class LostBegin(FakeClient):
+            def __init__(self, image, ident):
+                super().__init__(image, ident)
+                self.attempts = 0
+            def command(self, cmd, payload=b""):
+                if cmd == u.BEGIN:
+                    self.attempts += 1
+                    if self.attempts <= 2:
+                        # First request is lost; second succeeds but its reply is lost.
+                        raise TimeoutError()
+                return super().command(cmd, payload)
+
+        client = LostBegin(b"data", bytes(32))
+        self.assertEqual(u.upload(client, b"manifest", bytes(32), b"data")["phase"], 3)
+        self.assertEqual(client.attempts, 3)
+        client = LostBegin(b"data", bytes(32))
+        with self.assertRaises(TimeoutError):
+            u.upload(client, b"manifest", bytes(32), b"data", retries=1)
+        self.assertEqual(client.attempts, 2)
+
     def test_finish_without_response_reports_unknown_result(self):
         class LostFinish(FakeClient):
             def command(self, cmd, payload=b""):

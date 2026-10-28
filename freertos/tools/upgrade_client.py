@@ -148,10 +148,15 @@ def status(client, manifest_id, image):
 def upload(client, manifest, manifest_id, image, retries=3):
     if not manifest or len(manifest) > 512 or len(manifest_id) != 32 or not image:
         raise ProtocolError("invalid manifest, ID, or empty image")
-    try:
-        result, state = client.command(BEGIN, manifest)
-    except TimeoutError:
-        result, state = BUSY, None
+    # BEGIN is safe to repeat for the same signed manifest; this also
+    # handles a request lost before the device opened a session.
+    for attempt in range(retries + 1):
+        try:
+            result, state = client.command(BEGIN, manifest)
+            break
+        except TimeoutError:
+            if attempt == retries:
+                raise
     if result not in (OK, BUSY):
         raise ProtocolError("begin failed: %d" % result)
     state = match_state(state, manifest_id, image) if state else status(client, manifest_id, image)

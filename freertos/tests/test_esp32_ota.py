@@ -55,6 +55,28 @@ class Tests(unittest.TestCase):
         self.assertEqual(client.writes, [0, 256, 512])
         self.assertEqual(client.storage, image)
 
+    def test_begin_retries_after_request_or_reply_is_lost(self):
+        class LostBegin(FakeClient):
+            def __init__(self, image, ident):
+                super().__init__(image, ident)
+                self.attempts = 0
+            def command(self, cmd, payload=b''):
+                if cmd == ota.BEGIN:
+                    self.attempts += 1
+                    if self.attempts <= 2:
+                        raise TimeoutError()
+                return super().command(cmd, payload)
+
+        image = b'firmware'
+        manifest, ident = manifest_for(image)
+        client = LostBegin(image, ident)
+        self.assertEqual(ota.upload(client, manifest, io.BytesIO(image))['phase'], 3)
+        self.assertEqual(client.attempts, 3)
+        client = LostBegin(image, ident)
+        with self.assertRaises(TimeoutError):
+            ota.upload(client, manifest, io.BytesIO(image), retries=1)
+        self.assertEqual(client.attempts, 2)
+
     def test_finish_timeout_reports_unknown_outcome(self):
         class LostFinish(FakeClient):
             def command(self, cmd, payload=b''):

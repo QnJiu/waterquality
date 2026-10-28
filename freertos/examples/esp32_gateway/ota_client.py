@@ -168,10 +168,15 @@ def upload(client, manifest, image, retries=3):
             raise ProtocolError("status failed: %d" % result)
         return checked(state)
 
-    try:
-        result, state = client.command(BEGIN, manifest)
-    except TimeoutError:
-        result, state = BUSY, None
+    # BEGIN is safe to repeat for the same signed manifest; this also
+    # handles a request lost before the device opened a session.
+    for attempt in range(retries + 1):
+        try:
+            result, state = client.command(BEGIN, manifest)
+            break
+        except TimeoutError:
+            if attempt == retries:
+                raise
     if result not in (OK, BUSY):
         raise ProtocolError("begin failed: %d" % result)
     state = checked(state) if state else status()

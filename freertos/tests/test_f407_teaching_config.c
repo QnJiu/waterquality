@@ -72,6 +72,25 @@ static void teaching_flow(const tp_f407_app_options *o) {
     assert(s.auto_standard.state==TP_STANDARD_COMPLETE && s.auto_standard.passed);
     assert(fabsf(s.auto_standard.actual-5.0f)<0.0001f && f.pumps==16 && f.safe_calls==4);
 }
+/* Configure automatic modes via the same holding registers used by the host. */
+static void teaching_scheduled_flow(const tp_f407_app_options *o, tp_mode mode) {
+    teaching_fake f={0};
+    tp_hal hal={&f,teaching_valves,teaching_pump,poll,teaching_temp,heater,teaching_adc,interlock,teaching_safe};
+    tp_controller c; tp_init(&c,&hal,&o->defaults.calibration,NULL,o->defaults.max_temperature_c);
+    tp_service s; assert(tp_service_init(&s,&c,o->recipe,o->recipe_len,0)==TP_OK);
+    assert(tp_service_attach_config(&s,&o->defaults,&f,teaching_save)==TP_OK);
+    assert(tp_service_attach_preflight(&s,NULL,teaching_preflight)==TP_OK);
+    uint16_t schedule[]={mode,0,60,1,0};
+    assert(tp_service_write_holding(&s,1,5,schedule)==TP_OK);
+    uint32_t start=mode==TP_MODE_PERIODIC ? 60000 : 50;
+    int64_t utc=946684860LL; /* 2000-01-01 00:01 UTC */
+    tp_service_tick(&s,start,mode==TP_MODE_DAILY,utc);
+    assert(c.state==TP_RUNNING && !c.single_step);
+    for (uint32_t now=start+50; now<=start+25000 && c.state==TP_RUNNING; now+=50)
+        tp_service_tick(&s,now,mode==TP_MODE_DAILY,utc);
+    assert(c.state==TP_COMPLETE && c.result_valid && fabsf(c.result_mg_l-0.30103f)<0.0001f);
+    assert(f.pumps==4 && f.safe_calls==1);
+}
 /* Exercise the real teaching recipe when its pump cannot start. */
 static void teaching_pump_failure(const tp_f407_app_options *o) {
     teaching_fake f={.pump_fails=true};
@@ -121,5 +140,7 @@ int main(void) {
     assert(cal->low_recipe[0].arg.valves.mask != cal->high_recipe[0].arg.valves.mask);
     teaching_flow(&o);
     teaching_pump_failure(&o);
+    teaching_scheduled_flow(&o,TP_MODE_PERIODIC);
+    teaching_scheduled_flow(&o,TP_MODE_DAILY);
     return 0;
 }

@@ -5,6 +5,23 @@
 #include <math.h>
 static void put_float(uint16_t *v,float f) { uint32_t bits; memcpy(&bits,&f,4); v[0]=(uint16_t)(bits>>16); v[1]=(uint16_t)bits; }
 static float get_float(const uint16_t *v) { uint32_t bits=((uint32_t)v[0]<<16)|v[1]; float f; memcpy(&f,&bits,4); return f; }
+static uint8_t store_slots[2][128];
+static tp_result store_read(void *ctx,unsigned slot,uint32_t off,void *out,size_t len) {
+    (void)ctx; if (slot>=2 || off>128 || len>128-off) return TP_INVALID;
+    memcpy(out,store_slots[slot]+off,len); return TP_OK;
+}
+static tp_result store_erase(void *ctx,unsigned slot) {
+    (void)ctx; if (slot>=2) return TP_INVALID;
+    memset(store_slots[slot],0xff,128); return TP_OK;
+}
+static tp_result store_write(void *ctx,unsigned slot,uint32_t off,const void *data,size_t len) {
+    (void)ctx; if (slot>=2 || off>128 || len>128-off) return TP_INVALID;
+    memcpy(store_slots[slot]+off,data,len); return TP_OK;
+}
+static const tp_store_io store={NULL,store_read,store_erase,store_write};
+static tp_result save_to_store(void *ctx,const tp_config *cfg) {
+    (void)ctx; return tp_store_save(&store,cfg);
+}
 static tp_config saved;
 static tp_result save_config(void *ctx,const tp_config *cfg) { (void)ctx; saved=*cfg; return TP_OK; }
 static int safe_count, recover_count;
@@ -233,6 +250,21 @@ int main(void) {
     tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,5000)==TP_OK);
     saved.mode=TP_MODE_PERIODIC; saved.period_seconds=2;
     assert(tp_service_attach_config(&s,&saved,NULL,save_config)==TP_OK);
+    tp_service_tick(&s,6999,false,0); assert(c.state==TP_IDLE);
+    tp_service_tick(&s,7000,false,0); assert(c.state==TP_RUNNING);
+    /* Save a periodic schedule, simulate reboot and run it from restored storage. */
+    memset(store_slots,0xff,sizeof(store_slots));
+    tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);
+    assert(tp_service_attach_config(&s,&cfg,NULL,save_to_store)==TP_OK);
+    uint16_t periodic_saved[]={TP_MODE_PERIODIC,0,2,0,0};
+    assert(tp_service_write_holding(&s,1,5,periodic_saved)==TP_OK);
+    assert(tp_service_write_holding(&s,0,1,&save)==TP_OK);
+    tp_service_save_complete(&s,TP_OK);
+    tp_config restored_config; uint32_t sequence; tp_config_source source;
+    assert(tp_store_bootstrap(&store,&cfg,&restored_config,&sequence,&source)==TP_OK);
+    assert(source==TP_CONFIG_FROM_STORAGE && sequence==1);
+    tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,5000)==TP_OK);
+    assert(tp_service_attach_config(&s,&restored_config,NULL,save_to_store)==TP_OK);
     tp_service_tick(&s,6999,false,0); assert(c.state==TP_IDLE);
     tp_service_tick(&s,7000,false,0); assert(c.state==TP_RUNNING);
     tp_init(&c,&hal,NULL,NULL,100); assert(tp_service_init(&s,&c,recipe,2,0)==TP_OK);

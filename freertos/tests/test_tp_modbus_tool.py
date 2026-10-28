@@ -1,4 +1,9 @@
 import importlib.util
+import contextlib
+import io
+import sys
+from unittest.mock import patch
+from types import SimpleNamespace
 from pathlib import Path
 import struct
 import unittest
@@ -28,6 +33,31 @@ class Tests(unittest.TestCase):
         p = Port(m.frame(bytes.fromhex('010600000002')))
         m.Client(p, 1).command(2)
         self.assertEqual(p.sent, m.frame(bytes.fromhex('010600000002')))
+
+    def test_auto_calibration_commands_and_status(self):
+        for code in (6, 7):
+            payload = bytes([1, 6, 0, 0, 0, code])
+            p = Port(m.frame(payload))
+            m.Client(p, 1).command(code)
+            self.assertEqual(p.sent, m.frame(payload))
+        p = Port(m.frame(bytes.fromhex('01030400040000')))
+        self.assertEqual(m.Client(p, 1).auto_calibration_status(),
+                         {'state': 'complete', 'state_code': 4, 'error_code': 0})
+        self.assertEqual(p.sent, m.frame(bytes.fromhex('0103005a0002')))
+        p = Port(m.frame(bytes.fromhex('01030400630004')))
+        self.assertEqual(m.Client(p, 1).auto_calibration_status()['state'], 'unknown')
+        with self.assertRaises(ValueError): m.Client(Port(b''), 1).command(8)
+
+    def test_auto_calibration_cli(self):
+        class SerialPort(Port):
+            def __init__(self, *args, **kwargs):
+                super().__init__(m.frame(bytes.fromhex('01030400030000')))
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        text = io.StringIO()
+        with patch.dict(sys.modules, {'serial': SimpleNamespace(Serial=SerialPort)}), contextlib.redirect_stdout(text):
+            self.assertEqual(m.main(['--port', 'COM3', 'auto-cal-status']), 0)
+        self.assertIn('"state": "high"', text.getvalue())
 
     def test_config_round_trip_and_full_write(self):
         values = [1., -2., .5, .01, 10., 1., 0., 0., 0., 1., 10., 100.]

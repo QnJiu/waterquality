@@ -73,6 +73,9 @@ python tools/tp_modbus.py --port COM3 schedule daily 3600 480 480
 python tools/tp_modbus.py --port COM3 command save
 python tools/tp_modbus.py --port COM3 command start
 python tools/tp_modbus.py --port COM3 command stop
+python tools/tp_modbus.py --port COM3 command auto-cal-start
+python tools/tp_modbus.py --port COM3 auto-cal-status
+python tools/tp_modbus.py --port COM3 command auto-cal-apply
 python tools/tp_modbus.py --port COM3 log
 python tools/tp_modbus.py --port COM3 log --sequence 1
 ```
@@ -81,7 +84,7 @@ python tools/tp_modbus.py --port COM3 log --sequence 1
 
 `get-config` 导出地址 20–46 的完整 JSON，编辑后用 `set-config` 一次写入整组标定、PID、温度上限、周期和从站地址。设备负责校验参数范围，写入后仍需保存。此文件是读取时的快照，写入会覆盖整组参数；多人或多个上位机操作时先协调，避免覆盖之后的修改。运行模式、每日时间和 UTC 偏移使用 `schedule` 单独配置。更改从站地址保存并重启后，使用新的 `--address` 连接。
 
-两点标定使用设备当前浊度系数、最小信号和浓度上限。写入 70–87 后立即计算并应用新的斜率与截距；参数不合格、设备运行中或正在保存时拒绝写入。应用后可读取 20–23 确认，命令 4 才会持久化。例如 `python tools/tp_modbus.py --port COM3 calibrate 1 1 0 0 1 0.1 0 5 0.01` 是计算示例，数字并非实际标准液或设备校准值。标准点须由外部采样过程取得，目前未实现自动采样标定。
+两点标定使用设备当前浊度系数、最小信号和浓度上限。写入 70–87 后立即计算并应用新的斜率与截距；参数不合格、设备运行中或正在保存时拒绝写入。应用后可读取 20–23 确认，命令 4 才会持久化。例如 `python tools/tp_modbus.py --port COM3 calibrate 1 1 0 0 1 0.1 0 5 0.01` 是计算示例，数字并非实际标准液或设备校准值。此命令使用外部提供的标准点；也可以使用下述自动采样标定流程。
 
 ## 可选 FreeModbus 协议栈
 

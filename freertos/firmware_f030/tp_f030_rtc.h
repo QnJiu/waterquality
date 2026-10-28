@@ -6,6 +6,11 @@
 /* Board initializes LSE, RTC calendar and 31/1023 prescalers; RTC must be in
  * BYPSHAD mode with backup writes enabled. Alarm A and EXTI17 are exclusive. */
 bool tp_f030_rtc_ready(void);
+/* Optional reference startup. Exclusive RTC ownership is required. Does not
+ * reset the backup domain; existing initialized calendars are left untouched.
+ * poll_limit is a CPU-loop bound, not a duration. Enable interrupts and configure
+ * EXTI17/NVIC separately before using the alarm. */
+bool tp_f030_rtc_init(uint32_t poll_limit);
 /* Retry bounded direct-register reads to avoid a rollover-torn timestamp. */
 bool tp_f030_rtc_read(tp_f030_rtc_stamp *stamp, uint32_t attempts);
 /* Called with interrupts masked. Caller enables EXTI17/NVIC first and checks

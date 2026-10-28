@@ -2,7 +2,29 @@
 #include "stm32f0xx.h"
 #include <assert.h>
 RCC_TypeDef rcc; PWR_TypeDef pwr; RTC_TypeDef rtc; EXTI_TypeDef exti;
+static int simulate_clock;
+void rtc_test_wait_hook(void) {
+    if (!simulate_clock) return;
+    if (rcc.BDCR & RCC_BDCR_LSEON) rcc.BDCR |= RCC_BDCR_LSERDY;
+    if (rtc.ISR & RTC_ISR_INIT) rtc.ISR |= RTC_ISR_INITF;
+    else if (rtc.DR) rtc.ISR |= RTC_ISR_INITS;
+}
 int main(void) {
+    assert(!tp_f030_rtc_init(0));
+    assert(!tp_f030_rtc_init(2)); /* LSE did not start */
+    assert(!(rcc.BDCR & RCC_BDCR_RTCEN));
+    rcc.BDCR=2u<<8; assert(!tp_f030_rtc_init(2)); /* other clock */
+    rcc.BDCR=0; simulate_clock=1;
+    assert(tp_f030_rtc_init(8));
+    assert(rtc.PRER==((31u<<16)|1023u) && rtc.TR==0 && rtc.DR==0x12101u);
+    assert((rtc.CR & RTC_CR_BYPSHAD) && rtc.WPR==0xffu);
+    rtc.DR=0x31201u; assert(tp_f030_rtc_init(8) && rtc.DR==0x31201u);
+    rtc.CR |= RTC_CR_FMT; assert(!tp_f030_rtc_init(8) && rtc.DR==0x31201u);
+    rcc=(RCC_TypeDef){0}; pwr=(PWR_TypeDef){0}; rtc=(RTC_TypeDef){0}; exti=(EXTI_TypeDef){0};
+    simulate_clock=0; rcc.BDCR=RCC_BDCR_LSERDY;
+    assert(!tp_f030_rtc_init(2)); /* INITF never arrived */
+    assert(!(rtc.ISR & RTC_ISR_INIT) && rtc.WPR==0xffu);
+    rcc=(RCC_TypeDef){0}; pwr=(PWR_TypeDef){0}; rtc=(RTC_TypeDef){0}; exti=(EXTI_TypeDef){0};
     tp_f030_rtc_stamp stamp={99,999};
     rcc.BDCR=RCC_BDCR_RTCEN|RCC_BDCR_RTCSEL_LSE|RCC_BDCR_LSERDY;
     pwr.CR=PWR_CR_DBP; rtc.CR=RTC_CR_BYPSHAD;

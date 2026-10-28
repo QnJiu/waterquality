@@ -1,15 +1,22 @@
 #ifndef TEST_STM32F0XX_H
 #define TEST_STM32F0XX_H
 #include <stdint.h>
-typedef struct { volatile uint32_t BDCR; } RCC_TypeDef;
+typedef struct { volatile uint32_t BDCR, APB1ENR; } RCC_TypeDef;
 typedef struct { volatile uint32_t CR; } PWR_TypeDef;
-typedef struct { volatile uint32_t TR, CR, ISR, PRER, ALRMAR, WPR, SSR, ALRMASSR; } RTC_TypeDef;
+typedef struct { volatile uint32_t TR, DR, CR, ISR, PRER, ALRMAR, WPR, SSR, ALRMASSR; } RTC_TypeDef;
 typedef struct { volatile uint32_t IMR, RTSR, PR; } EXTI_TypeDef;
 extern RCC_TypeDef rcc; extern PWR_TypeDef pwr; extern RTC_TypeDef rtc; extern EXTI_TypeDef exti;
 #define RCC (&rcc)
 #define PWR (&pwr)
 #define RTC (&rtc)
 #define EXTI (&exti)
+#define RCC_APB1ENR_PWREN (1u<<28)
+#define RCC_BDCR_LSEON (1u<<0)
+#define RTC_ISR_INIT (1u<<7)
+#define RTC_ISR_INITF (1u<<6)
+#define RTC_CR_FMT (1u<<6)
+void rtc_test_wait_hook(void);
+#define TP_F030_RTC_WAIT_HOOK() rtc_test_wait_hook()
 #define RCC_BDCR_RTCEN (1u<<15)
 #define RCC_BDCR_RTCSEL (3u<<8)
 #define RCC_BDCR_RTCSEL_LSE (1u<<8)

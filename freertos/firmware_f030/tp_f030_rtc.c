@@ -5,13 +5,61 @@
 #define ALARM_LINE EXTI_PR_PR17
 #define ALL_FIELDS (RTC_ALRMAR_MSK1|RTC_ALRMAR_MSK2|RTC_ALRMAR_MSK3|RTC_ALRMAR_MSK4)
 #define PRESCALERS ((31u<<16)|1023u)
+#ifndef TP_F030_RTC_WAIT_HOOK
+#define TP_F030_RTC_WAIT_HOOK() ((void)0)
+#endif
 static void unlock(void) { RTC->WPR=0xcau; RTC->WPR=0x53u; }
 static void lock(void) { RTC->WPR=0xffu; }
 bool tp_f030_rtc_ready(void) {
     return (RCC->BDCR & (RCC_BDCR_RTCEN|RCC_BDCR_RTCSEL|RCC_BDCR_LSERDY))==
         (RCC_BDCR_RTCEN|RCC_BDCR_RTCSEL_LSE|RCC_BDCR_LSERDY) &&
         (PWR->CR & PWR_CR_DBP) && (RTC->ISR & RTC_ISR_INITS) &&
-        (RTC->CR & RTC_CR_BYPSHAD) && (RTC->PRER & (RTC_PRER_PREDIV_A|RTC_PRER_PREDIV_S))==PRESCALERS;
+        (RTC->CR & RTC_CR_BYPSHAD) && !(RTC->CR & RTC_CR_FMT) && (RTC->PRER & (RTC_PRER_PREDIV_A|RTC_PRER_PREDIV_S))==PRESCALERS;
+}
+/* This reference initialization owns the RTC and its backup domain. */
+bool tp_f030_rtc_init(uint32_t poll_limit) {
+    if (!poll_limit) return false;
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+    PWR->CR |= PWR_CR_DBP;
+    uint32_t n=poll_limit;
+    while (!(PWR->CR & PWR_CR_DBP)) {
+        TP_F030_RTC_WAIT_HOOK();
+        if (!--n) return false;
+    }
+    uint32_t source=RCC->BDCR & RCC_BDCR_RTCSEL;
+    if (source && source!=RCC_BDCR_RTCSEL_LSE) return false;
+    RCC->BDCR |= RCC_BDCR_LSEON;
+    n=poll_limit;
+    while (!(RCC->BDCR & RCC_BDCR_LSERDY)) {
+        TP_F030_RTC_WAIT_HOOK();
+        if (!--n) return false;
+    }
+    RCC->BDCR |= RCC_BDCR_RTCSEL_LSE | RCC_BDCR_RTCEN;
+    /* Preserve an existing calendar and reject an incompatible configuration. */
+    if (RTC->ISR & RTC_ISR_INITS) return tp_f030_rtc_ready();
+    if ((RTC->CR & (RTC_CR_ALRAE|RTC_CR_ALRAIE)) ||
+        (RTC->ISR & RTC_ISR_ALRAF) || (EXTI->PR & ALARM_LINE)) return false;
+    unlock();
+    RTC->ISR |= RTC_ISR_INIT;
+    n=poll_limit;
+    while (!(RTC->ISR & RTC_ISR_INITF)) {
+        TP_F030_RTC_WAIT_HOOK();
+        if (!--n) { RTC->ISR &= ~RTC_ISR_INIT; lock(); return false; }
+    }
+    /* PRER requires two writes, synchronous divider first. */
+    RTC->PRER=1023u;
+    RTC->PRER=PRESCALERS;
+    RTC->TR=0;
+    RTC->DR=(1u<<16)|(1u<<13)|(1u<<8)|1u; /* 2001-01-01, Monday */
+    RTC->CR=(RTC->CR & ~RTC_CR_FMT)|RTC_CR_BYPSHAD;
+    RTC->ISR &= ~RTC_ISR_INIT;
+    lock();
+    n=poll_limit;
+    while (!(RTC->ISR & RTC_ISR_INITS)) {
+        TP_F030_RTC_WAIT_HOOK();
+        if (!--n) return false;
+    }
+    return tp_f030_rtc_ready();
 }
 bool tp_f030_rtc_read(tp_f030_rtc_stamp *stamp,uint32_t attempts) {
     if (!stamp || !attempts || !tp_f030_rtc_ready()) return false;

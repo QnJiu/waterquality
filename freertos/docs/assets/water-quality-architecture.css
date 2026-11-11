@@ -1,0 +1,19 @@
+/* Optional, scoped to SYSTEM_FRAMEWORK.md via cssclasses. */
+.water-quality-architecture {
+  --file-line-width: 1600px;
+  --architecture-diagram-width: 2200px;
+}
+.water-quality-architecture .mermaid {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+}
+.water-quality-architecture .mermaid svg {
+  display: block;
+  width: max(100%, var(--architecture-diagram-width)) !important;
+  max-width: none !important;
+  height: auto !important;
+}

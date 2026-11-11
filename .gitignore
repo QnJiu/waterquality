@@ -13,3 +13,4 @@
 *.pyc
 **/__pycache__/
 .vscode/
+.zread/
